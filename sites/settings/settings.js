@@ -17,7 +17,8 @@ const Settings = (() => {
       </section>
       <section class="st-card" style="margin-top:16px"><h2>Desktop and dock</h2><p class="st-note" style="margin:0 0 10px">Use the arrows to change the order. "To dock" and "To desktop" move an app between the two.</p>${layoutHTML()}</section>
       <section class="st-card" style="margin-top:16px">${photosHTML()}</section>
-      <section class="st-card" id="st-import" style="margin-top:16px"></section></div></div>`;
+      <section class="st-card" id="st-import" style="margin-top:16px"></section>
+      <p class="st-note" style="text-align:center;margin:18px 0 6px">SimDesk build <b>${window.SIMDESK_BUILD || "dev"}</b></p></div></div>`;
     st.msg = st.err = null;
     NotionImport.mount(root.querySelector("#st-import"), data);
   }

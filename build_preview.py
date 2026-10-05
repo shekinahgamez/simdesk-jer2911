@@ -1,9 +1,9 @@
 # Bundles the whole desktop into one HTML file for previewing (not needed for GitHub Pages).
 import base64, re
-h=open('index.html').read(); r=lambda p:open(p).read()
+h=open('index.html').read(); r=lambda p:open(p.split('?')[0]).read()
 import os
 for p in re.findall(r'<link rel="stylesheet" href="([^"]+)">', h):
-    css=r(p).replace('url("img/', 'url("'+os.path.dirname(p)+'/img/')  # CSS urls are relative to the CSS file
+    css=r(p).replace('url("img/', 'url("'+os.path.dirname(p.split('?')[0])+'/img/')  # CSS urls are relative to the CSS file
     h=h.replace(f'<link rel="stylesheet" href="{p}">','<style>'+css+'</style>')
 for p in [x for x in re.findall(r'<script src="([^"]+)"></script>', h) if not x.startswith('http')]:
     h=h.replace(f'<script src="{p}"></script>','<script>'+r(p)+'</script>')
