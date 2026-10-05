@@ -23,7 +23,7 @@ const Simsta = (() => {
   function accts(){
     const out = [];
     for (const s of data.sims){
-      if (s.simsta) out.push({ key:s.id, sim:s, handle:GFB.normHandle(s.simsta), name:s.simsta_name || clean(s.name), bio:s.simsta_bio, followers:s.simsta_followers, following:s.simsta_following, avatar:s.simsta_avatar, alt:false });
+      if (s.simsta) out.push({ key:s.id, sim:s, handle:GFB.normHandle(s.simsta), name:s.simsta_name || clean(s.name), bio:s.simsta_bio, followers:s.simsta_followers, following:s.simsta_following, avatar:s.simsta_avatar || s.portrait || null, alt:false });
       for (const a of s.simsta_alts || []) out.push({ key:s.id + "~" + a.id, sim:s, altId:a.id, handle:GFB.normHandle(a.handle), name:a.name || clean(s.name), bio:a.bio, followers:a.followers, following:a.following, avatar:a.avatar, alt:true });
     }
     return out.sort((a,b) => a.handle.localeCompare(b.handle));
@@ -31,8 +31,12 @@ const Simsta = (() => {
   const acct = key => accts().find(a => a.key === key);
   const byHandle = h => accts().find(a => a.handle === GFB.normHandle(h));
   const posts = () => [...(data.posts || [])].sort((a,b) => ord(b.date) - ord(a.date) || (b.created || "").localeCompare(a.created || ""));
-  const actor = () => acct(st.actor) || accts()[0] || null;
-  const setActor = k => { st.actor = k; try { localStorage.setItem("simsta-actor", k); } catch {} };
+  /* acting as follows the shared "Signed in as" Sim (also used by Huddl and Cliq) when that Sim has an account */
+  const actor = () => { const sh = (data.settings || {}).acting_sim, mine = acct(st.actor); if (sh && (!mine || mine.sim.id !== sh)) { const a = acct(sh); if (a) return a; } return mine || accts()[0] || null; };
+  const setActor = k => { st.actor = k; try { localStorage.setItem("simsta-actor", k); } catch {} const a = acct(k); if (a) GFB.saveSetting("acting_sim", a.sim.id); };
+  /* who to look at when there are no posts yet */
+  const suggest = n => { const me = actor(), list = accts().filter(a => !a.alt && (!me || a.key !== me.key)).slice(0, n);
+    return list.length ? `<div class="sm-suggest"><h3>Accounts to look at</h3><div class="sm-sgrid">${list.map(a => `<a class="sm-scard" href="#/simsta/u/${encodeURIComponent(a.key)}">${av(a, 56)}<b>${esc(a.handle)}</b><small>${esc(a.name || "")}</small></a>`).join("")}</div></div>` : ""; };
   const postedRecently = key => posts().some(p => p.author === key && nowOrd() - ord(p.date) <= 3);
   const nameOf = key => { const a = acct(key); return a ? a.handle : clean(sim(key)?.name || "unknown"); };
   const matches = q => { q = q.toLowerCase().replace(/^@/, ""); return accts().filter(a => a.handle.includes(q) || a.name.toLowerCase().includes(q)); };
@@ -84,7 +88,7 @@ const Simsta = (() => {
   /* ---------- views ---------- */
   function feedHTML(){
     const list = posts();
-    const feed = list.length ? list.map(p => postHTML(p)).join("") : `<div class="sm-empty">${ICON.camera}<h2>Nothing posted yet</h2><p>Share the first photo as whoever you're acting as.</p><button class="sm-btn hot" data-new>New post</button></div>`;
+    const feed = list.length ? list.map(p => postHTML(p)).join("") : `<div class="sm-empty">${ICON.camera}<h2>Nothing posted yet</h2><p>Share the first photo as whoever you're acting as.</p><button class="sm-btn hot" data-new>New post</button></div>${suggest(6)}`;
     return `<div class="sm-feedwrap"><div class="sm-feed">${feed}</div>${asideHTML()}</div>`;
   }
   function asideHTML(){
@@ -96,7 +100,7 @@ const Simsta = (() => {
     </aside>`;
   }
   const grid = list => list.length ? `<div class="sm-grid">${list.map(p => `<button data-post="${p.id}" data-ctx="${list.map(x => x.id).join(",")}"><img src="${esc(p.photo)}" alt=""></button>`).join("")}</div>` : "";
-  function exploreHTML(){ const list = posts(); return `<div class="sm-prof">${grid(list) || `<div class="sm-empty">${ICON.camera}<h2>Nothing to explore yet</h2></div>`}</div>`; }
+  function exploreHTML(){ const list = posts(); return `<div class="sm-prof">${grid(list) || `<div class="sm-empty">${ICON.camera}<h2>Nothing to explore yet</h2><p>Posts from every account show up here.</p></div>${suggest(12)}`}</div>`; }
   function tagHTML(t){
     const re = new RegExp("#" + t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![\\p{L}0-9_])", "iu");
     const list = posts().filter(p => re.test(p.caption || "") || (p.comments || []).some(c => re.test(c.text)));

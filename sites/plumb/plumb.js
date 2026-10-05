@@ -1,6 +1,6 @@
 /* Plumb: gameplay to-dos. Goals, storylines, drama to set up. Optionally tied to Sims. */
 const Plumb = (() => {
-  const st = { open:null, filing:false, editingProject:null };
+  const st = { open:null, filing:false, editingProject:null, q:"" };
   let data = null, root = null, view = "now";
 
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -86,11 +86,19 @@ const Plumb = (() => {
 
   /* ---------- views ---------- */
   function mainHTML(){
+    const search = `<div class="pl-search"><input id="pl-q" type="search" placeholder="Search all to-dos" aria-label="Search all to-dos" value="${esc(st.q)}"></div>`;
+    return search + `<div id="pl-body">${bodyHTML()}</div>`;
+  }
+  function bodyHTML(){
+    const q = st.q.trim().toLowerCase();
+    if (q) { const hits = todos().filter(t => [t.title, t.notes, ...(t.sims || []).map(simName), (project(t.project_id) || {}).name].join(" ").toLowerCase().includes(q)).sort((a, b) => a.done - b.done);
+      return `<div class="pl-title"><h1>Search</h1></div><p class="pl-sub">${hits.length} to-do${hits.length === 1 ? "" : "s"} matching "${esc(st.q)}"</p>${hits.length ? hits.map(rowHTML).join("") : `<p class="pl-empty">No matches.</p>`}`; }
     const add = view === "done" ? "" : (st.filing ? fileHTML() : `<button class="pl-add pl-newbtn" data-new><span class="pl-plus"></span>New to-do</button>`);
-    const list = items => items.length ? items.map(rowHTML).join("") : `<p class="pl-empty">Nothing here yet.</p>`;
+    const list = items => items.length ? items.map(rowHTML).join("") : `<p class="pl-empty">${view === "now" ? "Nothing you're working on. Add a to-do, or move one here from Up next." : view === "done" ? "Nothing finished yet. Check off a to-do and it lands here." : "Nothing here yet."}</p>`;
     if (view.startsWith("sim:")){
       const id = view.slice(4), items = todos().filter(t => inView(t, view)).sort((a,b) => a.done - b.done);
-      return `<div class="pl-title"><span class="ic">${ICON.sims}</span><h1>${esc(simName(id))}</h1></div><p class="pl-sub">Everything in Plumb tagged with this Sim.</p>${add}${list(items)}`;
+      const sm = data.sims.find(x => x.id === id) || {};
+      return `<div class="pl-title"><span class="ic">${ICON.sims}</span><h1>${esc(simName(id))}</h1></div><p class="pl-sub">${esc([sm.career, sm.household, sm.residence].filter(Boolean).join(" \u00b7 ")) || "Everything in Plumb tagged with this Sim."} <a class="pl-reglink" href="#/registry/${id}">Open their Registry file</a></p>${add}${items.length ? items.map(rowHTML).join("") : `<p class="pl-empty">No to-dos for ${esc(simName(id).split(" ")[0])} yet. Add one above and they're tagged automatically.</p>`}`;
     }
     const p = project(view);
     if (p){
@@ -112,7 +120,9 @@ const Plumb = (() => {
     const nav = (k, label, icon, ct) => `<button class="pl-nav" data-view="${k}" aria-current="${view===k}"><span class="ic">${icon}</span>${esc(label)}${ct ? `<span class="ct">${ct}</span>` : ""}</button>`;
     const areas = [...new Set([...(data.plumb_areas || []), ...projects().map(p => p.area).filter(Boolean)])];
     const tagged = [...new Set(todos().filter(t => !t.done).flatMap(t => t.sims || []))].sort((a,b) => simName(a).localeCompare(simName(b)));
+    const sims = [...data.sims].sort((a, b) => clean(a.name).localeCompare(clean(b.name)));
     return `<aside class="pl-side"><div class="pl-brand">${ICON.mark}Plumb</div>
+      <div class="pl-findsim"><span class="ic">${ICON.sims}</span>${UI.picker({ id:"pl-findsim", value:view.startsWith("sim:") ? view.slice(4) : "", options:[{ v:"", t:"Find a Sim" }, ...sims.map(x => ({ v:x.id, t:clean(x.name), s:x.career || "" }))], placeholder:"Search Sims", label:"Find a Sim" })}</div>
       ${VIEWS.map(([k,v]) => nav(k, v, ICON[k], k === "done" ? "" : count(k))).join("")}
       ${areas.filter(a => projects().some(p => p.area === a)).map(a => `<div class="pl-area">${esc(a)}</div>${projects().filter(p => p.area === a).map(p => nav(p.id, p.name, ICON.project, count(p.id))).join("")}`).join("")}
       ${projects().filter(p => !p.area).map(p => nav(p.id, p.name, ICON.project, count(p.id))).join("")}
@@ -125,6 +135,8 @@ const Plumb = (() => {
 
   let bound = false;
   function bind(){
+    document.addEventListener("change", e => { if (root && root.contains(e.target) && e.target.id === "pl-findsim" && e.target.value) location.hash = "#/plumb/sim:" + e.target.value; });
+    document.addEventListener("input", e => { if (root && root.contains(e.target) && e.target.id === "pl-q") { st.q = e.target.value; const b = root.querySelector("#pl-body"); if (b) b.innerHTML = bodyHTML(); } });
     if (bound) return; bound = true;
     const mine = t => root && root.contains(t) && root.querySelector(".site-pl");
     document.addEventListener("click", async e => {

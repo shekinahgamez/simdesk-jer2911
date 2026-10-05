@@ -55,9 +55,9 @@ const Lotline = (() => {
     return `<button class="ll-card" data-lot="${l.id}">
       <div class="ll-ph">${l.photo ? `<img src="${esc(l.photo)}" alt="">` : glyphFor(l)}<span class="ll-badge">${buildBadge(l)}</span>${l.market_status ? `<span class="ll-badge right">${esc(l.market_status)}</span>` : ""}</div>
       <div class="ll-body">
-        <div class="ll-price ${price ? "" : "na"}">${price || "Price not set"}</div>
+        <div class="ll-price ${price ? "" : "addr"}">${price || esc(l.address)}</div>
         <div class="ll-specs">${specs.map(s => `<span>${esc(s)}</span>`).join("")}</div>
-        <div class="ll-addr">${esc(l.address)}${district ? ", " + esc(district) : ""}, ${esc(l.world)}</div>
+        <div class="ll-addr">${price ? esc(l.address) + ", " : ""}${[district, l.world].filter(Boolean).map(esc).join(", ")}</div>
         <div class="ll-own">${own}</div>
       </div></button>`;
   }
@@ -82,6 +82,8 @@ const Lotline = (() => {
       </div></div>
       <main class="ll-main">
         <div class="ll-count"><h2>${heads[st.tab]}</h2><span>${v.length} result${v.length===1?"":"s"}</span></div>
+        ${st.tab === "all" ? (() => { const all = data.lots, homes = all.filter(l => !unitsOf(l.id).length), occ = homes.filter(occupied).length, open = all.filter(l => l.market_status === "For lease" || l.market_status === "For sale").length, built = all.filter(l => l.build_status === "Built").length;
+          return `<div class="ll-stats"><div><b>${all.length}</b><span>Lots and units</span></div><div><b>${occ}</b><span>Occupied</span></div><div><b>${open}</b><span>On the market</span></div><div><b>${built}</b><span>Built</span></div></div>`; })() : ""}
         ${v.length ? `<div class="ll-grid">${v.map(cardHTML).join("")}</div>` : `<p class="ll-empty">No lots match. Try clearing a filter.</p>`}
         ${data.lots_pending?.length ? `<section class="ll-pending"><h2>Coming with the import</h2><p>These lots haven't been brought into Lotline yet.</p><div>${data.lots_pending.map(n => `<span>${esc(n)}</span>`).join("")}</div></section>` : ""}
       </main>`;
@@ -95,7 +97,11 @@ const Lotline = (() => {
     return `<main class="ll-main"><div class="ll-count"><h2>Owners</h2><span>${names.length} owner${names.length===1?"":"s"}</span></div>
       ${names.length ? `<div class="ll-owners">${names.map(n => `<section class="ll-ownercard"><div class="ll-ownerhead"><i>${esc(ini(n))}</i><div><b>${esc(n)}</b><span>${owners[n].length} propert${owners[n].length===1?"y":"ies"}</span></div></div>
         ${owners[n].map(l => `<button class="ll-ownerlot" data-lot="${l.id}"><span>${esc(l.address)}</span><span class="ll-mkt">${esc(l.market_status || l.build_status || "")}</span></button>`).join("")}</section>`).join("")}</div>`
-        : `<p class="ll-empty">No owners on record yet. Open any lot and set its owner, or assign property from a Sim's Registry record.</p>`}</main>`;
+        : `<p class="ll-empty">No owners on record yet. Open any lot and set its owner, or assign property from a Sim's Registry record.</p>`}
+      ${(() => { const homes = data.lots.filter(l => l.household).sort((a, b) => a.household.localeCompare(b.household));
+        return `<div class="ll-count" style="margin-top:30px"><h2>Who lives where</h2><span>${homes.length} household${homes.length === 1 ? "" : "s"} placed</span></div>
+        ${homes.length ? `<div class="ll-owners">${homes.map(l => { const res = data.sims.filter(x => x.household === l.household); return `<section class="ll-ownercard"><div class="ll-ownerhead"><i>${esc(ini(l.household))}</i><div><b>${esc(l.household)}</b><span>${res.length} resident${res.length === 1 ? "" : "s"}</span></div></div>
+          <button class="ll-ownerlot" data-lot="${l.id}"><span>${esc(l.address)}</span><span class="ll-mkt">${esc(l.market_status || l.build_status || "")}</span></button>${res.length ? `<p class="ll-res">${res.map(x => `<a href="#/registry/${x.id}">${esc(x.name.replace(/\s*[\u201c\u201d"].*?[\u201c\u201d"]\s*/g, " "))}</a>`).join(", ")}</p>` : ""}</section>`; }).join("")}</div>` : `<p class="ll-empty">No households placed in a lot yet. Set a household on any lot, or pick a home address from a Sim's Registry record.</p>`}`; })()}</main>`;
   }
 
   /* ---------- lot page ---------- */

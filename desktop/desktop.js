@@ -32,10 +32,21 @@ let lastIcon = null;
 
 /* the dock holds the save tools; the desktop holds the in-world sites */
 const DOCK = ["calendar","plumb","permits","registry","settings"];
+/* the order you pick in Settings (settings.app_layout); new apps land at the end of the desktop; Settings can never disappear */
+let SAVED_LAYOUT = null;
+function layout(){
+  const keys = APPS.map(a => a.key), saved = SAVED_LAYOUT || {};
+  const dock = (saved.dock || DOCK).filter(k => keys.includes(k));
+  const desktop = (saved.desktop || keys.filter(k => !DOCK.includes(k))).filter(k => keys.includes(k) && !dock.includes(k));
+  keys.forEach(k => { if (!dock.includes(k) && !desktop.includes(k)) desktop.push(k); });
+  return { dock, desktop };
+}
+window.SimDeskLayout = { layout, apps: () => APPS.map(a => ({ key:a.key, name:a.name, icon:typeof a.icon === "function" ? a.icon() : a.icon })) };
+window.addEventListener("gfb:layout", () => GFB.getAll().then(d => { SAVED_LAYOUT = (d.settings || {}).app_layout || null; drawIcons(); }));
 const iconHTML = a => typeof a.icon === "function" ? a.icon() : a.icon;
 function drawDock(){
   const open = location.hash.replace(/^#\/?/, "").split("/")[0];
-  document.getElementById("dock").innerHTML = DOCK.map(k => APPS.find(a => a.key === k)).filter(Boolean).map(a =>
+  document.getElementById("dock").innerHTML = layout().dock.map(k => APPS.find(a => a.key === k)).filter(Boolean).map(a =>
     `<a class="dk" href="#/${a.key}" data-app="${a.key}" aria-label="${a.name}" title="${a.name}" ${a.key === open ? 'aria-current="true"' : ""}><span class="ic">${iconHTML(a)}</span></a>`).join("");
 }
 function applyWallpaper(){
@@ -47,7 +58,7 @@ function applyWallpaper(){
 window.addEventListener("gfb:wallpaper", applyWallpaper);
 function drawIcons(){
   drawDock();
-  document.getElementById("icons").innerHTML = APPS.filter(a => !DOCK.includes(a.key)).map(a =>
+  document.getElementById("icons").innerHTML = layout().desktop.map(k => APPS.find(a => a.key === k)).map(a =>
     `<a class="app" href="#/${a.key}" data-app="${a.key}"><span class="ic">${typeof a.icon === "function" ? a.icon() : a.icon}</span><span class="nm">${a.name}</span></a>`).join("");
 }
 
@@ -63,7 +74,7 @@ function placeholder(a){
 async function route(){
   const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean);
   const a = APPS.find(x => x.key === parts[0]);
-  if (!a){ GFB.getAll().then(d => { GFB._cal = d.calendar; drawIcons(); tick(); }); win.hidden = true; site.innerHTML = ""; document.title = "SimDesk"; lastIcon?.focus(); return; }
+  if (!a){ GFB.getAll().then(d => { GFB._cal = d.calendar; SAVED_LAYOUT = (d.settings || {}).app_layout || null; drawIcons(); tick(); }); win.hidden = true; site.innerHTML = ""; document.title = "SimDesk"; lastIcon?.focus(); return; }
   const wasHidden = win.hidden;
   win.hidden = false;
   if (wasHidden){ win.classList.remove("opening"); void win.offsetWidth; win.classList.add("opening"); }
@@ -73,9 +84,9 @@ async function route(){
   document.title = a.name;
   if (a.key === "registry"){
     const data = await GFB.getAll();
-    const id = parts[1] && data.sims.some(s => s.id === parts[1]) ? parts[1] : data.sims[0].id;
-    const sim = data.sims.find(s => s.id === id);
-    setAddress(a.host, `/records/gfb-${sim.file_no}`);
+    const id = parts[1] && data.sims.some(s => s.id === parts[1]) ? parts[1] : null;   /* no id: the resident gallery */
+    const sim = id && data.sims.find(s => s.id === id);
+    setAddress(a.host, sim ? `/records/gfb-${sim.file_no}` : "/residents");
     Registry.render(site, data, id);
   } else if (a.key === "calendar"){
     const data = await GFB.getAll();
@@ -121,9 +132,10 @@ async function route(){
     setAddress(a.host, Lotline.label(parts[1]));
   } else if (a.key === "blacktea"){
     const data = await GFB.getAll();
-    const desk = parts[1] === "desk";
-    setAddress(a.host, desk ? "/desk" : "/");
-    BlackTea.render(site, data, desk ? "desk" : "front");
+    const desk = parts[1] === "desk", story = parts[1] === "story" && parts[2];
+    const st = story && data.stories.find(x => x.id === parts[2]);
+    setAddress(a.host, desk ? "/desk" : story ? "/story/" + String((st && st.headline) || parts[2]).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) : "/");
+    BlackTea.render(site, data, desk ? "desk" : story ? "story:" + parts[2] : "front");
   } else {
     placeholder(a);
   }
@@ -142,7 +154,7 @@ function tick(){
   const d = new Date();
   document.getElementById("clock").textContent = d.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}) + "  " + d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});
 }
-GFB.getAll().then(d => { GFB._cal = d.calendar; drawIcons(); tick(); });
+GFB.getAll().then(d => { GFB._cal = d.calendar; SAVED_LAYOUT = (d.settings || {}).app_layout || null; drawIcons(); tick(); });
 drawIcons(); tick(); setInterval(tick, 30000);
 window.addEventListener("hashchange", route);
 window.addEventListener("hashchange", drawDock);

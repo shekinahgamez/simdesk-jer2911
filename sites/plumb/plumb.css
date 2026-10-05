@@ -100,3 +100,10 @@
 .pl-areasel{border:1px solid var(--line);border-radius:8px;background:#fff;padding:4px 8px;font-size:13px;color:var(--ink2)}
 
 @container site (max-width:760px){ .site-pl{grid-template-rows:auto 1fr} .pl-side{align-items:center;align-content:flex-start} }
+
+/* UI/UX pass: find any Sim, search all to-dos, Sim header with Registry link */
+.pl-findsim{display:flex;align-items:center;gap:8px;margin:0 0 10px;padding:6px 10px;border:1px solid #E3E6E3;border-radius:10px;background:#fff}
+.pl-findsim .ic{width:18px;height:18px;flex:none}.pl-findsim .ui-pick{flex:1;min-width:0}.pl-findsim .ui-pick-cur{max-width:140px;font-weight:500;color:#555}
+.pl-search{margin:0 0 18px}.pl-search input{width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid #E3E6E3;border-radius:10px;font-size:16px;background:#FAFBFA}
+.pl-reglink{color:#2E9E4F;font-weight:600;text-decoration:none;margin-left:4px;white-space:nowrap}.pl-reglink:hover{text-decoration:underline}
+@container site (max-width:760px){ .pl-findsim{margin:0;flex:1 1 100%;order:9} }

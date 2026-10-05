@@ -59,7 +59,7 @@ const Harbor = (() => {
     return `${bar()}<div class="ht-login">
       <div class="ht-hero"><h1>Banking for the long view.</h1><p>Personal, business, and property lending for Simerican families.</p><small>Member SDIC. Equal housing lender.</small></div>
       <form class="ht-signin" id="ht-login"><h2>Sign in</h2><p>Online banking</p>
-        <label class="ht-field">Customer<select name="who">${sims.map(s => `<option value="${s.id}">${esc(stripNick(s.name))}</option>`).join("")}</select></label>
+        <div class="ht-field">Customer${UI.picker({ name:"who", cls:"field", options:sims.map(s => ({ v:s.id, t:stripNick(s.name) })), placeholder:"Search customers", label:"Customer" })}</div>
         <button class="ht-btn" type="submit">Sign in</button>
         <div class="ht-staff">Harbor Trust staff? <button type="button" data-go="staff">Open the back office</button></div>
       </form></div>`;

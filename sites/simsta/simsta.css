@@ -194,3 +194,11 @@
 /* brand: sparkle mark + wordmark (sim black, sta pink) */
 .sm-mark{width:30px;height:30px;flex:none;display:block}
 @container site (max-width:860px){ .sm-mark{width:24px;height:24px} }
+
+/* UI/UX pass: suggested accounts when there's nothing to show, readable acting-as handle */
+.sm-suggest{margin:18px 0 0}.sm-suggest h3{font-size:14px;font-weight:700;margin:0 0 10px}
+.sm-sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+.sm-scard{display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;border:1px solid var(--line);border-radius:14px;padding:14px 10px;color:inherit;text-decoration:none;background:var(--bg)}
+.sm-scard:hover{border-color:var(--hot)}.sm-scard b{font-size:13.5px;overflow-wrap:anywhere}.sm-scard small{color:var(--muted);font-size:12px}
+.sm-actor b{font-size:12.5px;letter-spacing:-.01em}
+.sm-av.s56{width:56px;height:56px;font-size:19px}

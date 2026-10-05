@@ -152,3 +152,25 @@
 
 .bt-nav>:first-child{margin-left:auto}.bt-nav>:last-child{margin-right:auto}
 .bt-nav::-webkit-scrollbar{display:none}
+
+/* ---------- UI/UX pass: front page with a lead story, article pages, quiet state, roomier desk ---------- */
+.bt-mastbtn{border:0;background:none;padding:0;cursor:pointer;display:block;margin:0 auto}
+.bt-story{display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:16px;padding:20px 0;border-bottom:1px solid var(--rule);text-decoration:none;color:inherit}
+.bt-story:not(:has(.bt-sthumb)){grid-template-columns:1fr}
+.bt-story .bt-sthumb{order:2;display:block;aspect-ratio:4/3;overflow:hidden;background:var(--rule)}.bt-story .bt-sthumb img{width:100%;height:100%;object-fit:cover;display:block}
+.bt-stbody{display:flex;flex-direction:column;gap:6px;min-width:0}
+.bt-sth{font:700 22px/1.2 var(--serif,Georgia),serif}.bt-story:hover .bt-sth{text-decoration:underline;text-decoration-thickness:2px}
+.bt-stx{color:var(--muted);font-size:15px;line-height:1.5}
+.bt-story.lead{grid-template-columns:1fr;padding-top:4px}.bt-story.lead .bt-sthumb{order:0;aspect-ratio:16/9}.bt-story.lead .bt-sth{font-size:34px;line-height:1.1}
+.bt-list{display:grid}
+.bt-quiet{text-align:center;padding:60px 20px;border:1px dashed var(--rule)}.bt-quiet img{width:56px;height:56px}.bt-quiet h2{font:700 26px var(--serif,Georgia),serif;margin:12px 0 6px}.bt-quiet p{color:var(--muted);margin:0 0 18px}
+.bt-article h1{font:700 40px/1.1 var(--serif,Georgia),serif;margin:10px 0 10px}
+.bt-article .body{font-size:17px;line-height:1.7}.bt-article .bt-img,.bt-article .bt-photo{margin:16px 0 6px}
+.bt-back{border:0;background:none;padding:0;cursor:pointer;font:700 12px var(--sans);letter-spacing:.12em;color:var(--muted);margin-bottom:18px;min-height:36px}
+.bt-insto{margin:26px 0 10px;padding-top:16px;border-top:1px solid var(--rule)}.bt-insto h3,.bt-more h3{font:700 12px var(--sans);letter-spacing:.14em;margin:0 0 10px}
+.bt-chip.link{text-decoration:none;display:inline-block;margin:0 6px 6px 0}
+.bt-more{margin-top:34px;border-top:3px solid currentColor;padding-top:14px}
+.bt-staff a{color:inherit;text-decoration:none}.bt-staff a:hover b{text-decoration:underline}
+@container site (max-width:1240px){ .bt-desk{grid-template-columns:1fr} .bt-coverage{border-left:0!important;border-top:1px solid var(--rule)} }
+.bt-board{grid-template-columns:repeat(5,minmax(170px,1fr))}
+@container site (max-width:640px){ .bt-story{grid-template-columns:minmax(0,1fr) 96px;gap:12px}.bt-sth{font-size:18px}.bt-story.lead .bt-sth{font-size:26px}.bt-article h1{font-size:30px} }

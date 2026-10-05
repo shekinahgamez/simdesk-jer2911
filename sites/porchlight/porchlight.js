@@ -68,7 +68,7 @@ const Porchlight = (() => {
     return `${bar(nav)}<div class="pc-home">
       <section class="pc-hero"><div class="pc-herotext"><h1>Stronger together.</h1><p>Online banking for Simerican families. No branches, no lines, and the light is always on.</p>
         <form class="pc-signin" id="pc-login"><h2>Member sign in</h2>
-          <label class="pc-field">Member<select name="who">${simOpts("", "").replace('<option value=""></option>', "")}</select></label>
+          <div class="pc-field">Member${UI.picker({ name:"who", cls:"field", options:[...data.sims].sort((a, b) => stripNick(a.name).localeCompare(stripNick(b.name))).map(s => ({ v:s.id, t:stripNick(s.name) })), placeholder:"Search members", label:"Member" })}</div>
           <button class="pc-btn amber" type="submit">Sign in</button>
           <div class="pc-staff">Porchlight staff? <button type="button" data-go="staff">Open Member Services</button></div>
         </form></div></section>

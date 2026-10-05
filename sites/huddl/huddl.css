@@ -97,3 +97,10 @@ a.hd-row-link:hover b,a.hd-sug:hover b{color:var(--pri)}
   .hd-bar{padding:10px 12px;gap:10px;flex-wrap:wrap}.hd-search{order:3;flex-basis:100%;max-width:none}.hd-as{margin-left:auto}
   .hd-f2{grid-template-columns:1fr}.hd-tile.xl{width:84px;height:84px;font-size:28px;margin-top:-44px}.hd-banner{height:110px}
 }
+
+.hd-av.ph{overflow:hidden}.hd-av.ph img{width:100%;height:100%;object-fit:cover;border-radius:50%;display:block}
+
+/* UI/UX pass */
+.hd-del{margin-left:auto;border:0;background:none;color:var(--muted);font-size:13px;cursor:pointer;min-height:34px;padding:0 6px;flex:none}.hd-del:hover{color:var(--neg)}
+.hd-addhs{font-size:12.5px;color:var(--pri);font-weight:600;margin-top:6px}
+.hd-chips{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 6px}.hd-chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 14px;cursor:pointer;font-size:14px;min-height:36px}.hd-chip[aria-pressed="true"]{background:var(--pri);border-color:var(--pri);color:#fff}

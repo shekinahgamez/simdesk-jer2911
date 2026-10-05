@@ -1,7 +1,7 @@
 /* The Registry. Reads and saves everything through GFB (assets/data.js).
    Each section edits in place. Connections save to both Sims' files. */
 const Registry = (() => {
-  const st = { clear:false, open:new Set(), q:"", filter:"All", tab:"profile", edit:null, rel:null, creating:false, nextEdit:null, msg:"", err:false };
+  const st = { clear:false, open:new Set(), q:"", filter:"All", sort:"name", tab:"profile", edit:null, rel:null, creating:false, nextEdit:null, msg:"", err:false };
   let data = null, curId = null, root = null;
 
   const FILTERS = ["All","Lennox Park","Baymore","Bellhaven","Incomplete"];
@@ -124,7 +124,8 @@ const Registry = (() => {
         <label><span class="r-lbl">Residence</span><input class="r-input" name="residence" list="r-dl-res" value="${esc(s.residence)}">${dl("r-dl-res", used("residence"))}</label>
         <label><span class="r-lbl">Household</span><input class="r-input" name="household" list="r-dl-hh" value="${esc(s.household)}">${dl("r-dl-hh", households)}</label>
       </div>
-      <div><span class="r-lbl">Portrait</span><div class="r-portrow">${face(s, "sm")}<input type="file" name="portrait" accept="image/*">${s.portrait ? `<label class="r-check"><input type="checkbox" name="noportrait"> Remove photo</label>` : ""}</div></div>
+      <div><span class="r-lbl">Profile photo <small>(Registry, Simsta, Cliq)</small></span><div class="r-portrow">${face(s, "sm")}<input type="file" name="portrait" accept="image/*">${s.portrait ? `<label class="r-check"><input type="checkbox" name="noportrait"> Remove photo</label>` : ""}</div></div>
+      <div><span class="r-lbl">Professional headshot <small>(Huddl only, optional)</small></span><div class="r-portrow">${s.headshot ? `<img class="r-av r-photo sm" src="${esc(s.headshot)}" alt="">` : av(s.name, "sm")}<input type="file" name="headshot" accept="image/*">${s.headshot ? `<label class="r-check"><input type="checkbox" name="noheadshot"> Remove headshot</label>` : ""}</div></div>
       ${actions()}</form>`;
   }
 
@@ -283,11 +284,8 @@ const Registry = (() => {
   }
 
   /* ---------- full render ---------- */
-  function draw(){
-    const s = simById(curId), g = gaps(s);
-    const body = { profile:profileTab, connections:connectionsTab, property:propertyTab, notes:notesTab, activity:activityTab }[st.tab](s);
-    root.innerHTML = `<div class="site-registry">
-      <div class="r-banner"><span class="flag" aria-hidden="true"></span>An official website of the Simerican government</div>
+  /* banner + agency header, shared by the gallery and the record pages */
+  function topHTML(){ return `      <div class="r-banner"><span class="flag" aria-hidden="true"></span>An official website of the Simerican government</div>
       <div class="r-agency">
         <svg class="r-seal" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="22" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="24" cy="24" r="17" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="24" cy="24" r="11" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="2 2"/><path d="M24 12 L30 24 L24 36 L18 24 Z" fill="currentColor"/></svg>
         <div><p class="org">Simerican Office of Resident Affairs</p><h1>Resident Registry</h1></div>
@@ -295,7 +293,39 @@ const Registry = (() => {
         <div class="r-count">${data.sims.length} residents on file<br>Records current to ${new Date(data.updated + "T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
         <div class="r-access" role="group" aria-label="Access level"><button data-act="public" aria-pressed="${!st.clear}">Public</button><button class="restricted" data-act="restricted" aria-pressed="${st.clear}">Restricted</button></div>
       </div>
-      <div class="r-mpick"><label class="r-lbl" for="r-pick">Resident record</label><div class="r-mrow"><select id="r-pick">${data.sims.map(x => `<option value="${x.id}" ${x.id===curId?"selected":""}>${esc(x.name)}</option>`).join("")}</select><button class="r-btn ghost" data-act="new">+ New</button></div>${st.creating ? newForm() : ""}</div>
+`; }
+
+  /* ---------- gallery (Registry home) ---------- */
+  const SORTS = [["name","Name"],["file","File number"],["gaps","Most file gaps"],["status","Status"]];
+  function galCards(){
+    const v = [...visible()];
+    if (st.sort === "file") v.sort((a, b) => (parseInt(a.file_no, 10) || 0) - (parseInt(b.file_no, 10) || 0));
+    else if (st.sort === "gaps") v.sort((a, b) => gaps(b).length - gaps(a).length || stripNick(a.name).localeCompare(stripNick(b.name)));
+    else if (st.sort === "status") v.sort((a, b) => String(a.status || "~").localeCompare(String(b.status || "~")) || stripNick(a.name).localeCompare(stripNick(b.name)));
+    else v.sort((a, b) => stripNick(a.name).localeCompare(stripNick(b.name)));
+    if (!v.length) return `<p class="r-galnone">No residents match. Clear the search or pick another filter.</p>`;
+    return v.map(s => { const g = gaps(s).length, age = [s.age, s.life_stage].filter(x => x != null && x !== "").join(", ");
+      return `<a class="r-card" href="#/registry/${s.id}"><span class="r-card-ph">${s.portrait ? `<img src="${esc(s.portrait)}" alt="">` : `<span class="r-card-ini" style="background:${avColor(s.name)}">${esc(initials(s.name))}</span>`}${s.status ? `<span class="r-card-st">${esc(s.status)}</span>` : ""}</span>
+        <span class="r-card-b"><b>${esc(s.name)}</b>${age ? `<small>${esc(age)}</small>` : ""}<span class="r-card-job">${esc(s.career || "No occupation on file")}</span>${s.residence || s.household ? `<small>${esc([s.residence, s.household].filter(Boolean).join(" \u00b7 "))}</small>` : ""}${g ? `<span class="r-gap">${g} gap${g > 1 ? "s" : ""}</span>` : ""}</span></a>`; }).join("");
+  }
+  function drawGallery(){
+    root.innerHTML = `<div class="site-registry">${topHTML()}
+      <div class="r-galwrap"><div class="r-galbar">
+          <input class="r-search" id="r-q" type="search" placeholder="Search ${data.sims.length} residents" aria-label="Search residents" value="${esc(st.q)}">
+          <div class="r-filters">${FILTERS.map(f => `<button class="r-chip" data-filter="${f}" aria-pressed="${st.filter===f}">${f}</button>`).join("")}</div>
+          <label class="r-sortl">Sort <select id="r-sort">${SORTS.map(([k, n]) => `<option value="${k}" ${st.sort === k ? "selected" : ""}>${n}</option>`).join("")}</select></label>
+          <div class="r-galnew">${newForm()}</div></div>
+        <div class="r-gal" id="r-gal">${galCards()}</div>
+        ${pendingNames().length ? `<div class="r-galpend"><h3>Awaiting processing</h3>${pendingNames().map(p => `<button class="r-pendchip" data-file="${esc(p)}">${esc(p)} <span>Open file</span></button>`).join("")}</div>` : ""}
+      </div></div>`;
+  }
+
+  function draw(){
+    if (!curId || !simById(curId)) return drawGallery();
+    const s = simById(curId), g = gaps(s);
+    const body = { profile:profileTab, connections:connectionsTab, property:propertyTab, notes:notesTab, activity:activityTab }[st.tab](s);
+    root.innerHTML = `<div class="site-registry">
+${topHTML()}      <div class="r-mpick"><label class="r-lbl" for="r-pick">Resident record</label><div class="r-mrow">${UI.picker({ id:"r-pick", cls:"field", value:curId, options:[...data.sims].sort((a, b) => stripNick(a.name).localeCompare(stripNick(b.name))).map(x => ({ v:x.id, t:x.name, s:x.career || "" })), placeholder:"Search residents", label:"Resident record" })}<button class="r-btn ghost" data-act="new">+ New</button></div>${st.creating ? newForm() : ""}</div>
       <div class="r-shell">
         <nav class="r-index" aria-label="Resident index">
           <input class="r-search" id="r-q" type="search" placeholder="Search residents" aria-label="Search residents" value="${esc(st.q)}">
@@ -306,7 +336,7 @@ const Registry = (() => {
           ${GFB.hasLocalEdits() ? `<button class="r-reset" data-act="reset">Discard my local edits</button>` : ""}
         </nav>
         <section class="r-file">
-          <div class="r-recbar"><span>Resident record <b>GFB-${esc(s.file_no)}</b></span>${st.edit === "basics" ? "" : `<button class="r-edit-btn" data-edit="basics">Edit basics</button>`}</div>
+          <div class="r-recbar"><a class="r-allres" href="#/registry">All residents</a><span>Resident record <b>GFB-${esc(s.file_no)}</b></span>${st.edit === "basics" ? "" : `<button class="r-edit-btn" data-edit="basics">Edit basics</button>`}</div>
           <article class="r-folder ${st.clear ? "cleared" : ""}">
             <div class="r-stamp" aria-hidden="true">Restricted</div>
             <div class="r-head">${face(s,"lg")}
@@ -389,6 +419,9 @@ const Registry = (() => {
         const file = f.get("portrait");
         if (file && file.size) patch.portrait = (await GFB.uploadImage(file, 480)).url;
         else if (f.get("noportrait")) patch.portrait = null;
+        const hs = f.get("headshot");
+        if (hs && hs.size) patch.headshot = (await GFB.uploadImage(hs, 480)).url;
+        else if (f.get("noheadshot")) patch.headshot = null;
         if (stripNick(patch.name) !== stripNick(s.name)) for (const l of lots().filter(l => l.owner === stripNick(s.name))) await GFB.saveLot({ ...l, owner: stripNick(patch.name) });
         await GFB.saveSim(curId, patch);
       }
@@ -471,9 +504,9 @@ const Registry = (() => {
       if ((e.key === "Enter" || e.key === " ") && e.target.matches?.("g[data-open],g[data-reveal],span[data-reveal]")) { e.preventDefault(); e.target.dispatchEvent(new MouseEvent("click",{bubbles:true})); }
     });
     document.addEventListener("input", e => {
-      if (e.target.id === "r-q" && root?.querySelector(".site-registry")) { st.q = e.target.value; document.getElementById("r-list").innerHTML = listHTML(); }
+      if (e.target.id === "r-q" && root?.querySelector(".site-registry")) { st.q = e.target.value; const l = document.getElementById("r-list"), gl = document.getElementById("r-gal"); if (l) l.innerHTML = listHTML(); if (gl) gl.innerHTML = galCards(); }
     });
-    document.addEventListener("change", e => { if (e.target.id === "r-pick") location.hash = "#/registry/" + e.target.value; });
+    document.addEventListener("change", e => { if (e.target.id === "r-sort" && root?.contains(e.target)) { st.sort = e.target.value; draw(); return; } if (e.target.id === "r-pick") location.hash = "#/registry/" + e.target.value; });
     document.addEventListener("submit", e => { if (root && root.contains(e.target) && e.target.dataset.sec) { e.preventDefault(); save(e.target); } });
   }
 

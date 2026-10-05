@@ -6,7 +6,7 @@ const BlackTea = (() => {
   const KINDS = { standard:"Standard story", photo:"Photo post", blind:"Blind item", tip:"Tip line" };
   const SECTION_OPTS = ["Exclusives","Culture","Music","Sports","Blind Items","Tip Line"];
   const st = { section:"Latest", editing:null, tipSent:false };
-  let data = null, root = null, view = "front";
+  let data = null, root = null, view = "front", storyId = null;
 
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   const fmt = d => UI.gameLabel(d);
@@ -45,16 +45,44 @@ const BlackTea = (() => {
     return p.kind === "photo" ? img : img + credit;
   }
 
+  const published = () => data.stories.filter(s => s.status === "Published").sort((a,b) => dateKey(b.date).localeCompare(dateKey(a.date)) || String(b.date || "").localeCompare(String(a.date || "")));
+  const clean = n => String(n || "").replace(/\s*[\u201c\u201d"].*?[\u201c\u201d"]\s*/g, " ").trim();
+  const excerpt = (t, n = 170) => { t = String(t || "").replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n).replace(/\s\S*$/, "") + "\u2026" : t; };
+  const readable = p => p.kind === "standard" || p.kind === "photo" || !p.kind;
+  function storyCard(p, lead){
+    const sec = p.kind === "photo" ? "PHOTO" : (p.section || "").toUpperCase();
+    return `<a class="bt-story ${lead ? "lead" : ""}" href="#/blacktea/story/${p.id}">${p.photo ? `<span class="bt-sthumb"><img src="${esc(p.photo)}" alt=""></span>` : ""}
+      <span class="bt-stbody"><span class="bt-labels">${p.breaking ? `<span class="bt-flag">BREAKING</span>` : ""}<span class="bt-sec">${esc(sec)}</span></span>
+      <b class="bt-sth">${esc(p.headline || "Untitled")}</b>${p.body ? `<span class="bt-stx">${esc(excerpt(p.body, lead ? 260 : 150))}</span>` : ""}
+      <span class="bt-by">${p.byline ? `By <b>${esc(p.byline)}</b> \u00b7 ` : ""}${fmt(p.date)}</span></span></a>`;
+  }
+  function articleHTML(p){
+    const more = published().filter(x => x.id !== p.id && readable(x)).slice(0, 3);
+    const sims = (p.sims || []).map(id => data.sims.find(x => x.id === id)).filter(Boolean);
+    return `<article class="bt-article"><button class="bt-back" data-bt="front">\u2190 BACK TO THE FRONT PAGE</button>
+      <div class="bt-labels">${p.breaking ? `<span class="bt-flag">BREAKING</span>` : ""}<span class="bt-sec">${esc(p.kind === "photo" ? "PHOTO" : (p.section || "").toUpperCase())}</span></div>
+      <h1>${esc(p.headline || "Untitled")}</h1><p class="bt-by">${p.byline ? `By <b>${esc(p.byline)}</b> \u00b7 ` : ""}${fmt(p.date)}</p>
+      ${p.photo || p.kind === "photo" ? photoHTML(p) : ""}${p.kind === "photo" && p.photo_by ? `<p class="bt-credit">PHOTO: <b>${esc(p.photo_by.toUpperCase())}</b></p>` : ""}
+      <div class="body">${paras(p.body)}</div>
+      ${sims.length ? `<div class="bt-insto"><h3>IN THIS STORY</h3>${sims.map(x => `<a class="bt-chip link" href="#/registry/${x.id}">${esc(clean(x.name))}</a>`).join("")}</div>` : ""}
+      ${p.tag ? `<p class="bt-meta">#${esc(p.tag)}</p>` : ""}
+      ${more.length ? `<div class="bt-more"><h3>MORE FROM BLACK TEA</h3>${more.map(x => storyCard(x)).join("")}</div>` : ""}</article>`;
+  }
   function frontHTML(){
-    const pub = data.stories.filter(s => s.status === "Published").sort((a,b) => dateKey(b.date).localeCompare(dateKey(a.date)) || String(b.date || "").localeCompare(String(a.date || "")));
-    const shown = st.section === "Latest" ? pub : pub.filter(s => s.section === st.section);
+    const pub = published(), shown = st.section === "Latest" ? pub : pub.filter(s => s.section === st.section);
+    const art = view === "story" ? data.stories.find(x => x.id === storyId && x.status === "Published") : null;
+    const inProgress = data.stories.filter(s => ["Pitched","Reporting","Drafted"].includes(s.status)).length;
+    const lead = shown.find(readable);
+    const main = art ? articleHTML(art) : !shown.length
+      ? `<div class="bt-quiet"><img src="${IMG.icon}" alt=""><h2>The front page is quiet.</h2><p>Nothing published in ${esc(st.section)} yet${inProgress ? `. ${inProgress} ${inProgress === 1 ? "story is" : "stories are"} in the works on the desk.` : "."}</p><button class="bt-btn amber" data-bt="desk">OPEN THE DESK</button></div>`
+      : `${lead ? storyCard(lead, true) : ""}<div class="bt-list">${shown.filter(p => p !== lead).map(p => readable(p) ? storyCard(p) : postHTML(p)).join("")}</div>`;
     return `<div class="site-bt">
-      <div class="bt-top"><span class="cities">LENNOX PARK · BAYMORE · FENMORE</span><span class="spacer"></span>
+      <div class="bt-top"><span class="cities">LENNOX PARK \u00b7 BAYMORE \u00b7 FENMORE</span><span class="spacer"></span>
         <button class="tip" data-bt="tipfocus">SEND A TIP</button></div>
-      <header class="bt-mast"><img src="${IMG.wordmark}" alt="Black Tea"><p>CULTURE AT SPEED</p></header>
-      <nav class="bt-nav" aria-label="Sections">${SECTIONS.map(s => `<button data-sec="${s}" aria-pressed="${st.section===s}">${s.toUpperCase()}</button>`).join("")}</nav>
+      <header class="bt-mast"><button class="bt-mastbtn" data-bt="front" aria-label="Black Tea front page"><img src="${IMG.wordmark}" alt="Black Tea"></button><p>CULTURE AT SPEED</p></header>
+      <nav class="bt-nav" aria-label="Sections">${SECTIONS.map(s => `<button data-sec="${s}" aria-pressed="${!art && st.section===s}">${s.toUpperCase()}</button>`).join("")}</nav>
       <div class="bt-wrap">
-        <main>${shown.length ? shown.map(postHTML).join("") : `<p class="bt-empty">Nothing published in ${esc(st.section)} yet.</p>`}</main>
+        <main>${main}</main>
         <aside class="bt-rail">
           <section><h3>SEND A TIP</h3>
             <textarea id="bt-tip" placeholder="Saw something? Heard something?" aria-label="Your tip"></textarea>
@@ -62,10 +90,10 @@ const BlackTea = (() => {
             <button class="bt-btn amber" data-bt="sendtip">SEND IT</button>
             ${st.tipSent ? `<p class="bt-thanks">Got it. The desk will take a look.</p>` : ""}
           </section>
-          <section id="bt-masthead"><h3>THE DESK</h3><ul class="bt-staff">${data.blacktea_staff.map(m => `<li><b>${esc(m.name)}</b><span>${esc(m.role)}</span></li>`).join("")}</ul></section>
+          <section id="bt-masthead"><h3>THE DESK</h3><ul class="bt-staff">${data.blacktea_staff.map(m => { const sm = data.sims.find(x => clean(x.name).toLowerCase() === clean(m.name).toLowerCase()); return `<li>${sm ? `<a href="#/registry/${sm.id}"><b>${esc(m.name)}</b></a>` : `<b>${esc(m.name)}</b>`}<span>${esc(m.role)}</span></li>`; }).join("")}</ul></section>
         </aside>
       </div>
-      <footer class="bt-foot"><div class="wm">BLACK <span>TEA.</span></div><div class="cities">LENNOX PARK · BAYMORE · FENMORE</div>
+      <footer class="bt-foot"><div class="wm">BLACK <span>TEA.</span></div><div class="cities">LENNOX PARK \u00b7 BAYMORE \u00b7 FENMORE</div>
         <button data-bt="desk">STAFF LOGIN</button></footer>
     </div>`;
   }
@@ -139,7 +167,7 @@ const BlackTea = (() => {
   }
 
   /* ---------- render + events ---------- */
-  function draw(){ root.innerHTML = view === "desk" ? deskHTML() : frontHTML(); }
+  function draw(){ root.innerHTML = view === "desk" ? deskHTML() : frontHTML(); if (view === "story") root.closest(".viewport")?.scrollTo(0, 0); }
 
   let bound = false;
   function bind(){
@@ -148,14 +176,14 @@ const BlackTea = (() => {
       if (!root || !root.contains(e.target) || !root.querySelector(".site-bt")) return;
       const t = e.target;
       const sec = t.closest("[data-sec]");
-      if (sec){ st.section = sec.dataset.sec; draw(); return; }
+      if (sec){ st.section = sec.dataset.sec; if (view === "story") location.hash = "#/blacktea"; else draw(); return; }
       const card = t.closest("[data-story]");
       if (card){ st.editing = JSON.parse(JSON.stringify(data.stories.find(s => s.id === card.dataset.story))); draw(); return; }
       const act = t.closest("[data-bt]")?.dataset.bt;
       if (act === "closebg" && t.classList.contains("bt-modal")){ st.editing = null; draw(); }
       if (act === "cancel"){ st.editing = null; st.err = null; draw(); }
       if (act === "desk"){ location.hash = "#/blacktea/desk"; }
-      if (act === "front"){ location.hash = "#/blacktea"; }
+      if (act === "front"){ if (view === "front") { st.section = "Latest"; draw(); } else location.hash = "#/blacktea"; }
       if (act === "new"){ st.editing = { status:"Pitched", kind:"standard", section:"Culture", sims:[], date:gtoday() }; draw(); }
       if (act === "rmphoto"){ st.editing = { ...readForm(root.querySelector("#bt-form")), photo:null }; draw(); }
       if (act === "delete" && UI.confirmTap(t.closest("[data-bt=delete]"))){ await GFB.deleteStory(st.editing.id); st.editing = null; draw(); }
@@ -187,8 +215,9 @@ const BlackTea = (() => {
   }
 
   function render(el, d, v){
-    root = el; data = d; view = v === "desk" ? "desk" : "front";
-    if (view === "front") st.editing = null;
+    root = el; data = d;
+    if (String(v).startsWith("story:")) { view = "story"; storyId = v.slice(6); } else { view = v === "desk" ? "desk" : "front"; storyId = null; }
+    if (view !== "desk") st.editing = null;
     bind(); draw();
   }
   return { render };

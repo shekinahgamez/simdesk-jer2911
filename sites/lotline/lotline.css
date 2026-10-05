@@ -204,3 +204,15 @@
 .site-ll .ll-filters .ll-fsel{flex:1 1 0}
 .site-ll .ll-filters .ll-clear{flex:none}
 @container site (max-width:860px){ .site-ll .ll-filters .ll-fsel{flex:1 1 calc(50% - 12px)} }
+
+/* ---------- UI/UX pass: banner hero (listings show sooner), address-led cards, quick stats, who lives where ---------- */
+.ll-home{display:block;position:relative;padding:44px 32px 40px;background:linear-gradient(90deg,rgba(20,14,8,.78),rgba(20,14,8,.35) 65%,rgba(20,14,8,.15)),url("img/hero.jpg") center 60%/cover no-repeat,var(--brandSoft);color:#fff}
+.ll-home .ll-heroimg{display:none}
+.ll-herotext{max-width:620px}.ll-herotext h1{font-size:40px;margin:0 0 8px;color:#fff}.ll-herotext p{color:rgba(255,255,255,.88);margin:0 0 18px}
+.ll-home .ll-search.big{box-shadow:0 10px 30px rgba(0,0,0,.25)}
+.ll-price.addr{font-size:17px;line-height:1.3;color:var(--ink)}
+.ll-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0 0 16px}
+.ll-stats div{background:#fff;border:1px solid var(--rule);border-radius:12px;padding:10px 14px;display:flex;flex-direction:column}
+.ll-stats b{font:800 22px/1.1 var(--head,var(--sans))}.ll-stats span{color:var(--muted);font-size:13px}
+.ll-res{margin:8px 0 0;font-size:13.5px;color:var(--muted)}.ll-res a{color:var(--brand);font-weight:600;text-decoration:none}
+@container site (max-width:860px){ .ll-home{padding:28px 18px} .ll-herotext h1{font-size:30px} .ll-stats{grid-template-columns:repeat(2,minmax(0,1fr))} }

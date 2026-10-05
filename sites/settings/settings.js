@@ -15,9 +15,33 @@ const Settings = (() => {
         ${w ? `<button class="st-btn" data-st="default">Use the default background</button>` : ""}
         <p class="st-note">Big photos are shrunk to fit. Saved to this browser.</p>
       </section>
+      <section class="st-card" style="margin-top:16px"><h2>Desktop and dock</h2><p class="st-note" style="margin:0 0 10px">Use the arrows to change the order. "To dock" and "To desktop" move an app between the two.</p>${layoutHTML()}</section>
       <section class="st-card" id="st-import" style="margin-top:16px"></section></div></div>`;
     st.msg = st.err = null;
     NotionImport.mount(root.querySelector("#st-import"), data);
+  }
+
+  /* app order: saved as settings.app_layout = { dock:[keys], desktop:[keys] } and read by desktop/desktop.js */
+  function layoutHTML(){
+    if (!window.SimDeskLayout) return "";
+    const L = SimDeskLayout.layout(), apps = Object.fromEntries(SimDeskLayout.apps().map(a => [a.key, a]));
+    const row = (k, where, i, n) => `<li class="st-app"><span class="st-ic">${apps[k].icon}</span><b>${apps[k].name}</b>
+      <span class="st-appbtns"><button class="st-sm" data-lay="up:${where}:${k}" ${i === 0 ? "disabled" : ""} aria-label="Move ${apps[k].name} up">↑</button><button class="st-sm" data-lay="down:${where}:${k}" ${i === n - 1 ? "disabled" : ""} aria-label="Move ${apps[k].name} down">↓</button>
+      ${k === "settings" && where === "dock" ? "" : `<button class="st-sm wide" data-lay="move:${where}:${k}">${where === "dock" ? "To desktop" : "To dock"}</button>`}</span></li>`;
+    const list = (where, title) => `<h3 class="st-h3">${title}</h3><ol class="st-apps">${L[where].map((k, i) => row(k, where, i, L[where].length)).join("") || '<li class="st-note">Empty</li>'}</ol>`;
+    return list("dock", "Dock") + list("desktop", "Desktop") + `<button class="st-btn" data-lay="reset">Back to the original order</button>`;
+  }
+  async function moveApp(cmd){
+    const [act, where, k] = cmd.split(":");
+    if (act === "reset") { await GFB.saveSetting("app_layout", null); }
+    else {
+      const L = SimDeskLayout.layout(), list = L[where], i = list.indexOf(k);
+      if (act === "up" && i > 0) [list[i - 1], list[i]] = [list[i], list[i - 1]];
+      if (act === "down" && i < list.length - 1) [list[i + 1], list[i]] = [list[i], list[i + 1]];
+      if (act === "move") { list.splice(i, 1); L[where === "dock" ? "desktop" : "dock"].push(k); }
+      await GFB.saveSetting("app_layout", L);
+    }
+    data = await GFB.getAll(); window.dispatchEvent(new Event("gfb:layout")); draw();
   }
 
   async function useFile(file){
@@ -40,6 +64,7 @@ const Settings = (() => {
     document.addEventListener("dragover", e => { const d = mine(e.target) && e.target.closest("#st-drop"); if (d) { e.preventDefault(); d.classList.add("over"); } });
     document.addEventListener("dragleave", e => { const d = mine(e.target) && e.target.closest("#st-drop"); if (d) d.classList.remove("over"); });
     document.addEventListener("drop", e => { const d = mine(e.target) && e.target.closest("#st-drop"); if (d) { e.preventDefault(); useFile(e.dataTransfer.files[0]); } });
+    document.addEventListener("click", e => { const b = mine(e.target) && e.target.closest("[data-lay]"); if (b && !b.disabled) moveApp(b.dataset.lay); });
     document.addEventListener("click", async e => {
       if (!mine(e.target) || !e.target.closest("[data-st=default]")) return;
       await GFB.saveSetting("wallpaper", null); data = await GFB.getAll(); st.msg = "Back to the default."; draw();

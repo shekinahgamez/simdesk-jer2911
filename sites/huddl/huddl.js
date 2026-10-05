@@ -1,7 +1,7 @@
 /* Huddl: LinkedIn-style network for Simerica's institutions (organizations with type "Institution").
    Home feed + company pages with tabs. "Signed in as" is shared with Cliq (settings.acting_sim). Reads and saves through GFB. */
 const Huddl = (() => {
-  const st = { q:"", modal:null, err:null, tab:"about" };
+  const st = { q:"", modal:null, err:null, tab:"about", cat:"" };
   let data = null, root = null, route = [], lastKey = null;
 
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -29,7 +29,8 @@ const Huddl = (() => {
   const headline = s => { const j = jobsOf(s.id)[0]; return j ? [j.m.role, j.o.name].filter(Boolean).join(" at ") : (s.career || ""); };
 
   const tile = (o, cls = "") => `<span class="hd-tile ${cls}" style="background:${tint(o.name)}">${esc(initials(o.name))}</span>`;
-  const av = (name, cls = "") => `<span class="hd-av ${cls}" style="background:${tint(name)}">${esc(initials(name))}</span>`;
+  /* Huddl uses the professional headshot (sim.headshot), never the casual profile photo */
+  const av = (name, cls = "", sim) => { sim = sim || data.sims.find(x => norm(x.name) === norm(name)); const h = sim && sim.headshot; return `<span class="hd-av ${cls}${h ? " ph" : ""}" style="background:${tint(name)}">${h ? `<img src="${esc(h)}" alt="">` : esc(initials(name))}</span>`; };
   const simLink = (name, s) => s ? `<a class="hd-link" href="#/registry/${s.id}">${esc(name)}</a>` : esc(name);
 
   /* ---------- side columns ---------- */
@@ -38,12 +39,12 @@ const Huddl = (() => {
     const nav = [["home", "Home", ""], ["companies", "Companies", "companies"], ["jobs", "Jobs", "jobs"], ["people", "People", "people"]];
     return `<nav class="hd-card hd-nav" aria-label="Huddl">${nav.map(([k, n, h]) => `<a href="#/huddl${h ? "/" + h : ""}" ${(here === k || (k === "companies" && here === "org")) ? 'aria-current="page"' : ""}>${ico(k)}<span>${n}</span></a>`).join("")}</nav>
       ${s ? `<div class="hd-card hd-me"><div class="hd-me-ban"></div>${av(s.name, "xl")}<b>${simLink(s.name, s)}</b><span>${esc(headline(s)) || "&nbsp;"}</span>
-        <dl><div><dt>Companies</dt><dd>${jobsOf(s.id).length}</dd></div><div><dt>Connections</dt><dd>${data.relationships.filter(r => r.from_sim === s.id).length}</dd></div></dl></div>` : ""}`;
+        ${!s.headshot ? `<a class="hd-addhs" href="#/registry/${s.id}">Add a professional headshot</a>` : ""}<dl><div><dt>Companies</dt><dd>${jobsOf(s.id).length}</dd></div><div><dt>Connections</dt><dd>${data.relationships.filter(r => r.from_sim === s.id).length}</dd></div></dl></div>` : ""}`;
   }
   function rightCol() {
     const s = me(), mine = new Set(s ? jobsOf(s.id).map(j => j.o.id) : []);
     const follow = insts().filter(o => !mine.has(o.id)).slice(0, 5), jobs = insts().flatMap(o => (o.positions || []).map(p => ({ o, p }))).slice(0, 5);
-    return `<div class="hd-card"><h3>Companies to follow</h3>${follow.map(o => `<div class="hd-sug">${tile(o, "sm")}<span><b>${esc(o.name)}</b><small>${esc(o.category || "")}</small></span><a class="hd-mini" href="#/huddl/org/${o.id}">View</a></div>`).join("") || `<p class="hd-none">You're at every company.</p>`}</div>
+    return `<div class="hd-card"><h3>Companies to follow</h3>${follow.map(o => `<a class="hd-sug" href="#/huddl/org/${o.id}">${tile(o, "sm")}<span><b>${esc(o.name)}</b><small>${esc([o.category, (o.members || []).length ? (o.members || []).length + " people" : ""].filter(Boolean).join(" \u00b7 "))}</small></span></a>`).join("") || `<p class="hd-none">You're at every company.</p>`}</div>
       <div class="hd-card"><h3>Open positions</h3>${jobs.length ? jobs.map(({ o, p }) => `<a class="hd-sug" href="#/huddl/org/${o.id}/jobs">${tile(o, "sm")}<span><b>${esc(p.title)}</b><small>${esc(o.name)}</small></span></a>`).join("") : `<p class="hd-none">Nothing open right now.</p>`}</div>`;
   }
 
@@ -54,7 +55,7 @@ const Huddl = (() => {
     if (!o && !s) return "";
     const who = o ? `<a class="hd-pname" href="#/huddl/org/${o.id}">${esc(o.name)}</a>` : `<span class="hd-pname">${simLink(s.name, s)}</span>`;
     const sub = o ? (o.category || "Company") : headline(s);
-    return `<article class="hd-card hd-post"><header>${o ? tile(o) : av(s.name, "lg")}<span>${who}<small>${esc(sub)}${sub ? " \u00b7 " : ""}${esc(UI.gameLabel(p.date))}</small></span><button class="hd-mini" data-hd="delpost:${p.id}" aria-label="Delete post">Delete</button></header><p>${esc(p.text)}</p></article>`;
+    return `<article class="hd-card hd-post"><header>${o ? tile(o) : av(s.name, "lg")}<span>${who}<small>${esc(sub)}${sub ? " \u00b7 " : ""}${esc(UI.gameLabel(p.date))}</small></span><button class="hd-del" data-hd="delpost:${p.id}" aria-label="Delete post">Delete</button></header><p>${esc(p.text)}</p></article>`;
   }
   function composer(fixedOrg) {
     const s = me();
@@ -72,8 +73,10 @@ const Huddl = (() => {
       <h4>People</h4>${ps.map(s => `<a class="hd-row-link" href="#/registry/${s.id}">${av(s.name)}<span><b>${esc(s.name)}</b><small>${esc(headline(s))}</small></span></a>`).join("") || `<p class="hd-none">None</p>`}</div>`;
   }
   function companiesPage() {
-    return `<div class="hd-card"><div class="hd-head"><h2>Companies <small>${insts().length}</small></h2><button class="hd-btn" data-hd="new">Add a company</button></div>
-      <div class="hd-grid">${insts().map(o => `<a class="hd-co" href="#/huddl/org/${o.id}"><span class="hd-co-ban" style="background:linear-gradient(120deg,${tint(o.name)},var(--sky))"></span>${tile(o, "co")}<b>${esc(o.name)}</b><small>${esc(o.category || "")}</small><span class="hd-co-a">${esc(o.about)}</span><small>${(o.members || []).filter(m => m.current !== false).length} people</small></a>`).join("")}</div></div>`;
+    const list = insts().filter(o => !st.cat || o.category === st.cat);
+    return `<div class="hd-card"><div class="hd-head"><h2>Companies <small>${list.length}</small></h2><button class="hd-btn" data-hd="new">Add a company</button></div>
+      <div class="hd-chips">${["", ...cats()].map(c => `<button class="hd-chip" data-cat="${esc(c)}" aria-pressed="${(st.cat || "") === c}">${esc(c || "All")}</button>`).join("")}</div>
+      <div class="hd-grid">${list.map(o => `<a class="hd-co" href="#/huddl/org/${o.id}"><span class="hd-co-ban" style="background:linear-gradient(120deg,${tint(o.name)},var(--sky))"></span>${tile(o, "co")}<b>${esc(o.name)}</b><small>${esc(o.category || "")}</small><span class="hd-co-a">${esc(o.about)}</span><small>${(o.members || []).filter(m => m.current !== false).length} people</small></a>`).join("")}</div></div>`;
   }
   function jobsPage() {
     const list = insts().flatMap(o => (o.positions || []).map(p => ({ o, p })));
@@ -155,7 +158,7 @@ const Huddl = (() => {
     const s = me(), sims = [...data.sims].sort((a, b) => stripNick(a.name).localeCompare(stripNick(b.name)));
     root.innerHTML = `<div class="site-hd"><header class="hd-bar"><a class="hd-logo" href="#/huddl">${MARK}<span>Huddl</span></a>
         <input class="hd-search" id="hd-q" type="search" placeholder="Search companies and people" aria-label="Search Huddl" value="${esc(st.q)}">
-        <label class="hd-as">${s ? av(s.name) : ""}<span class="hd-as-t"><small>Signed in as</small><select id="hd-as" aria-label="Signed in as">${sims.map(x => `<option value="${x.id}" ${s && x.id === s.id ? "selected" : ""}>${esc(stripNick(x.name))}</option>`).join("")}</select></span></label></header>
+        <label class="hd-as">${s ? av(s.name) : ""}<span class="hd-as-t"><small>Signed in as</small>${UI.picker({ id:"hd-as", value:s ? s.id : "", options:sims.map(x => ({ v:x.id, t:stripNick(x.name), s:headline(x) })), placeholder:"Search Sims", align:"right", label:"Signed in as" })}</span></label></header>
       <div class="hd-shell"><aside class="hd-left">${leftCol()}</aside><main class="hd-center">${center()}</main><aside class="hd-right">${rightCol()}</aside></div>
       ${st.modal ? `<div class="hd-modal">${modal()}</div>` : ""}</div>`;
   }
@@ -202,6 +205,7 @@ const Huddl = (() => {
       if (!mine(e.target)) return;
       const t = e.target;
       if (t.classList.contains("hd-modal")) { st.modal = null; st.err = null; draw(); return; }
+      const cb = t.closest("[data-cat]"); if (cb) { st.cat = cb.dataset.cat; draw(); return; }
       const b = t.closest("[data-hd]"); if (!b) return;
       const [act, a, c] = b.dataset.hd.split(":");
       if (act === "new") st.modal = "org:new";

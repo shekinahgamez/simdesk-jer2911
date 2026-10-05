@@ -34,7 +34,7 @@ const Cliq = (() => {
   const simFor = m => m && ((m.sim && simById(m.sim)) || data.sims.find(s => norm(s.name) === norm(m.name)));
   const lotById = id => data.lots.find(l => l.id === id);
   const go = h => { location.hash = "#/cliq" + (h ? "/" + h : ""); };
-  const av = m => `<span class="cq-av" style="background:${tint(m.name)}" title="${esc(m.name)}">${esc(initials(m.name))}</span>`;
+  const av = m => { const p = (simFor(m) || {}).portrait; return `<span class="cq-av${p ? " ph" : ""}" style="background:${tint(m.name)}" title="${esc(m.name)}">${p ? `<img src="${esc(p)}" alt="">` : esc(initials(m.name))}</span>`; };
   const nameLink = m => { const s = simFor(m); return s ? `<a class="cq-link" href="#/registry/${s.id}">${esc(m.name)}</a>` : esc(m.name); };
   const allOf = key => [...new Set(clubs().flatMap(o => o[key] || []))].sort();
   const inClub = (o, id) => (o.members || []).some(m => simFor(m)?.id === id);
@@ -54,7 +54,7 @@ const Cliq = (() => {
   }
   const sugCard = o => `<div class="cq-sug"><a class="cq-sugtop" href="#/cliq/club/${o.id}">${pat(o)}${emblem(o, "md")}</a>
       <div class="cq-sugbody"><a href="#/cliq/club/${o.id}"><b>${esc(o.name)}</b></a><small>${esc(where(o)) || "&nbsp;"}</small><small>${(o.members || []).length} member${(o.members || []).length === 1 ? "" : "s"}</small>${joinBtn(o, "wide")}</div></div>`;
-  const rowCard = o => `<div class="cq-rowc"><a class="cq-thumb" href="#/cliq/club/${o.id}">${pat(o)}</a><span class="cq-rowt"><a href="#/cliq/club/${o.id}"><b>${esc(o.name)}</b></a><small>${esc(o.vibe || where(o) || "")}</small><span class="cq-rowm">${avRow(o.members || [], 3)}<small>${(o.members || []).length} members</small></span></span>${joinBtn(o, "sm")}</div>`;
+  const rowCard = o => `<div class="cq-rowc"><a class="cq-thumb" href="#/cliq/club/${o.id}">${pat(o)}</a><span class="cq-rowt"><a href="#/cliq/club/${o.id}"><b>${esc(o.name)}</b></a><small>${esc(o.vibe || where(o) || "")}</small><span class="cq-rowm">${avRow(o.members || [], 3)}<small>${(o.members || []).length} members</small></span></span><a class="cq-btn ghost sm" href="#/cliq/club/${o.id}">Open</a></div>`;
 
   function sidebar() {
     const s = me(); if (!s) return "";
@@ -85,8 +85,8 @@ const Cliq = (() => {
     const tabs = [["about", "About"], ["members", `Members (${ms.length})`], ["meets", "Meets"]];
     let body = "";
     if (tab === "about") body = `<div class="cq-two">
-        <div class="cq-box"><h3>How to join</h3>${o.join ? `<p class="cq-big">${esc(o.join)}</p>` : ""}<p>${esc(o.join_notes) || (o.join ? "" : '<span class="cq-none">Not set</span>')}</p>${(o.requirements || []).length ? `<div class="cq-chips">${o.requirements.map(r => `<span class="cq-chip">${esc(r)}</span>`).join("")}</div>` : ""}</div>
-        <div class="cq-box"><h3>House rules</h3>${(o.rules || []).length ? `<ol class="cq-rules">${o.rules.map(r => `<li>${esc(r)}</li>`).join("")}</ol>` : '<p class="cq-none">None yet.</p>'}</div></div>
+        <div class="cq-box"><h3>How to join</h3>${o.join ? `<p class="cq-big">${esc(o.join)}</p>` : ""}<p>${esc(o.join_notes) || (o.join ? "" : `<span class="cq-none">Not set yet.</span> <button class="cq-textbtn inline" data-cq="club:${o.id}">Add it</button>`)}</p>${(o.requirements || []).length ? `<div class="cq-chips">${o.requirements.map(r => `<span class="cq-chip">${esc(r)}</span>`).join("")}</div>` : ""}</div>
+        <div class="cq-box"><h3>House rules</h3>${(o.rules || []).length ? `<ol class="cq-rules">${o.rules.map(r => `<li>${esc(r)}</li>`).join("")}</ol>` : `<p class="cq-none">None yet. <button class="cq-textbtn inline" data-cq="club:${o.id}">Add rules</button></p>`}</div></div>
       ${(o.activities || []).length ? `<div class="cq-box"><h3>What they do</h3><div class="cq-chips">${o.activities.map(r => `<span class="cq-chip alt">${esc(r)}</span>`).join("")}</div></div>` : ""}
       ${o.notes ? `<div class="cq-box"><h3>Notes <small>Private</small></h3><p style="white-space:pre-wrap;margin:0">${esc(o.notes)}</p></div>` : ""}`;
     if (tab === "members") body = `<div class="cq-box"><h3>Members <small>${ms.length}</small><button class="cq-mini" data-cq="member:${o.id}:new">Add member</button></h3>
@@ -138,7 +138,7 @@ const Cliq = (() => {
     const main = route[0] === "club" ? (o ? clubPage(o, route[2] || "about") : `<p class="cq-none">That club isn't on Cliq.</p>`) : discover();
     root.innerHTML = `<div class="site-cq"><header class="cq-bar"><a class="cq-logo" href="#/cliq">${MARK}<span>cliq</span></a>
         <input class="cq-search" id="cq-q" type="search" placeholder="Search clubs" aria-label="Search clubs" value="${esc(st.q)}">
-        <label class="cq-as">${s ? av({ name:s.name }) : ""}<span><small>Signed in as</small><select id="cq-as" aria-label="Signed in as">${sims.map(x => `<option value="${x.id}" ${s && x.id === s.id ? "selected" : ""}>${esc(stripNick(x.name))}</option>`).join("")}</select></span></label></header>
+        <label class="cq-as">${s ? av({ name:s.name }) : ""}<span><small>Signed in as</small>${UI.picker({ id:"cq-as", value:s ? s.id : "", options:sims.map(x => ({ v:x.id, t:stripNick(x.name), s:x.career || "" })), placeholder:"Search Sims", align:"right", label:"Signed in as" })}</span></label></header>
       <div class="cq-shell"><main class="cq-main">${main}</main><aside class="cq-side">${sidebar()}</aside></div>
       ${st.modal ? `<div class="cq-modal">${modal()}</div>` : ""}</div>`;
   }

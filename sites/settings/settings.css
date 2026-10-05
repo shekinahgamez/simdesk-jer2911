@@ -26,3 +26,13 @@
 .ni-flag{margin:8px 0;font-size:14px}.ni-flag summary{cursor:pointer;min-height:36px;display:flex;align-items:center;gap:8px}.ni-flag ul{margin:4px 0 0 18px;padding:0;color:var(--muted)}
 .ni-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.ni-go{background:#B3261E;border-color:#B3261E;color:#fff}
 .ni-done{margin-top:16px;padding:12px 14px;background:#EEF7EF;border-radius:10px;font-size:14px}
+
+/* desktop and dock order */
+.st-h3{font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px}
+.st-apps{list-style:none;margin:0 0 6px;padding:0;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.st-app{display:flex;align-items:center;gap:12px;padding:8px 10px;border-top:1px solid var(--line)}.st-app:first-child{border-top:0}
+.st-ic{width:34px;height:34px;border-radius:9px;overflow:hidden;flex:none;display:block}.st-ic svg,.st-ic img{width:100%;height:100%;display:block}
+.st-app b{flex:1;font-weight:500;min-width:0}
+.st-appbtns{display:flex;gap:6px;flex:none}
+.st-sm{border:1px solid var(--line);background:#fff;border-radius:9px;min-width:40px;min-height:40px;font-size:16px;cursor:pointer;color:var(--accent)}
+.st-sm.wide{font-size:13px;font-weight:600;padding:0 10px}.st-sm:disabled{opacity:.35;cursor:default}

@@ -237,3 +237,29 @@ button.r-rel-main:hover .who{color:var(--link);text-decoration:underline}
 .r-optlink button{border:none;background:none;padding:0;color:var(--link);font:600 13px var(--sans);text-decoration:underline;cursor:pointer;min-height:32px}
 .r-listbox{min-height:180px!important;font-size:13.5px}
 .r-lbl em{font-style:normal;font-weight:400;opacity:.7}
+
+/* ---------- resident gallery (Registry home) ---------- */
+.r-galwrap{max-width:1240px;margin:0 auto;padding:0 20px 40px}
+.r-galbar{background:var(--navy2);color:var(--onNavy);padding:14px 16px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;border-bottom:3px solid var(--stamp)}
+.r-galbar .r-search{flex:1 1 260px;width:auto;font-size:16px;padding:10px 12px}
+.r-galbar .r-filters{margin:0}
+.r-sortl{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--onNavyMuted)}
+.r-sortl select{background:var(--navyDeep);color:var(--onNavy);border:1px solid var(--onNavyMuted);border-radius:2px;padding:7px 8px;font-size:16px}
+.r-galnew{margin-left:auto}.r-galnew .r-newbtn{width:auto;margin:0;padding:8px 14px}.r-galnew .r-newform{margin:0;min-width:260px}
+.r-gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;margin-top:18px}
+.r-card{display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--rule);color:var(--ink);text-decoration:none;transition:box-shadow .15s,transform .15s}
+.r-card:hover{box-shadow:0 6px 16px rgba(15,35,64,.16);transform:translateY(-2px)}
+.r-card:focus-visible{outline:3px solid var(--link);outline-offset:2px}
+.r-card-ph{position:relative;aspect-ratio:1/1;background:var(--panel2);display:block;overflow:hidden;border-bottom:1px solid var(--rule)}
+.r-card-ph img{width:100%;height:100%;object-fit:cover;display:block}
+.r-card-ini{display:grid;place-items:center;width:100%;height:100%;color:#fff;font-weight:800;font-size:44px;letter-spacing:.02em}
+.r-card-st{position:absolute;left:8px;top:8px;background:rgba(9,22,41,.82);color:#fff;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:3px 7px;border-radius:2px}
+.r-card-b{display:flex;flex-direction:column;gap:2px;padding:10px 12px 12px;flex:1}
+.r-card-b b{font-size:15.5px;line-height:1.25}.r-card-b small{color:var(--muted);font-size:12.5px}
+.r-card-job{font-size:13.5px;margin-top:2px}
+.r-card .r-gap{margin:6px 0 0;align-self:flex-start;color:var(--stamp);background:var(--stampSoft);padding:2px 7px;font-size:11px}
+.r-galnone{color:var(--muted);padding:20px 0}
+.r-galpend{margin-top:26px}.r-galpend h3{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 8px}
+.r-pendchip{border:1px dashed var(--rule);background:var(--panel);padding:7px 12px;margin:0 6px 6px 0;font-size:14px;cursor:pointer;color:var(--ink);min-height:38px}.r-pendchip span{color:var(--link);font-size:12px;font-weight:700;margin-left:4px}
+.r-allres{color:var(--link);font-weight:700;text-decoration:none;margin-right:auto}.r-allres::before{content:"\2190  "}
+@container site (max-width:720px){ .r-galwrap{padding:0 10px 30px}.r-gal{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.r-galnew{margin-left:0}.r-card-ini{font-size:34px} }
