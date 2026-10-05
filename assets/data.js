@@ -25,7 +25,7 @@ const GFB = (() => {
       const s = seed.sims.find(x => x.id === id);
       if (s) Object.assign(s, patch);
     }
-    for (const t of ["relationships","stories","lots","accounts","transactions","loans","todos","projects","posts","organizations","households","lots_pending"]) if (Array.isArray(edits[t])) seed[t] = edits[t];
+    for (const t of ["relationships","stories","lots","accounts","transactions","loans","todos","projects","posts","organizations","households","lots_pending","huddl_posts"]) if (Array.isArray(edits[t])) seed[t] = edits[t];
     if (edits.options) Object.assign(seed.options, edits.options);
     if (edits.lot_options) seed.lot_options = { ...seed.lot_options, ...edits.lot_options };
     seed.settings = { ...(seed.settings || {}), ...(edits.settings || {}) };
@@ -33,7 +33,7 @@ const GFB = (() => {
     /* events and logs are a title plus one free-text details field */
     seed.calendar.events = seed.calendar.events.map(e => { if (e.details !== undefined) return e; const { story, game, ...rest } = e; return { ...rest, details: [story, game].filter(Boolean).join("\n\n") }; });
     seed.sims.forEach(x => { x.simsta = normHandle(x.simsta); });
-    seed.organizations = seed.organizations || []; seed.households = seed.households || [];
+    seed.organizations = seed.organizations || []; seed.households = seed.households || []; seed.huddl_posts = seed.huddl_posts || [];
     /* two banks share accounts and loans; anything older belongs to Harbor Trust */
     seed.accounts.forEach(a => { a.bank = a.bank || "harbor"; });
     seed.loans.forEach(l => { l.bank = l.bank || "harbor"; });
@@ -70,6 +70,9 @@ const GFB = (() => {
   /* Organizations: institutions (Huddl) and clubs (Cliq) share one table. */
   const saveOrg = o => saveRow("organizations", o, "org-");
   const deleteOrg = id => deleteRow("organizations", id);
+  /* Huddl feed posts: { id, author_type "org"|"sim", author_id, text, date {season,day,year}, auto } */
+  const saveHuddlPost = p => saveRow("huddl_posts", p, "hp-");
+  const deleteHuddlPost = id => deleteRow("huddl_posts", id);
 
   /* Notion import: replaces the Sims, connections, lots, households, and organizations tables in one save.
      The edits from just before are kept in a separate key so the import can be undone. */
@@ -221,5 +224,5 @@ const GFB = (() => {
   function resetLocal() { try { localStorage.removeItem(KEY); } catch {} if (typeof Cloud !== "undefined") Cloud.queuePush(); db = null; load(); }
   function hasLocalEdits() { const e = readEdits(); return Object.keys(e.sims || {}).length > 0 || ["stories","lots","accounts","transactions","loans","todos","projects","posts"].some(t => Array.isArray(e[t])) || !!e.calendar; }
 
-  return { normHandle, saveOrg, deleteOrg, importReplace, undoImport, canUndoImport, exportEdits, getAll, saveSim, addSim, saveOptions, saveSetting, saveRel, deleteRel, saveStory, deleteStory, saveLot, deleteLot, saveAccount, saveLoan, savePost, deletePost, saveTodo, deleteTodo, saveProject, deleteProject, deleteLoan, postTransaction, saveEvent, deleteEvent, saveLog, deleteLog, setToday, uploadImage, resetLocal, hasLocalEdits };
+  return { normHandle, saveOrg, deleteOrg, saveHuddlPost, deleteHuddlPost, importReplace, undoImport, canUndoImport, exportEdits, getAll, saveSim, addSim, saveOptions, saveSetting, saveRel, deleteRel, saveStory, deleteStory, saveLot, deleteLot, saveAccount, saveLoan, savePost, deletePost, saveTodo, deleteTodo, saveProject, deleteProject, deleteLoan, postTransaction, saveEvent, deleteEvent, saveLog, deleteLog, setToday, uploadImage, resetLocal, hasLocalEdits };
 })();

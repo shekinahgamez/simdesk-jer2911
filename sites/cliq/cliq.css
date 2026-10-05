@@ -1,50 +1,106 @@
-/* Cliq: pink block system from the first board. Bubblegum #F6B6CC, cotton #FFE3EC, ballet #FAD1E2, berry #9D1F4A, cream #FFF7FA, ink #1A1A1A. */
-.site-cq{color-scheme:light;--bubble:#F6B6CC;--cotton:#FFE3EC;--ballet:#FAD1E2;--berry:#9D1F4A;--cream:#FFF7FA;--ink:#1A1A1A;--muted:#7A5963;--line:#F3CFDB;
+/* Cliq: pink block system from the first board. Bubblegum #F6B6CC, cotton #FFE3EC, ballet #FAD1E2, berry #9D1F4A, cream #FFF7FA, ink #1A1A1A.
+   Layout follows a "Discover Groups" social site: top bar, main discovery column, right sidebar. */
+.site-cq{color-scheme:light;--bubble:#F6B6CC;--cotton:#FFE3EC;--ballet:#FAD1E2;--berry:#9D1F4A;--cream:#FFF7FA;--ink:#1A1A1A;--muted:#7A5963;--line:#F3D3DE;
   background:var(--cream);color:var(--ink);font:15px/1.5 "Inter",system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100%;position:relative}
 :where(.site-cq) :where(button,input,select,textarea){font:inherit;color:inherit}
 .site-cq :focus-visible{outline:2px solid var(--berry);outline-offset:2px}
 .site-cq a{color:inherit;text-decoration:none}
-.cq-bar{background:var(--bubble);padding:12px 24px;display:flex;align-items:center}
-.cq-logo{display:flex;align-items:center;gap:10px}.cq-logo svg{width:34px;height:34px}
-.cq-logo span{font:700 30px/1 "Fredoka","Inter",sans-serif;letter-spacing:-.01em;color:var(--berry)}
-.cq-wrap{max-width:1040px;margin:0 auto;padding:24px}
-.cq-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px}
 .site-cq h1{font:700 30px/1.1 "Fredoka","Inter",sans-serif;margin:0;letter-spacing:-.01em}
-.cq-sub{color:var(--muted);margin:2px 0 0}
-.cq-btn{border:1px solid var(--berry);background:var(--berry);color:#fff;border-radius:12px;padding:9px 18px;font-weight:600;cursor:pointer;min-height:42px;display:inline-flex;align-items:center}
-.cq-btn.ghost{background:var(--cream);color:var(--berry)}.cq-btn.danger{background:var(--cream);color:#B3261E;border-color:#B3261E}
+.site-cq h2{font:700 19px "Fredoka","Inter",sans-serif;margin:0}
+.cq-sub{color:var(--muted);margin:2px 0 0}.cq-none{color:var(--muted);margin:0}
+
+/* top bar */
+.cq-bar{position:sticky;top:0;z-index:20;background:#fff;border-bottom:1px solid var(--line);padding:10px 22px;display:flex;align-items:center;gap:16px}
+.cq-logo{display:flex;align-items:center;gap:9px;flex:none}.cq-logo svg{width:34px;height:34px}
+.cq-logo span{font:700 29px/1 "Fredoka","Inter",sans-serif;color:var(--berry)}
+.cq-search{flex:1;max-width:460px;margin:0 auto;padding:10px 14px 10px 38px;border:1px solid var(--line);border-radius:999px;background:var(--cream) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' fill='none' stroke='%237A5963' stroke-width='2'%3E%3Ccircle cx='8' cy='8' r='6'/%3E%3Cpath d='M13 13l4 4'/%3E%3C/svg%3E") 14px 50% no-repeat;font-size:16px;min-width:0}
+.cq-as{display:flex;align-items:center;gap:8px;flex:none;cursor:pointer}.cq-as span{display:flex;flex-direction:column;line-height:1.1}.cq-as small{font-size:11px;color:var(--muted)}
+.cq-as select{border:0;background:none;font-weight:600;font-size:15px;padding:0;max-width:170px;cursor:pointer}.cq-as .cq-av{margin:0;width:36px;height:36px}
+
+/* layout */
+.cq-shell{max-width:1180px;margin:0 auto;padding:22px;display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:22px;align-items:start}
+.cq-main{display:grid;gap:26px;min-width:0}.cq-main section{display:grid;gap:12px}
+.cq-side{display:grid;gap:14px;position:sticky;top:76px}
+.cq-side-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 16px}
+.cq-side-card h3,.cq-box h3{font:600 12px "Inter",sans-serif;text-transform:uppercase;letter-spacing:.1em;color:var(--berry);margin:0 0 8px;display:flex;align-items:center;gap:8px}.cq-box h3 small{color:var(--muted);letter-spacing:0;font-weight:500;text-transform:none}
+.cq-srow{display:flex;align-items:center;gap:10px;padding:7px 0}.cq-srow>span{display:flex;flex-direction:column;min-width:0}.cq-srow small{color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cq-srow:hover b{color:var(--berry)}.cq-srow .cq-av{margin:0;width:34px;height:34px}
+.cq-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.cq-sec{display:flex;justify-content:space-between;align-items:flex-end;gap:10px}.cq-sec small{color:var(--muted)}
+.cq-textbtn{border:0;background:none;color:var(--berry);font-weight:700;font-size:13px;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;min-height:36px}
+
+/* buttons */
+.cq-btn{border:1px solid var(--berry);background:var(--berry);color:#fff;border-radius:12px;padding:9px 18px;font-weight:600;cursor:pointer;min-height:42px;display:inline-flex;align-items:center;justify-content:center}
+.cq-btn.ghost{background:#fff;color:var(--berry)}.cq-btn.danger{background:#fff;color:#B3261E;border-color:#B3261E}
+.cq-btn.wide{width:100%;margin-top:8px}.cq-btn.sm{padding:6px 14px;min-height:36px;font-size:14px;flex:none}
 .cq-mini{margin-left:auto;border:1px solid var(--line);background:#fff;color:var(--berry);border-radius:10px;padding:4px 12px;font-size:13px;font-weight:600;cursor:pointer;min-height:34px}
-.cq-search{width:100%;box-sizing:border-box;padding:11px 14px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:16px;margin-bottom:16px}
+
+/* pattern, emblems, avatars */
 .cq-pattern{position:absolute;inset:0;background-color:var(--bubble);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='96'%3E%3Cg fill='%23fff' fill-opacity='.32'%3E%3Crect x='6' y='6' width='26' height='40' rx='10'/%3E%3Crect x='40' y='6' width='26' height='26' rx='8'/%3E%3Crect x='74' y='6' width='40' height='26' rx='10'/%3E%3Crect x='40' y='40' width='26' height='40' rx='10'/%3E%3Crect x='74' y='40' width='26' height='40' rx='8'/%3E%3Crect x='6' y='54' width='26' height='34' rx='9'/%3E%3C/g%3E%3C/svg%3E");background-size:120px 96px}
-.cq-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px}
-.cq-card{display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:18px;overflow:hidden;transition:transform .15s,box-shadow .15s}
-.cq-card:hover{transform:translateY(-3px);box-shadow:0 10px 24px rgba(157,31,74,.14)}
-.cq-cardtop{position:relative;height:84px}.cq-cardtop .cq-emb{position:absolute;right:14px;bottom:-22px}
-.cq-cardbody{display:flex;flex-direction:column;gap:6px;padding:16px;min-height:0}.cq-cardbody b{font:600 19px "Fredoka","Inter",sans-serif}
-.cq-cardbody small{color:var(--muted)}
-.cq-vibe{font:italic 500 14.5px/1.4 "Lora",Georgia,serif;color:var(--muted)}.cq-vibe.big{font-size:19px;color:var(--ink);margin:0;max-width:46ch}
-.cq-emb{display:grid;place-items:center;width:50px;height:50px;border-radius:50%;border:2px solid var(--berry);background:var(--cotton);color:var(--berry)}
-.cq-emb svg{width:26px;height:26px}.cq-emb.xl{position:absolute;right:20px;bottom:-26px;width:72px;height:72px;border-width:3px}.cq-emb.xl svg{width:38px;height:38px}
+.cq-pattern.img{background-size:cover;background-position:center;background-repeat:no-repeat}
+.cq-emb{display:grid;place-items:center;width:50px;height:50px;border-radius:50%;border:2px solid var(--berry);background:var(--cotton);color:var(--berry);flex:none}
+.cq-emb svg{width:26px;height:26px}.cq-emb.sm{width:34px;height:34px;border-width:1.5px}.cq-emb.sm svg{width:18px;height:18px}.cq-emb.md{width:44px;height:44px}.cq-emb.md svg{width:22px;height:22px}
+.cq-emb.img{background-size:cover;background-position:center;background-repeat:no-repeat;background-color:var(--cotton)}
+.cq-emb.xl{position:absolute;right:20px;bottom:-26px;width:72px;height:72px;border-width:3px;z-index:2}.cq-emb.xl svg{width:38px;height:38px}
 .cq-avs{display:flex;align-items:center}.cq-av{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;color:#fff;font-weight:700;font-size:11.5px;border:2px solid #fff;margin-left:-8px;flex:none}.cq-avs .cq-av:first-child{margin-left:0}
 .cq-more{display:grid;place-items:center;min-width:30px;height:30px;padding:0 6px;border-radius:99px;background:var(--ballet);color:var(--berry);font-weight:700;font-size:12px;margin-left:-8px;border:2px solid #fff;box-sizing:border-box}
-.cq-back{display:inline-block;margin-bottom:10px;color:var(--berry)!important;font-weight:600;font-size:14px}
-.cq-banner{position:relative;height:150px;border-radius:20px 20px 0 0;overflow:visible}
-.cq-banner .cq-pattern{border-radius:20px 20px 0 0}
-.cq-banner h1{position:absolute;left:24px;bottom:16px;font-size:38px;color:#fff;text-shadow:0 2px 0 var(--berry);z-index:1;max-width:70%}
-.cq-top{background:#fff;border:1px solid var(--line);border-top:0;border-radius:0 0 20px 20px;padding:34px 24px 20px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+
+/* suggested cards */
+.cq-sugs{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px}
+.cq-sug{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden;display:flex;flex-direction:column;transition:box-shadow .15s}.cq-sug:hover{box-shadow:0 10px 24px rgba(157,31,74,.12)}
+.cq-sugtop{position:relative;height:110px;display:block}.cq-sugtop .cq-emb{position:absolute;left:12px;bottom:-20px}
+.cq-sugbody{padding:26px 14px 14px;display:flex;flex-direction:column;gap:2px;flex:1}.cq-sugbody b{font:600 17px "Fredoka","Inter",sans-serif}.cq-sugbody small{color:var(--muted);font-size:13px}
+.cq-sugbody .cq-btn{margin-top:auto}
+
+/* category tiles */
+.cq-cats{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px}
+.cq-cat{border:1px solid var(--line);background:#fff;border-radius:16px;padding:0 0 10px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px}
+.cq-cat b{font:600 15px "Fredoka","Inter",sans-serif}
+.cq-cattop{position:relative;height:76px;align-self:stretch;display:grid;place-items:center}
+.cq-catic{position:relative;z-index:1;display:grid;place-items:center;width:46px;height:46px;border-radius:14px;background:#fff;color:var(--berry);box-shadow:0 4px 10px rgba(157,31,74,.15)}.cq-catic svg{width:24px;height:24px}
+.cq-cat[aria-pressed="true"]{border-color:var(--berry);box-shadow:0 0 0 2px var(--berry)}
+
+/* your clubs rows */
+.cq-rows{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px}
+.cq-rowc{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:10px}
+.cq-thumb{position:relative;display:block;width:72px;height:72px;border-radius:12px;overflow:hidden;flex:none}
+.cq-rowt{display:flex;flex-direction:column;min-width:0;flex:1}.cq-rowt b{font:600 16px "Fredoka","Inter",sans-serif}.cq-rowt small{color:var(--muted);font-size:13px}
+.cq-rowm{display:flex;align-items:center;gap:8px;margin-top:4px}.cq-rowm .cq-av{width:24px;height:24px;font-size:9.5px}
+
+/* club page */
+.cq-back{display:inline-block;color:var(--berry)!important;font-weight:600;font-size:14px;margin-bottom:-12px}
+.cq-hero{background:#fff;border:1px solid var(--line);border-radius:20px;overflow:hidden}
+.cq-banner{position:relative;height:170px}
+.cq-banner h1{position:absolute;left:24px;bottom:16px;font-size:38px;color:#fff;text-shadow:0 2px 0 var(--berry);z-index:2;max-width:70%}
+.cq-banner.has-img h1{text-shadow:0 2px 12px rgba(0,0,0,.55)}.cq-banner.has-img::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(0,0,0,.35),transparent 60%)}
+.cq-top{padding:34px 22px 14px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.cq-vibe{font:italic 500 14.5px/1.4 "Lora",Georgia,serif;color:var(--muted)}.cq-vibe.big{font-size:19px;color:var(--ink);margin:0;max-width:46ch}
 .cq-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.cq-meta b{font:700 22px "Fredoka",sans-serif}.cq-meta small{color:var(--muted);margin-left:-6px}
-.cq-three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:14px}
-.cq-box{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin-bottom:14px}.cq-three .cq-box{margin:0}
-.cq-box h3{font:600 12px "Inter",sans-serif;text-transform:uppercase;letter-spacing:.1em;color:var(--berry);margin:0 0 10px;display:flex;align-items:center;gap:8px}.cq-box h3 small{color:var(--muted);letter-spacing:0;font-weight:500;text-transform:none}
-.cq-box p{margin:0 0 8px}.cq-big{font-weight:700;font-size:17px}.cq-serif{font:500 20px/1.3 "Lora",Georgia,serif}
+.cq-tabs{display:flex;gap:4px;border-top:1px solid var(--line);padding:0 12px;overflow-x:auto;scrollbar-width:none}.cq-tabs::-webkit-scrollbar{display:none}
+.cq-tabs a{padding:12px;font-weight:600;color:var(--muted);border-bottom:3px solid transparent;white-space:nowrap;min-height:44px;box-sizing:border-box}
+.cq-tabs a[aria-selected="true"]{color:var(--berry);border-bottom-color:var(--berry)}
+.cq-two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.cq-box{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px 18px}
+.cq-box p{margin:0 0 8px}.cq-big{font-weight:700;font-size:17px}.cq-serif{font:500 22px/1.3 "Lora",Georgia,serif}
 .cq-rules{margin:0;padding-left:20px;display:grid;gap:4px}
 .cq-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.cq-chip{background:var(--cotton);color:var(--berry);border-radius:99px;padding:3px 12px;font-size:13px;font-weight:600}.cq-chip.alt{background:var(--ballet)}
 .cq-members{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:4px 16px}
 .cq-mem{display:flex;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--line)}.cq-mem .cq-av{margin:0;width:38px;height:38px;font-size:13px}.cq-mem small{color:var(--muted)}
-.cq-link{color:var(--berry)!important;font-weight:600}.cq-link:hover{text-decoration:underline!important}.cq-none{color:var(--muted)}
-.cq-modal{position:absolute;inset:0;background:rgba(26,26,26,.45);display:grid;place-items:start center;padding:24px 14px;overflow:auto;z-index:30}
+.cq-link{color:var(--berry)!important;font-weight:600}.cq-link:hover{text-decoration:underline!important}
+
+/* forms */
+.cq-modal{position:absolute;inset:0;background:rgba(26,26,26,.45);display:grid;place-items:start center;padding:24px 14px;overflow:auto;z-index:40}
 .cq-form{background:#fff;border-radius:20px;padding:22px;width:min(520px,100%);display:grid;gap:12px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
-.cq-form h2{margin:0;font:700 22px "Fredoka",sans-serif}
+.cq-form h2{margin:0;font-size:22px}
 .cq-f{display:grid;gap:4px;font-size:13px;font-weight:600;color:var(--muted)}.cq-f input,.cq-f select,.cq-f textarea{font-size:16px;font-weight:400;color:var(--ink);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;min-width:0;width:100%;box-sizing:border-box}.cq-f textarea{min-height:84px;resize:vertical}
 .cq-f2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.cq-fa{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}.cq-grow{flex:1}.cq-err{color:#B3261E;font-size:13.5px;margin:0}
-@container site (max-width:820px){ .cq-wrap{padding:16px}.cq-three{grid-template-columns:1fr}.cq-f2{grid-template-columns:1fr}.cq-bar{padding:12px 16px}.cq-banner h1{font-size:30px}.cq-top{padding:34px 16px 16px} }
+.cq-imgs{display:grid;gap:12px}.cq-imgs .cq-f input[type=file]{padding:8px;font-size:14px}.cq-imgs small{font-weight:400;color:var(--muted)}
+.cq-thumb.wide{width:auto;height:70px;border-radius:10px;background-size:cover;background-position:center;border:1px solid var(--line)}.cq-thumb.round{width:56px;height:56px;border-radius:50%;background-size:cover;background-position:center;border:1px solid var(--line)}
+.cq-ck{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:400;color:var(--ink);cursor:pointer}.cq-ck input{width:20px;height:20px}
+
+@container site (max-width:1000px){ .cq-shell{grid-template-columns:1fr} .cq-side{position:static;grid-template-columns:repeat(auto-fill,minmax(250px,1fr))} }
+@container site (max-width:700px){
+  .cq-shell{padding:12px;gap:16px}.cq-bar{padding:10px 12px;gap:10px;flex-wrap:wrap}.cq-search{order:3;flex-basis:100%;max-width:none}.cq-as{margin-left:auto}
+  .cq-two,.cq-f2{grid-template-columns:1fr}.cq-rows{grid-template-columns:1fr}.cq-sugs{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cq-banner{height:130px}.cq-banner h1{font-size:28px}.cq-top{padding:34px 14px 12px}
+}

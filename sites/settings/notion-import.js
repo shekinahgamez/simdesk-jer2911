@@ -138,7 +138,14 @@ const NotionImport = (() => {
     const lotIdByAddr = new Map(); const lotUsed = new Set();
     lotRows.forEach(r => { const m = exLot.get(r.Address.toLowerCase()); let id = m ? m.id : slug(r.Address) || "lot"; let n = 2; const base = id; while (lotUsed.has(id)) id = base + "-" + n++; lotUsed.add(id); lotIdByAddr.set(r.Address.toLowerCase(), id); });
     const lotKnown = a => lotIdByAddr.has(a.toLowerCase());
-    const lots = !T.lots ? ex.lots : lotRows.map(r => {
+    /* lots already in SimDesk keep pointing at the right home when a household got renamed in Notion (same Sims, new household name) */
+    const hhKey = h => String(h || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const newHH = new Map(sims.filter(x => x.household).map(x => [hhKey(x.household), x.household]));
+    const hhRename = new Map();
+    sims.forEach(x => { const old = (exByName.get(norm(x.name)) || {}).household; if (old && x.household && old !== x.household) hhRename.set(old, x.household); });
+    let relinked = 0;
+    const relink = h => { if (!h) return h; const n = hhRename.get(h) || newHH.get(hhKey(h)); if (n && n !== h) { relinked++; return n; } return h; };
+    const lots = !T.lots ? ex.lots.map(l => ({ ...l, household:relink(l.household) })) : lotRows.map(r => {
       const old = exLot.get(r.Address.toLowerCase()) || {};
       const parent = splitKnown(r["Parent item"], lotKnown)[0];
       return { id:lotIdByAddr.get(r.Address.toLowerCase()), address:r.Address, parent_id:parent && lotKnown(parent) ? lotIdByAddr.get(parent.toLowerCase()) : null,
@@ -189,6 +196,7 @@ const NotionImport = (() => {
     const keyOf = v => v.toLowerCase().replace(/[^a-z]/g, "").replace(/(sims|sim|s)$/, "");
     for (const k of Object.keys(PREF)) { const g = new Map(); options[k].forEach(v => g.set(keyOf(v), [...(g.get(keyOf(v)) || []), v])); [...g.values()].filter(a => a.length > 1).forEach(a => rep.flags.near.push(`${PREF[k]}: ${a.join(" / ")}`)); }
 
+    rep.relinked = relinked;
     Object.assign(rep.counts, { sims:sims.length, simsNew:sims.filter(s => !exByName.has(norm(s.name))).length, simsMatched:sims.filter(s => exByName.has(norm(s.name))).length, lots:T.lots ? lots.length : null, households:T.households ? households.length : null, clubsNew, clubsUpdated, instNew, instUpdated });
     return { payload:{ sims, relationships:rows, lots, households, organizations:orgs, options, lot_options:lotOptions }, report:rep, notionStatuses, statusMap };
   }
@@ -222,7 +230,7 @@ const NotionImport = (() => {
           ${st.files.lots ? `<tr><td>Lots</td><td>${c.lots}</td></tr>` : ""}${st.files.households ? `<tr><td>Households</td><td>${c.households}</td></tr>` : ""}
           ${st.files.clubs ? `<tr><td>Clubs</td><td>${c.clubsNew} new, ${c.clubsUpdated} updated</td></tr><tr><td>Institutions</td><td>${c.instNew} new, ${c.instUpdated} updated</td></tr>` : ""}
           ${rep.droppedOrgs.length && st.files.clubs ? `<tr><td>Removed</td><td>Not in your Notion Clubs database: ${esc(rep.droppedOrgs.join(", "))}</td></tr>` : ""}
-          ${!st.files.lots ? `<tr><td>Lots</td><td>No Lots file, so your current lots stay as they are</td></tr>` : ""}
+          ${!st.files.lots ? `<tr><td>Lots</td><td>No Lots file, so your current lots stay as they are${rep.relinked ? `. ${rep.relinked} re-linked to renamed households.` : ""}</td></tr>` : ""}
         </tbody></table>
         <label class="ni-check"><input type="checkbox" id="ni-keep" ${st.ch.keepConnections ? "checked" : ""}> Keep the connections I've already written in SimDesk (recommended; their secrets and wording only exist here)</label>
         ${r.notionStatuses.length ? `<div class="ni-map"><b>Lot status in SimDesk</b>${r.notionStatuses.map(s => `<label>${esc(s)} becomes <select data-lotstatus="${esc(s)}">${["Proposed","Permits approved","Under construction","Built"].map(o => `<option ${r.statusMap[s] === o ? "selected" : ""}>${o}</option>`).join("")}</select></label>`).join("")}</div>` : ""}
