@@ -76,5 +76,5 @@ const Cloud = (() => {
   }
 
   const ready = enabled ? start() : Promise.resolve();
-  return { ready, queuePush, enabled };
+  return { ready, queuePush, enabled, client: () => sb, userId: () => uid };
 })();
