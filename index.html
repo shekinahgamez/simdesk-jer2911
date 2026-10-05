@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SimDesk</title>
+<link rel="icon" type="image/svg+xml" href="assets/icons/favicon.svg">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-title" content="SimDesk">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#350822"><text y='.9em' font-size='90'>🗂️</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Public+Sans:wght@400;500;600;700;800&family=Source+Serif+4:wght@400;600&family=Manrope:wght@500;600;700;800&family=Outfit:wght@600;700;800&family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Cormorant+Garamond:wght@500;600&family=Libre+Franklin:wght@400;500;600;700&family=Merriweather:wght@400;700;900&family=Prata&family=Instrument+Serif&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ui.css">
+<link rel="stylesheet" href="desktop/desktop.css">
+<link rel="stylesheet" href="sites/registry/registry.css">
+<link rel="stylesheet" href="sites/blacktea/blacktea.css">
+<link rel="stylesheet" href="sites/lotline/lotline.css">
+<link rel="stylesheet" href="sites/harbor/harbor.css">
+<link rel="stylesheet" href="sites/porchlight/porchlight.css">
+<link rel="stylesheet" href="sites/calendar/calendar.css">
+<link rel="stylesheet" href="sites/plumb/plumb.css">
+<link rel="stylesheet" href="sites/permits/permits.css">
+<link rel="stylesheet" href="sites/simsta/simsta.css">
+<link rel="stylesheet" href="sites/settings/settings.css">
+</head>
+<body>
+<div class="desk" id="desk">
+  <div class="menubar"><svg class="mb-mark" viewBox="0 0 100 100" aria-hidden="true"><g transform="translate(50 50) rotate(45) scale(0.2) translate(-166 -166)" fill="currentColor"><rect x="83" y="0" width="166" height="38"/><rect x="83" y="0" width="38" height="201"/><rect x="211" y="0" width="38" height="73"/><rect x="294" y="83" width="38" height="166"/><rect x="131" y="83" width="201" height="38"/><rect x="259" y="211" width="73" height="38"/><rect x="83" y="294" width="166" height="38"/><rect x="211" y="131" width="38" height="201"/><rect x="83" y="259" width="38" height="73"/><rect x="0" y="83" width="38" height="166"/><rect x="0" y="211" width="201" height="38"/><rect x="0" y="83" width="73" height="38"/></g></svg><b class="mb-name">SimDesk</b><span id="gamedate" style="opacity:.75"></span><span class="spacer"></span><span class="mb-status"><svg viewBox="0 0 20 16" aria-hidden="true"><path d="M10 13.5l2.2-2.6a3.4 3.4 0 0 0-4.4 0zM4.3 7.8a8.6 8.6 0 0 1 11.4 0l-1.6 1.9a6.1 6.1 0 0 0-8.2 0zM1 4.3a13.6 13.6 0 0 1 18 0l-1.6 1.9a11.1 11.1 0 0 0-14.8 0z" fill="currentColor"/></svg><svg viewBox="0 0 26 13" aria-hidden="true"><rect x=".75" y=".75" width="21.5" height="11.5" rx="3" fill="none" stroke="currentColor" stroke-width="1.3" opacity=".7"/><rect x="2.6" y="2.6" width="15" height="7.8" rx="1.6" fill="currentColor"/><rect x="23.4" y="4.2" width="1.8" height="4.6" rx=".9" fill="currentColor" opacity=".7"/></svg></span><span id="clock"></span></div>
+  <div class="icons" id="icons"></div>
+  <nav class="dock" id="dock" aria-label="Dock"></nav>
+  <section class="window" id="win" hidden aria-modal="true" role="dialog" aria-labelledby="winTitle">
+    <div class="titlebar">
+      <button class="close" id="winClose" aria-label="Close window"></button>
+      <div class="address"><span class="padlock" aria-hidden="true"></span><span id="winUrl"></span></div>
+      <span class="wtitle" id="winTitle"></span>
+    </div>
+    <div class="viewport" id="site"></div>
+  </section>
+</div>
+
+<script src="data/seed.js"></script>
+<script src="data/sample-simsta.js"></script><!-- TEMPORARY sample photos: delete this line and the file to remove -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/cloud.js"></script>
+<script src="assets/data.js"></script>
+<script src="assets/ui.js"></script>
+<script src="sites/registry/registry.js"></script>
+<script src="sites/blacktea/blacktea.js"></script>
+<script src="sites/lotline/lotline.js"></script>
+<script src="sites/harbor/harbor.js"></script>
+<script src="sites/porchlight/porchlight.js"></script>
+<script src="sites/calendar/calendar.js"></script>
+<script src="sites/plumb/plumb.js"></script>
+<script src="sites/permits/permits.js"></script>
+<script src="sites/simsta/simsta.js"></script>
+<script src="sites/settings/settings.js"></script>
+<script src="desktop/desktop.js"></script>
+</body>
+</html>

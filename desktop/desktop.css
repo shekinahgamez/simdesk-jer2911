@@ -1,0 +1,100 @@
+/* The desktop: wallpaper, menu bar, app icons, and the window each site opens in.
+   Neutral on purpose so every site keeps its own look. */
+:root{
+  --wall:#141218; --wall2:#231d2b; --menu:rgba(20,18,24,.72); --menutext:#EDE8F1;
+  --win:#1E1B22; --winline:#34303B; --addr:#2A2630; --addrtext:#B9B2C2; --addrhost:#F2EEF5;
+  --label:#F2EEF5;
+  box-sizing:border-box;
+}
+*,*::before,*::after{box-sizing:inherit}
+html,body{height:100%;margin:0}
+body{font:14px/1.45 "Inter",system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--menutext);background:var(--wall);overflow:hidden}
+:focus-visible{outline:2px solid #9DB4FF;outline-offset:2px}
+
+.desk{position:fixed;inset:0;
+  background:
+    radial-gradient(1200px 700px at 78% 18%, #3a2d46 0%, transparent 60%),
+    radial-gradient(900px 600px at 10% 90%, #1f2a3a 0%, transparent 60%),
+    linear-gradient(160deg,var(--wall2),var(--wall));
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.menubar{position:absolute;top:env(safe-area-inset-top,0px);left:0;right:0;height:30px;display:flex;align-items:center;gap:16px;padding:0 16px;background:var(--menu);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);font-size:13px;z-index:5}
+.menubar b{font-weight:600;letter-spacing:.04em}
+.menubar .spacer{flex:1}
+
+/* icons fill top to bottom, then the next column, so the colors read as one flow */
+.icons{position:absolute;top:calc(30px + env(safe-area-inset-top,0px) + 28px);left:28px;display:grid;grid-auto-flow:column;grid-template-rows:repeat(4,108px);grid-auto-columns:96px;gap:10px 14px}
+.app{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:8px;background:none;border:none;padding:6px 4px;border-radius:10px;cursor:pointer;color:var(--label);text-decoration:none}
+.app:hover,.app:focus-visible{background:rgba(255,255,255,.08)}
+.app .ic{width:64px;height:64px;border-radius:15px;display:grid;place-items:center;box-shadow:0 6px 16px rgba(0,0,0,.35);overflow:hidden}
+.app .ic svg,.app .ic img{width:100%;height:100%;display:block;object-fit:cover}
+.app .nm{font-size:12.5px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+
+.window{position:absolute;top:calc(30px + env(safe-area-inset-top,0px) + 18px);left:4vw;right:4vw;bottom:calc(18px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;background:var(--win);border:1px solid var(--winline);border-radius:12px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.55);z-index:10;transform-origin:var(--ox,20%) var(--oy,20%)}
+.window[hidden]{display:none}
+.window.opening{animation:winOpen .22s cubic-bezier(.2,.8,.2,1)}
+@keyframes winOpen{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:none}}
+.titlebar{flex:none;height:42px;display:flex;align-items:center;gap:14px;padding:0 14px;border-bottom:1px solid var(--winline)}
+.close{width:13px;height:13px;border-radius:50%;border:none;background:#E5564B;cursor:pointer;padding:0;flex:none}
+.close:hover{box-shadow:inset 0 0 0 4px rgba(0,0,0,.25)}
+.address{flex:1;max-width:560px;margin:0 auto;height:28px;display:flex;align-items:center;justify-content:center;gap:8px;background:var(--addr);border-radius:7px;color:var(--addrtext);font-size:12.5px;white-space:nowrap;overflow:hidden;padding:0 12px}
+.address b{color:var(--addrhost);font-weight:500}
+.padlock{width:9px;height:10px;border:1.5px solid currentColor;border-radius:2px;position:relative;flex:none}
+.padlock::before{content:"";position:absolute;left:1px;right:1px;top:-5px;height:5px;border:1.5px solid currentColor;border-bottom:none;border-radius:4px 4px 0 0}
+.wtitle{width:90px;text-align:right;font-size:12px;color:var(--addrtext);flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.viewport{flex:1;overflow:auto;position:relative;background:#fff;-webkit-overflow-scrolling:touch}
+
+/* placeholder sites: each gets its own colors from its row in desktop.js */
+.ph{min-height:100%;display:grid;place-items:center;padding:40px 24px;background:var(--ph-bg);color:var(--ph-ink);font-family:var(--ph-font)}
+.ph .box{max-width:520px;text-align:center}
+.ph h1{margin:0 0 10px;font-size:48px;line-height:1;letter-spacing:-.01em;color:var(--ph-accent)}
+.ph p{margin:0 0 6px;opacity:.8}
+.ph small{display:block;margin-top:18px;opacity:.6}
+
+@media (max-width:720px){
+  .icons{left:0;right:0;grid-auto-flow:row;grid-template-rows:none;grid-auto-rows:auto;grid-template-columns:repeat(4,1fr);padding:0 10px;gap:8px 4px}
+  .app .ic{width:58px;height:58px;border-radius:14px}
+  .window{inset:calc(30px + env(safe-area-inset-top,0px)) 0 0 0;border-radius:0;border:none}
+  .wtitle{display:none}
+}
+@media (prefers-reduced-motion:reduce){.window.opening{animation:none}}
+.viewport{display:flex;flex-direction:column;container:site / inline-size}
+.viewport>*{flex:1 0 auto}
+
+@media (max-width:1400px){ .window{left:16px;right:16px} }
+
+/* phones: full-width window (the 1400px rule above was re-adding side gaps) and a one-line menubar */
+@media (max-width:720px){ .window{left:0;right:0} }
+.menubar>*{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+@media (max-width:520px){ #clock{display:none} }
+
+/* custom wallpaper from Settings: covers the default gradient */
+.desk.has-wall{background-size:cover;background-position:center;background-repeat:no-repeat}
+/* faux dock: frosted shelf along the bottom; windows stop above it */
+.dock{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(10px + env(safe-area-inset-bottom,0px));display:flex;gap:10px;padding:8px 10px;background:rgba(30,26,36,.45);border:1px solid rgba(255,255,255,.14);border-radius:22px;backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);z-index:20}
+.dk{position:relative;display:block;width:56px;height:56px;border-radius:14px;transition:transform .15s ease}
+.dk .ic{display:block;width:100%;height:100%;border-radius:14px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,.35)}
+.dk .ic svg,.dk .ic img{width:100%;height:100%;display:block;object-fit:cover}
+.dk:hover{transform:translateY(-6px) scale(1.08)}
+.dk[aria-current="true"]::after{content:"";position:absolute;left:50%;bottom:-6px;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:rgba(255,255,255,.85)}
+.window{bottom:calc(92px + env(safe-area-inset-bottom,0px))}
+@media (max-width:720px){
+  .dock{left:8px;right:8px;transform:none;justify-content:space-around;gap:4px;bottom:calc(6px + env(safe-area-inset-bottom,0px));border-radius:20px}
+  .dk{width:50px;height:50px}
+  .window{bottom:calc(74px + env(safe-area-inset-bottom,0px))}
+}
+@media (prefers-reduced-motion:reduce){ .dk{transition:none} }
+
+/* the app name already shows in the address bar, so the title-bar label is for screen readers only; padding keeps the address centered */
+.wtitle{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip:rect(0 0 0 0);white-space:nowrap}
+.titlebar{padding-right:41px}
+
+/* SimDesk brand (Gemini board): wine frosted menu bar with the mark + Prata wordmark, lighter champagne-glass dock */
+.menubar{background:rgba(53,8,34,.55);border-bottom:1px solid rgba(243,236,224,.10);gap:12px}
+.mb-mark{width:17px;height:17px;flex:none;color:#E7C3CC;display:block}
+.menubar .mb-name{font:400 15px/1 "Prata",Georgia,serif;letter-spacing:.01em;color:#F3ECE0;margin-right:6px}
+.mb-status{display:flex;align-items:center;gap:10px;opacity:.85}
+.mb-status svg{height:12px;width:auto;display:block}
+.mb-status svg:first-child{height:12px}
+.dock{background:rgba(243,236,224,.16);border:1px solid rgba(255,255,255,.26);box-shadow:0 10px 30px rgba(20,4,12,.35), inset 0 1px 0 rgba(255,255,255,.18);border-radius:24px}
+.dk[aria-current="true"]::after{background:#E7C3CC}
+@media (max-width:520px){ .mb-status{display:none} }
