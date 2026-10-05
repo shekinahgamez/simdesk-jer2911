@@ -14,3 +14,15 @@
 .st-note{font-size:12.5px;color:var(--muted);margin:12px 0 0}
 .st-err{color:#C62828;font-size:13.5px;margin:10px 0 0}
 .st-ok{color:#1E7D32;font-size:13.5px;margin:10px 0 0}
+
+/* Notion import card */
+#st-import h2{font-size:16px;font-weight:600;margin:0 0 12px}
+.ni-files{list-style:none;margin:14px 0 0;padding:0;font-size:14px}
+.ni-files li{padding:6px 0;border-bottom:1px solid var(--line)}.ni-files li span{color:var(--muted);font-size:12.5px;margin-left:6px}
+.ni-preview{margin-top:16px;border-top:1px solid var(--line);padding-top:12px}.ni-preview h3{font-size:15px;margin:0 0 8px}
+.ni-table{width:100%;border-collapse:collapse;font-size:14px;margin-bottom:10px}.ni-table td{padding:6px 0;border-bottom:1px solid var(--line);vertical-align:top}.ni-table td:first-child{width:96px;color:var(--muted)}
+.ni-check{display:flex;align-items:flex-start;gap:8px;font-size:14px;margin:10px 0;cursor:pointer}.ni-check input{width:20px;height:20px;flex:none;margin-top:1px}.ni-check em{color:var(--muted);font-style:normal;font-size:12.5px}
+.ni-map{margin:12px 0;font-size:14px;display:grid;gap:8px}.ni-map label{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.ni-map select{font-size:16px;padding:8px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.ni-flag{margin:8px 0;font-size:14px}.ni-flag summary{cursor:pointer;min-height:36px;display:flex;align-items:center;gap:8px}.ni-flag ul{margin:4px 0 0 18px;padding:0;color:var(--muted)}
+.ni-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.ni-go{background:#B3261E;border-color:#B3261E;color:#fff}
+.ni-done{margin-top:16px;padding:12px 14px;background:#EEF7EF;border-radius:10px;font-size:14px}

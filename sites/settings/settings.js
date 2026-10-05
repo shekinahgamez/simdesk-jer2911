@@ -14,8 +14,10 @@ const Settings = (() => {
         ${st.err ? `<p class="st-err">${st.err}</p>` : ""}${st.msg ? `<p class="st-ok">${st.msg}</p>` : ""}
         ${w ? `<button class="st-btn" data-st="default">Use the default background</button>` : ""}
         <p class="st-note">Big photos are shrunk to fit. Saved to this browser.</p>
-      </section></div></div>`;
+      </section>
+      <section class="st-card" id="st-import" style="margin-top:16px"></section></div></div>`;
     st.msg = st.err = null;
+    NotionImport.mount(root.querySelector("#st-import"), data);
   }
 
   async function useFile(file){

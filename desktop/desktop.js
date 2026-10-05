@@ -12,6 +12,10 @@ const APPS = [
     icon:`<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#1C1F24"/><rect x="16" y="14" width="32" height="32" fill="none" stroke="#A8834A" stroke-width="2.4"/><path d="M26 20v20M38 20v20M26 30h12" stroke="#A8834A" stroke-width="2.4"/><path d="M14 52c6-4 12-4 18 0s12 4 18 0" fill="none" stroke="#A8834A" stroke-width="2"/></svg>` },
   { key:"porchlight", name:"Porchlight", host:"porchlightcu.com", built:true,
     icon:`<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#0F4D46"/><g transform="translate(11 10) scale(0.66)"><path d="M5 25L32 7L59 25V31L32 14L5 31Z" fill="#F7F5EE"/><rect x="13" y="28" width="9" height="21" fill="#F7F5EE"/><rect x="42" y="28" width="9" height="21" fill="#F7F5EE"/><rect x="24" y="25" width="16" height="3.5" fill="#F7F5EE"/><rect x="26.5" y="31" width="11" height="18" fill="#F4B942"/><rect x="9" y="51" width="46" height="3.5" fill="#F7F5EE"/><rect x="5" y="56.5" width="54" height="3.5" fill="#F7F5EE"/></g></svg>` },
+  { key:"huddl", name:"Huddl", host:"huddl.co", built:true,
+    icon:`<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#4338CA"/><g fill="#fff"><rect x="16" y="14" width="10" height="36" rx="3"/><rect x="38" y="14" width="10" height="36" rx="3"/><rect x="22" y="27" width="20" height="10" rx="3"/></g></svg>` },
+  { key:"cliq", name:"Cliq", host:"cliq.club", built:true,
+    icon:`<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#F6B6CC"/><g fill="#fff"><rect x="14" y="14" width="36" height="13" rx="5"/><rect x="14" y="14" width="13" height="36" rx="5"/><rect x="14" y="37" width="36" height="13" rx="5"/></g></svg>` },
   { key:"blacktea", name:"Black Tea", host:"blackteamag.com", built:true,
     icon:`<img src="sites/blacktea/img/icon.png" alt="" width="64" height="64">` },
   { key:"lotline", name:"Lotline", host:"lotline.com", built:true,
@@ -99,6 +103,14 @@ async function route(){
     const data = await GFB.getAll();
     Settings.render(site, data);
     setAddress("Settings", ", Desktop", true);
+  } else if (a.key === "huddl"){
+    const data = await GFB.getAll();
+    Huddl.render(site, data, parts.slice(1));
+    setAddress(a.host, Huddl.address(parts.slice(1)));
+  } else if (a.key === "cliq"){
+    const data = await GFB.getAll();
+    Cliq.render(site, data, parts.slice(1));
+    setAddress(a.host, Cliq.address(parts.slice(1)));
   } else if (a.key === "porchlight"){
     const data = await GFB.getAll();
     Porchlight.render(site, data, parts.slice(1));

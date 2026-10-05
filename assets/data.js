@@ -13,19 +13,27 @@ const GFB = (() => {
 
   function load() {
     const seed = JSON.parse(JSON.stringify(window.GFB_SEED));
-    const edits = readEdits();
+    let edits = readEdits();
+    /* a new seed "epoch" starts everyone from the clean seed (old edits and photos are dropped); the wallpaper is kept */
+    if (seed.epoch && edits.epoch !== seed.epoch) {
+      edits = { epoch: seed.epoch, ...(edits.settings ? { settings: edits.settings } : {}) };
+      writeEdits(edits);
+    }
+    if (Array.isArray(edits.all_sims)) seed.sims = edits.all_sims;
     if (Array.isArray(edits.added_sims)) seed.sims.push(...edits.added_sims);
     for (const [id, patch] of Object.entries(edits.sims || {})) {
       const s = seed.sims.find(x => x.id === id);
       if (s) Object.assign(s, patch);
     }
-    for (const t of ["relationships","stories","lots","accounts","transactions","loans","todos","projects","posts"]) if (Array.isArray(edits[t])) seed[t] = edits[t];
+    for (const t of ["relationships","stories","lots","accounts","transactions","loans","todos","projects","posts","organizations","households","lots_pending"]) if (Array.isArray(edits[t])) seed[t] = edits[t];
     if (edits.options) Object.assign(seed.options, edits.options);
+    if (edits.lot_options) seed.lot_options = { ...seed.lot_options, ...edits.lot_options };
     seed.settings = { ...(seed.settings || {}), ...(edits.settings || {}) };
     if (edits.calendar) seed.calendar = { ...seed.calendar, ...edits.calendar };
     /* events and logs are a title plus one free-text details field */
     seed.calendar.events = seed.calendar.events.map(e => { if (e.details !== undefined) return e; const { story, game, ...rest } = e; return { ...rest, details: [story, game].filter(Boolean).join("\n\n") }; });
     seed.sims.forEach(x => { x.simsta = normHandle(x.simsta); });
+    seed.organizations = seed.organizations || []; seed.households = seed.households || [];
     /* two banks share accounts and loans; anything older belongs to Harbor Trust */
     seed.accounts.forEach(a => { a.bank = a.bank || "harbor"; });
     seed.loans.forEach(l => { l.bank = l.bank || "harbor"; });
@@ -58,6 +66,35 @@ const GFB = (() => {
     if (!writeEdits(edits)) throw new Error("This browser's storage is full.");
     return sim;
   }
+
+  /* Organizations: institutions (Huddl) and clubs (Cliq) share one table. */
+  const saveOrg = o => saveRow("organizations", o, "org-");
+  const deleteOrg = id => deleteRow("organizations", id);
+
+  /* Notion import: replaces the Sims, connections, lots, households, and organizations tables in one save.
+     The edits from just before are kept in a separate key so the import can be undone. */
+  const UNDO = "gfb-import-undo";
+  async function importReplace(p) {
+    if (!db) load();
+    const before = readEdits();
+    const e = JSON.parse(JSON.stringify(before));
+    e.all_sims = p.sims; delete e.sims; delete e.added_sims;
+    e.relationships = p.relationships; e.lots = p.lots; e.households = p.households; e.organizations = p.organizations; e.lots_pending = [];
+    e.options = { ...(e.options || {}), ...(p.options || {}) };
+    if (p.lot_options) e.lot_options = p.lot_options;
+    try { localStorage.setItem(UNDO, JSON.stringify(before)); } catch {}
+    if (!writeEdits(e)) throw new Error("That import is too big for this browser's storage. Nothing was changed.");
+    db = null; load();
+    return db;
+  }
+  async function undoImport() {
+    const raw = localStorage.getItem(UNDO);
+    if (!raw) throw new Error("There's no import to undo.");
+    writeEdits(JSON.parse(raw)); localStorage.removeItem(UNDO);
+    db = null; load();
+  }
+  const canUndoImport = () => !!localStorage.getItem(UNDO);
+  const exportEdits = () => readEdits();
 
   /* Desktop settings (wallpaper). Later: a settings row in Supabase. */
   async function saveSetting(key, value) {
@@ -184,5 +221,5 @@ const GFB = (() => {
   function resetLocal() { try { localStorage.removeItem(KEY); } catch {} if (typeof Cloud !== "undefined") Cloud.queuePush(); db = null; load(); }
   function hasLocalEdits() { const e = readEdits(); return Object.keys(e.sims || {}).length > 0 || ["stories","lots","accounts","transactions","loans","todos","projects","posts"].some(t => Array.isArray(e[t])) || !!e.calendar; }
 
-  return { normHandle, getAll, saveSim, addSim, saveOptions, saveSetting, saveRel, deleteRel, saveStory, deleteStory, saveLot, deleteLot, saveAccount, saveLoan, savePost, deletePost, saveTodo, deleteTodo, saveProject, deleteProject, deleteLoan, postTransaction, saveEvent, deleteEvent, saveLog, deleteLog, setToday, uploadImage, resetLocal, hasLocalEdits };
+  return { normHandle, saveOrg, deleteOrg, importReplace, undoImport, canUndoImport, exportEdits, getAll, saveSim, addSim, saveOptions, saveSetting, saveRel, deleteRel, saveStory, deleteStory, saveLot, deleteLot, saveAccount, saveLoan, savePost, deletePost, saveTodo, deleteTodo, saveProject, deleteProject, deleteLoan, postTransaction, saveEvent, deleteEvent, saveLog, deleteLog, setToday, uploadImage, resetLocal, hasLocalEdits };
 })();

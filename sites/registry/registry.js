@@ -152,7 +152,9 @@ const Registry = (() => {
       <p class="r-help">Anything new you type gets added to the option list, so it shows up for every Sim next time.</p>`);
     const listsEdit = form("lists", `<p class="r-help" style="margin-top:0">One option per line. Paste in a whole list when you add a mod. Options a Sim already has stay on the list until they're removed from that Sim.</p>
       <div class="r-grid2">${LIST_KEYS.map(([k,n]) => `<label><span class="r-lbl">${n} <em>${menu(k).length}</em></span><textarea name="${k}" class="r-listbox">${esc(menu(k).join("\n"))}</textarea></label>`).join("")}</div>`);
-    return sec("behavior", "Behavioral profile", "", st.edit === "behavior" ? behaviorEdit : behaviorView)
+    const mine = (data.organizations || []).filter(o => (o.members || []).some(m => (m.sim === s.id) || (!m.sim && m.name && stripNick(m.name).toLowerCase() === stripNick(s.name).toLowerCase())));
+    const aff = mine.length ? sec("orgs", "Affiliations", "", `<div class="r-callist">${mine.map(o => { const m = o.members.find(x => x.sim === s.id || stripNick(x.name || "").toLowerCase() === stripNick(s.name).toLowerCase()); return `<a href="#/${o.type === "Club" ? "cliq/club/" : "huddl/org/"}${o.id}"><span>${o.type === "Club" ? "Member of" : "Works at"}</span>${esc(o.name)}${m && m.role ? ", " + esc(m.role) : ""}</a>`; }).join("")}</div>`, false) : "";
+    return aff + sec("behavior", "Behavioral profile", "", st.edit === "behavior" ? behaviorEdit : behaviorView)
          + sec("prefs", "Preferences", "", st.edit === "prefs" ? prefsEdit : prefsView)
          + (st.edit === "lists" ? sec("lists", "Option lists", "Shared by every Sim", listsEdit) : `<p class="r-optlink"><button type="button" data-edit="lists">Manage option lists</button> for traits, aspirations, likes, dislikes, and turn ons/offs.</p>`);
   }
@@ -290,7 +292,7 @@ const Registry = (() => {
         <svg class="r-seal" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="22" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="24" cy="24" r="17" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="24" cy="24" r="11" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="2 2"/><path d="M24 12 L30 24 L24 36 L18 24 Z" fill="currentColor"/></svg>
         <div><p class="org">Simerican Office of Resident Affairs</p><h1>Resident Registry</h1></div>
         <div class="spacer"></div>
-        <div class="r-count">${data.sims.length} of ~${data.total_cast} residents processed<br>Records current to ${new Date(data.updated + "T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
+        <div class="r-count">${data.sims.length} residents on file<br>Records current to ${new Date(data.updated + "T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
         <div class="r-access" role="group" aria-label="Access level"><button data-act="public" aria-pressed="${!st.clear}">Public</button><button class="restricted" data-act="restricted" aria-pressed="${st.clear}">Restricted</button></div>
       </div>
       <div class="r-mpick"><label class="r-lbl" for="r-pick">Resident record</label><div class="r-mrow"><select id="r-pick">${data.sims.map(x => `<option value="${x.id}" ${x.id===curId?"selected":""}>${esc(x.name)}</option>`).join("")}</select><button class="r-btn ghost" data-act="new">+ New</button></div>${st.creating ? newForm() : ""}</div>
