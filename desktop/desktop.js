@@ -46,9 +46,12 @@ function layout(){
 window.SimDeskLayout = { layout, apps: () => APPS.map(a => ({ key:a.key, name:a.name, icon:typeof a.icon === "function" ? a.icon() : a.icon })) };
 window.addEventListener("gfb:layout", () => GFB.getAll().then(d => { SAVED_LAYOUT = (d.settings || {}).app_layout || null; drawIcons(); }));
 const iconHTML = a => typeof a.icon === "function" ? a.icon() : a.icon;
+const HOME_MARK = `<svg viewBox="0 0 100 100" aria-hidden="true"><g transform="translate(50 50) rotate(45) scale(0.13) translate(-166 -166)" fill="currentColor"><rect x="83" y="0" width="166" height="38"/><rect x="83" y="0" width="38" height="201"/><rect x="211" y="0" width="38" height="73"/><rect x="294" y="83" width="38" height="166"/><rect x="131" y="83" width="201" height="38"/><rect x="259" y="211" width="73" height="38"/><rect x="83" y="294" width="166" height="38"/><rect x="211" y="131" width="38" height="201"/><rect x="83" y="259" width="38" height="73"/><rect x="0" y="83" width="38" height="166"/><rect x="0" y="211" width="201" height="38"/><rect x="0" y="83" width="73" height="38"/></g></svg>`;
 function drawDock(){
   const open = location.hash.replace(/^#\/?/, "").split("/")[0];
-  document.getElementById("dock").innerHTML = layout().dock.map(k => APPS.find(a => a.key === k)).filter(Boolean).map(a =>
+  /* Home sits first in the dock (closes any open window), then a divider, then your dock apps */
+  const home = `<a class="dk dk-home" href="#/" aria-label="Home" title="Home" ${!open ? 'aria-current="true"' : ""}><span class="ic">${HOME_MARK}</span></a><span class="dk-sep" aria-hidden="true"></span>`;
+  document.getElementById("dock").innerHTML = home + layout().dock.map(k => APPS.find(a => a.key === k)).filter(Boolean).map(a =>
     `<a class="dk" href="#/${a.key}" data-app="${a.key}" aria-label="${a.name}" title="${a.name}" ${a.key === open ? 'aria-current="true"' : ""}><span class="ic">${iconHTML(a)}</span></a>`).join("");
 }
 function applyWallpaper(){
