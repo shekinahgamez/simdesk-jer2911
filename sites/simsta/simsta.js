@@ -23,7 +23,7 @@ const Simsta = (() => {
   function accts(){
     const out = [];
     for (const s of data.sims){
-      if (s.simsta) out.push({ key:s.id, sim:s, handle:GFB.normHandle(s.simsta), name:s.simsta_name || clean(s.name), bio:s.simsta_bio, followers:s.simsta_followers, following:s.simsta_following, avatar:s.simsta_avatar || s.portrait || null, alt:false });
+      if (s.simsta) out.push({ key:s.id, sim:s, handle:GFB.normHandle(s.simsta), name:s.simsta_name || clean(s.name), bio:s.simsta_bio, followers:s.simsta_followers, following:s.simsta_following, avatar:s.simsta_avatar || null, alt:false });
       for (const a of s.simsta_alts || []) out.push({ key:s.id + "~" + a.id, sim:s, altId:a.id, handle:GFB.normHandle(a.handle), name:a.name || clean(s.name), bio:a.bio, followers:a.followers, following:a.following, avatar:a.avatar, alt:true });
     }
     return out.sort((a,b) => a.handle.localeCompare(b.handle));

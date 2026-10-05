@@ -69,7 +69,7 @@ const NotionImport = (() => {
     const renameOf = n => LOCKED[norm(n)] || n;
 
     /* --- Sims --- */
-    const simRows = (T.sims || []).filter(r => r.Name);
+    const simRows = T.sims ? T.sims.filter(r => r.Name) : ex.sims.map(s => ({ Name:s.name, __keep:s }));
     const exByName = new Map(ex.sims.map(s => [norm(s.name), s]));
     const E = simRows.map(r => { const name = renameOf(r.Name); if (name !== r.Name) rep.renames.push(r.Name + " to " + name); return { r, name }; });
     const used = new Set();
@@ -87,8 +87,8 @@ const NotionImport = (() => {
 
     const optVals = { traits:[], aspiration:[], likes:[], dislikes:[], turn_ons:[], turn_offs:[] };
     const sims = E.map(e => {
+      if (e.r.__keep) return e.r.__keep;
       const r = e.r, traits = list(r.Traits);
-      if (traits.length > 5) rep.flags.tooManyTraits.push(`${e.name} has ${traits.length} traits`);
       if (r.Status && ex.options.status && !ex.options.status.includes(r.Status)) rep.flags.badStatus.push(`${e.name}: status "${r.Status}"`);
       const s = { id:e.id, file_no:e.file_no, name:e.name, simsta:r["Simsta Handle"] || null, age:num(r["Age (#)"]), life_stage:r.Age || null, gender:r.Gender || null,
         career:r.Career || "", residence:dropState(r.Location), household:cleanRel(r.Household) || null, status:r.Status || null,
@@ -111,7 +111,7 @@ const NotionImport = (() => {
     const SPEC = [["Spouse","rom","Spouse","Spouse"],["Dating","rom","Dating","Dating"],["Ex","ex","Ex","Ex"],["Parents","fam","Parent","Child"],["Children","fam","Child","Parent"],["Siblings","fam","Sibling","Sibling"]];
     const rows = []; const byKey = new Map(); let rn = 0;
     const keptIds = new Set(sims.map(s => s.id));
-    if (keepConn) ex.relationships.forEach(r => { if (keptIds.has(r.from_sim) && (!r.to_sim || keptIds.has(r.to_sim))) { rows.push(r); if (r.to_sim) byKey.set(r.from_sim + ">" + r.to_sim, r); } });
+    if (keepConn || !T.sims) ex.relationships.forEach(r => { if (keptIds.has(r.from_sim) && (!r.to_sim || keptIds.has(r.to_sim))) { rows.push(r); if (r.to_sim) byKey.set(r.from_sim + ">" + r.to_sim, r); } });
     /* connections to someone who used to be "file pending" now point at the filed Sim, and get a mirror if they lack one */
     rows.slice().forEach(r => {
       if (!r.to_sim && r.to_name) { const id = findId(r.to_name); if (id) { r.to_sim = id; r.to_name = null; byKey.set(r.from_sim + ">" + id, r);
@@ -238,7 +238,7 @@ const NotionImport = (() => {
         ${flagBlock("Possible duplicates in your lists (imported as written)", f.near)}${flagBlock("Shared first or last names (families are fine; check the rest)", f.collisions)}${flagBlock("More than five traits", f.tooManyTraits)}${flagBlock("Status SimDesk doesn't have", f.badStatus)}${flagBlock("Connections that disagree (skipped)", f.conflicts)}
         ${rep.renames.length ? `<p class="st-note">Locked renames applied: ${esc(rep.renames.join("; "))}</p>` : ""}
         ${Object.keys(rep.skipped).length ? `<p class="st-note">Not imported (no place for them yet): ${Object.entries(rep.skipped).map(([k, v]) => `${k} (${v})`).join(", ")}</p>` : ""}
-        <p class="st-note"><b>This replaces</b> the Sims, connections, clubs and institutions${st.files.lots ? ", lots" : ""}${st.files.households ? ", households" : ""} in SimDesk with what's above. Photos and the placeholder content are gone.</p>
+        <p class="st-note"><b>This replaces</b> ${[st.files.sims && "the Sims and connections", st.files.clubs && "the clubs and institutions", st.files.lots && "the lots", st.files.households && "the households"].filter(Boolean).join(", ")} in SimDesk with what's above. Everything else stays as it is. Photos and the placeholder content are gone.</p>
         <div class="ni-actions"><button class="st-btn" data-ni="backup">Download a backup first</button><button class="st-btn ni-go" data-ni="go">Replace my data</button></div></div>` : ""}
       ${st.done ? `<div class="ni-done"><b>Done.</b> ${esc(st.done)}<div class="ni-actions"><button class="st-btn" data-ni="undo">Undo this import</button></div></div>` : (GFB.canUndoImport() && !r ? `<div class="ni-actions"><button class="st-btn" data-ni="undo">Undo the last import</button></div>` : "")}`;
     st.err = null;
@@ -262,7 +262,7 @@ const NotionImport = (() => {
       const r = st.result;
       await GFB.importReplace(r.payload);
       const c = r.report.counts;
-      st.done = `${c.sims || 0} Sims, ${c.connectionsAdded + c.connectionsKept} connections, ${(c.clubsNew || 0) + (c.clubsUpdated || 0)} clubs, ${(c.instNew || 0) + (c.instUpdated || 0)} institutions.`;
+      st.done = [st.files.sims && `${c.sims} Sims and ${c.connectionsAdded + c.connectionsKept} connections`, st.files.clubs && `${(c.clubsNew || 0) + (c.clubsUpdated || 0)} clubs and ${(c.instNew || 0) + (c.instUpdated || 0)} institutions`, st.files.lots && `${c.lots} lots`, st.files.households && `${c.households} households`].filter(Boolean).join(", ") + " imported.";
       st.files = {}; st.result = null; data = await GFB.getAll();
     } catch (err) { st.err = err.message; }
     draw();

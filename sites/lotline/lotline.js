@@ -63,7 +63,7 @@ const Lotline = (() => {
   }
 
   /* worlds come from the lots themselves (plus a lot_options.world list if one gets added); type a new one on any lot */
-  const worlds = () => [...new Set([...(data.lot_options.world || []), ...data.lots.map(l => l.world)].filter(Boolean))].sort();
+  const worlds = () => [...new Set([...(data.lot_options.world || []), ...GFB.listItems("worlds"), ...data.lots.map(l => l.world)].filter(Boolean))].sort();
   function listHTML(){
     const o = data.lot_options, v = visible();
     const sel = (id, label, any, opts, val) => `<label class="ll-fsel"><span>${label}</span><select id="${id}"><option value="All">${any}</option>${opts.map(t => `<option ${t===val?"selected":""}>${esc(t)}</option>`).join("")}</select></label>`;

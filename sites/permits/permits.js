@@ -44,7 +44,7 @@ const Permits = (() => {
     }
     for (const s of data.sims){
       const g = [];
-      const open = 5 - (s.traits || []).length; if (open > 0) g.push(`${open} trait${open > 1 ? "s" : ""}`);
+      const open = GFB.traitMin(s) - (s.traits || []).length; if (open > 0) g.push(`${open} trait${open > 1 ? "s" : ""}`);
       if (!s.aspiration) g.push("aspiration"); if (!s.love_language) g.push("love language");
       if (!s.attachment) g.push("attachment style"); if (!s.household) g.push("household");
       if (g.length) items.push({ key:"sim-file:" + s.id, kind:"RES", title:`${clean(s.name)}`, meta:"Incomplete: " + g.join(", "), link:"#/registry/" + s.id });

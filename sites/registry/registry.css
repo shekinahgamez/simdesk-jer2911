@@ -341,3 +341,27 @@ button.r-rel-main:hover .who{color:var(--link);text-decoration:underline}
 .r-notes h4.r-nh{font-size:15px;margin:18px 0 4px;color:var(--navy)}.r-notes h4.r-nh:first-child{margin-top:0}
 :root[data-theme="dark"] .r-notes h4.r-nh{color:var(--ink)}
 .r-notes ul{margin:4px 0 12px;padding-left:22px}.r-notes li{margin:2px 0}
+
+/* "With photos only" sits in the filter row, set apart from the location chips */
+.r-photochip{margin-left:8px}
+
+/* gallery filter panel: checkboxes for status, worlds, and photo */
+.r-galbar{position:relative}
+.r-fwrap{position:relative;display:inline-block;margin-left:6px}
+.r-fbtn::after{content:"";display:inline-block;margin-left:7px;width:6px;height:6px;border-right:1.6px solid currentColor;border-bottom:1.6px solid currentColor;transform:translateY(-2px) rotate(45deg)}
+.r-fbtn[aria-expanded="true"]::after{transform:translateY(1px) rotate(-135deg)}
+.r-fpanel{position:absolute;top:calc(100% + 8px);left:0;z-index:30;width:min(320px,86vw);max-height:min(70vh,520px);overflow:auto;background:var(--panel);color:var(--ink);border:1px solid var(--rule);box-shadow:0 14px 36px rgba(15,35,64,.22);padding:6px 16px 14px;text-align:left}
+.r-fgrp{padding:10px 0 4px;border-bottom:1px solid var(--rule)}
+.r-fgrp:last-of-type{border-bottom:none}
+.r-fgrp h4{margin:0 0 4px;font:700 11px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.r-fchk{display:flex;align-items:center;gap:10px;min-height:38px;font-size:14.5px;cursor:pointer}
+.r-fchk input{width:18px;height:18px;margin:0;accent-color:var(--navy);flex:none}
+.r-fdone{margin-top:10px;width:100%;min-height:40px;border:1px solid var(--navy);background:var(--navy);color:#fff;font:600 14px var(--sans);border-radius:2px;cursor:pointer}
+@media (max-width:720px){
+  .r-fwrap{position:static}
+  .r-fpanel{left:12px;right:12px;width:auto;max-height:60vh}
+}
+.r-optlink a{color:var(--link);font-weight:600}
+
+.r-addtrait{margin-top:8px}
+

@@ -119,6 +119,72 @@ const GFB = (() => {
     return list;
   }
 
+
+  /* Shared lists (Settings > Lists). Likes and dislikes share one list; so do turn ons and turn offs.
+     A list is whatever is saved in options plus anything a Sim or lot already uses, so nothing in use can vanish. */
+  const LISTS = [
+    { key:"worlds",     label:"Worlds",              optKeys:["worlds"],               simFields:["residence"],             lotFields:["world"] },
+    { key:"traits",     label:"Traits",              optKeys:["traits"],               simFields:["traits"],                lotFields:[] },
+    { key:"aspiration", label:"Aspirations",         optKeys:["aspiration"],           simFields:["aspiration"],            lotFields:[] },
+    { key:"likes",      label:"Likes & dislikes",    optKeys:["likes","dislikes"],     simFields:["likes","dislikes"],      lotFields:[] },
+    { key:"turn_ons",   label:"Turn ons & offs",     optKeys:["turn_ons","turn_offs"], simFields:["turn_ons","turn_offs"],  lotFields:[] },
+  ];
+  /* how many traits a file needs before it stops showing as a gap; a Sim can have as many as you like */
+  const TRAIT_MIN = { Infant:2, Toddler:2, Child:3, Teen:4 };
+  const traitMin = s => TRAIT_MIN[(s || {}).life_stage] ?? 5;
+  const lkey = x => String(x == null ? "" : x).trim().toLowerCase();
+  const listDef = k => LISTS.find(d => d.key === k) || LISTS.find(d => d.optKeys.includes(k));
+  const simVals = (s, f) => Array.isArray(s[f]) ? s[f] : (s[f] ? [s[f]] : []);
+  function listItems(key) {
+    if (!db) load();
+    const d = listDef(key); if (!d) return db.options[key] || [];
+    const vals = [];
+    d.optKeys.forEach(k => vals.push(...(db.options[k] || [])));
+    d.simFields.forEach(f => db.sims.forEach(s => vals.push(...simVals(s, f))));
+    d.lotFields.forEach(f => (db.lots || []).forEach(l => { if (l[f]) vals.push(l[f]); }));
+    const seen = new Map();
+    vals.map(v => String(v).trim()).filter(Boolean).forEach(v => { if (!seen.has(lkey(v))) seen.set(lkey(v), v); });
+    return [...seen.values()].sort((a, b) => a.localeCompare(b));
+  }
+  function listUsage(key, name) {
+    if (!db) load();
+    const d = listDef(key), n = lkey(name); if (!d) return { sims:0, lots:0 };
+    return {
+      sims: db.sims.filter(s => d.simFields.some(f => simVals(s, f).some(v => lkey(v) === n))).length,
+      lots: (db.lots || []).filter(l => d.lotFields.some(f => lkey(l[f]) === n)).length,
+    };
+  }
+  /* saves the whole list; the partner key (dislikes, turn offs) is emptied so removed entries stay removed */
+  async function saveList(key, items) {
+    if (!db) load();
+    const d = listDef(key), clean = [...new Map(items.map(v => String(v).trim()).filter(Boolean).map(v => [lkey(v), v])).values()].sort((a, b) => a.localeCompare(b));
+    const edits = readEdits(); edits.options = { ...(edits.options || {}) };
+    d.optKeys.forEach((k, i) => { const v = i === 0 ? clean : []; db.options[k] = v; edits.options[k] = v; });
+    if (!writeEdits(edits)) throw new Error("This browser's storage is full.");
+    return clean;
+  }
+  /* renaming changes it on every Sim and lot that uses it; renaming into an existing name merges the two */
+  async function renameListItem(key, from, to) {
+    if (!db) load();
+    const d = listDef(key), f = lkey(from); to = String(to).trim();
+    if (!d || !to) return;
+    const swap = arr => [...new Map(arr.map(v => lkey(v) === f ? to : v).map(v => [lkey(v), v])).values()];
+    for (const s of db.sims) {
+      const patch = {};
+      for (const fld of d.simFields) {
+        if (Array.isArray(s[fld]) && s[fld].some(v => lkey(v) === f)) patch[fld] = swap(s[fld]);
+        else if (!Array.isArray(s[fld]) && lkey(s[fld]) === f) patch[fld] = to;
+      }
+      if (Object.keys(patch).length) await saveSim(s.id, patch);
+    }
+    for (const l of (db.lots || [])) {
+      const patch = {};
+      for (const fld of d.lotFields) if (lkey(l[fld]) === f) patch[fld] = to;
+      if (Object.keys(patch).length) await saveLot({ ...l, ...patch });
+    }
+    await saveList(key, listItems(key).map(v => lkey(v) === f ? to : v).filter(v => lkey(v) !== f || v === to));
+  }
+
   /* Row tables: stories (Black Tea), lots (Lotline). Each maps to a Supabase table later. */
   function persist(table) {
     const e = readEdits(); e[table] = db[table];
@@ -233,5 +299,5 @@ const GFB = (() => {
   function resetLocal() { try { localStorage.removeItem(KEY); } catch {} if (typeof Cloud !== "undefined") Cloud.queuePush(); db = null; load(); }
   function hasLocalEdits() { const e = readEdits(); return Object.keys(e.sims || {}).length > 0 || ["stories","lots","accounts","transactions","loans","todos","projects","posts"].some(t => Array.isArray(e[t])) || !!e.calendar; }
 
-  return { normHandle, saveOrg, deleteOrg, saveHuddlPost, deleteHuddlPost, importReplace, undoImport, canUndoImport, exportEdits, getAll, saveSim, addSim, saveOptions, saveSetting, saveRel, deleteRel, saveStory, deleteStory, saveLot, deleteLot, saveAccount, saveLoan, savePost, deletePost, saveTodo, deleteTodo, saveProject, deleteProject, deleteLoan, postTransaction, saveEvent, deleteEvent, saveLog, deleteLog, setToday, uploadImage, resetLocal, hasLocalEdits };
+  return { normHandle, saveOrg, deleteOrg, saveHuddlPost, deleteHuddlPost, importReplace, undoImport, canUndoImport, exportEdits, getAll, saveSim, addSim, saveOptions, traitMin, LISTS, listItems, listUsage, saveList, renameListItem, saveSetting, saveRel, deleteRel, saveStory, deleteStory, saveLot, deleteLot, saveAccount, saveLoan, savePost, deletePost, saveTodo, deleteTodo, saveProject, deleteProject, deleteLoan, postTransaction, saveEvent, deleteEvent, saveLog, deleteLog, setToday, uploadImage, resetLocal, hasLocalEdits };
 })();

@@ -1,10 +1,10 @@
 /* The Registry. Reads and saves everything through GFB (assets/data.js).
    Each section edits in place. Connections save to both Sims' files. */
 const Registry = (() => {
-  const st = { clear:false, open:new Set(), q:"", filter:"All", sort:"name", tab:"profile", edit:null, rel:null, creating:false, nextEdit:null, msg:"", err:false };
+  const st = { clear:false, open:new Set(), q:"", f:{ status:new Set(), world:new Set(), yes:true, no:false }, fOpen:false, sort:"name", tab:"profile", edit:null, rel:null, creating:false, nextEdit:null, msg:"", err:false };
   let data = null, curId = null, root = null;
 
-  const FILTERS = ["All","Lennox Park","Baymore","Bellhaven","Incomplete"];
+  const NONE = "__none";
   const TABS = [["profile","Profile"],["connections","Connections"],["property","Property & money"],["notes","Notes & secrets"],["activity","Activity"]];
   const LIFE_STAGES = ["Infant","Toddler","Child","Teen","Young Adult","Adult","Elder"];
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -23,8 +23,8 @@ const Registry = (() => {
   const relById = id => data.relationships.find(r => String(r.id) === String(id));
   const kindName = k => data.options.relationship_kind[k];
   const PREF_KEYS = [["likes","Likes"],["dislikes","Dislikes"],["turn_ons","Turn ons"],["turn_offs","Turn offs"]];
-  const LIST_KEYS = [...PREF_KEYS, ["traits","Traits"],["aspiration","Aspirations"]];
-  const menu = key => [...new Set([...(data.options[key] || []), ...used(key)])].sort((a,b) => a.localeCompare(b));
+  const inLists = k => GFB.LISTS.some(d => d.key === k || d.optKeys.includes(k));
+  const menu = key => inLists(key) ? GFB.listItems(key) : [...new Set([...(data.options[key] || []), ...used(key)])].sort((a,b) => a.localeCompare(b));
   const used = field => [...new Set(data.sims.flatMap(x => Array.isArray(x[field]) ? x[field] : [x[field]]).filter(Boolean))].sort();
 
   /* Property: home comes through the household (the lot that household lives in). Ownership is by name. */
@@ -44,7 +44,7 @@ const Registry = (() => {
 
   /* Each gap knows where it gets fixed: "tab:section" or "basics" (the header) */
   function gaps(s){
-    const g = [], open = 5 - (s.traits || []).length;
+    const g = [], open = GFB.traitMin(s) - (s.traits || []).length;
     if (open > 0) g.push([`${open} trait slot${open > 1 ? "s" : ""} open`, "profile:behavior"]);
     if (!s.aspiration) g.push(["No aspiration", "profile:behavior"]);
     if (!s.love_language) g.push(["No love language", "profile:behavior"]);
@@ -55,11 +55,15 @@ const Registry = (() => {
     return g;
   }
 
-  function visible(){
+  /* gallery filters: an "off" set per group, so a new status or world starts out checked */
+  const lk = x => String(x || NONE).toLowerCase();
+  const statusList = () => [...new Set([...(data.options.status || []), ...used("status")])];
+  const isAll = () => !st.f.status.size && !st.f.world.size && st.f.yes && st.f.no;
+  const passes = s => !st.f.status.has(lk(s.status)) && !st.f.world.has(lk(s.residence)) && (s.portrait ? st.f.yes : st.f.no);
+  function visible(ignoreFilters){
     const q = st.q.toLowerCase();
     return data.sims.filter(s => {
-      if (st.filter === "Incomplete" && !gaps(s).length) return false;
-      if (!["All","Incomplete"].includes(st.filter) && s.residence !== st.filter) return false;
+      if (!ignoreFilters && !passes(s)) return false;
       if (!q) return true;
       return [s.name, s.career, s.residence, ...(s.traits||[]), s.attachment, s.love_language].join(" ").toLowerCase().includes(q);
     });
@@ -121,10 +125,10 @@ const Registry = (() => {
         <label><span class="r-lbl">Gender</span><input class="r-input" name="gender" list="r-dl-gender" value="${esc(s.gender)}">${dl("r-dl-gender", used("gender"))}</label>
         <label><span class="r-lbl">Status</span>${sel("status", o.status, s.status)}</label>
         <label><span class="r-lbl">Occupation</span><input class="r-input" name="career" value="${esc(s.career)}"></label>
-        <label><span class="r-lbl">Residence</span><input class="r-input" name="residence" list="r-dl-res" value="${esc(s.residence)}">${dl("r-dl-res", used("residence"))}</label>
+        <label><span class="r-lbl">Residence</span><input class="r-input" name="residence" list="r-dl-res" value="${esc(s.residence)}">${dl("r-dl-res", menu("worlds"))}</label>
         <label><span class="r-lbl">Household</span><input class="r-input" name="household" list="r-dl-hh" value="${esc(s.household)}">${dl("r-dl-hh", households)}</label>
       </div>
-      <div><span class="r-lbl">Profile photo <small>(Registry, Simsta, Cliq)</small></span><div class="r-portrow">${face(s, "sm")}<input type="file" name="portrait" accept="image/*">${s.portrait ? `<label class="r-check"><input type="checkbox" name="noportrait"> Remove photo</label>` : ""}</div></div>
+      <div><span class="r-lbl">Registry photo <small>(Registry only)</small></span><div class="r-portrow">${face(s, "sm")}<input type="file" name="portrait" accept="image/*">${s.portrait ? `<label class="r-check"><input type="checkbox" name="noportrait"> Remove photo</label>` : ""}</div></div>
       <div><span class="r-lbl">Professional headshot <small>(Huddl only, optional)</small></span><div class="r-portrow">${s.headshot ? `<img class="r-av r-photo sm" src="${esc(s.headshot)}" alt="">` : av(s.name, "sm")}<input type="file" name="headshot" accept="image/*">${s.headshot ? `<label class="r-check"><input type="checkbox" name="noheadshot"> Remove headshot</label>` : ""}</div></div>
       ${actions()}</form>`;
   }
@@ -132,7 +136,7 @@ const Registry = (() => {
   /* ---------- tabs ---------- */
   function profileTab(s){
     const o = data.options;
-    const slots = Array.from({length: Math.max(0, 5 - (s.traits||[]).length)}, () => `<span class="r-trait empty">Open slot</span>`).join("");
+    const slots = Array.from({length: Math.max(0, GFB.traitMin(s) - (s.traits||[]).length)}, () => `<span class="r-trait empty">Open slot</span>`).join("");
     const behaviorView = `<div class="r-traits">${(s.traits||[]).map(t => `<span class="r-trait">${esc(t)}</span>`).join("")}${slots}</div>
       <div class="r-grid2" style="margin-top:16px">
         <div><span class="r-lbl">Aspiration</span>${orNone(s.aspiration)}</div>
@@ -140,7 +144,7 @@ const Registry = (() => {
         <div><span class="r-lbl">Love language</span>${orNone(s.love_language)}</div>
       </div>`;
     const behaviorEdit = form("behavior", `
-      <div><span class="r-lbl">Traits</span><div class="row">${[0,1,2,3,4].map(i => sel("trait"+i, menu("traits"), (s.traits||[])[i], "Open slot")).join("")}</div></div>
+      <div><span class="r-lbl">Traits <small>(as many as you like; flagged as a gap under ${GFB.traitMin(s)} for this life stage)</small></span><div class="row r-traitrow">${Array.from({length: Math.max(GFB.traitMin(s), (s.traits||[]).length)}, (_, i) => sel("trait", menu("traits"), (s.traits||[])[i], "Open slot")).join("")}</div><button type="button" class="r-btn ghost r-addtrait" data-addtrait>Add another trait</button></div>
       <div class="row">
         <label><span class="r-lbl">Aspiration</span>${sel("aspiration", menu("aspiration"), s.aspiration)}</label>
         <label><span class="r-lbl">Attachment style</span>${sel("attachment", o.attachment, s.attachment)}</label>
@@ -151,13 +155,11 @@ const Registry = (() => {
         <div><span class="r-lbl">Turn ons</span>${tagList(s.turn_ons)}</div><div><span class="r-lbl">Turn offs</span>${tagList(s.turn_offs)}</div></div>`;
     const prefsEdit = form("prefs", `<div class="r-grid2">${tagInput("likes","Likes",s.likes)}${tagInput("dislikes","Dislikes",s.dislikes)}${tagInput("turn_ons","Turn ons",s.turn_ons)}${tagInput("turn_offs","Turn offs",s.turn_offs)}</div>
       <p class="r-help">Anything new you type gets added to the option list, so it shows up for every Sim next time.</p>`);
-    const listsEdit = form("lists", `<p class="r-help" style="margin-top:0">One option per line. Paste in a whole list when you add a mod. Options a Sim already has stay on the list until they're removed from that Sim.</p>
-      <div class="r-grid2">${LIST_KEYS.map(([k,n]) => `<label><span class="r-lbl">${n} <em>${menu(k).length}</em></span><textarea name="${k}" class="r-listbox">${esc(menu(k).join("\n"))}</textarea></label>`).join("")}</div>`);
     const mine = (data.organizations || []).filter(o => (o.members || []).some(m => (m.sim === s.id) || (!m.sim && m.name && stripNick(m.name).toLowerCase() === stripNick(s.name).toLowerCase())));
     const aff = mine.length ? sec("orgs", "Affiliations", "", `<div class="r-callist">${mine.map(o => { const m = o.members.find(x => x.sim === s.id || stripNick(x.name || "").toLowerCase() === stripNick(s.name).toLowerCase()); return `<a href="#/${o.type === "Club" ? "cliq/club/" : "huddl/org/"}${o.id}"><span>${o.type === "Club" ? "Member of" : "Works at"}</span>${esc(o.name)}${m && m.role ? ", " + esc(m.role) : ""}</a>`; }).join("")}</div>`, false) : "";
     return aff + sec("behavior", "Behavioral profile", "", st.edit === "behavior" ? behaviorEdit : behaviorView)
          + sec("prefs", "Preferences", "", st.edit === "prefs" ? prefsEdit : prefsView)
-         + (st.edit === "lists" ? sec("lists", "Option lists", "Shared by every Sim", listsEdit) : `<p class="r-optlink"><button type="button" data-edit="lists">Manage option lists</button> for traits, aspirations, likes, dislikes, and turn ons/offs.</p>`);
+         + `<p class="r-optlink">Traits, aspirations, likes, dislikes, and turn ons/offs come from your lists. <a href="#/settings">Edit lists in Settings</a></p>`;
   }
 
   function relHTML(s, r){
@@ -327,8 +329,8 @@ const Registry = (() => {
 
   /* ---------- gallery (Registry home) ---------- */
   const SORTS = [["name","Name"],["file","File number"],["gaps","Most file gaps"],["status","Status"]];
-  function sortedVisible(){
-    const v = [...visible()];
+  function sortedVisible(ignoreFilters){
+    const v = [...visible(ignoreFilters)];
     if (st.sort === "file") v.sort((a, b) => (parseInt(a.file_no, 10) || 0) - (parseInt(b.file_no, 10) || 0));
     else if (st.sort === "gaps") v.sort((a, b) => gaps(b).length - gaps(a).length || stripNick(a.name).localeCompare(stripNick(b.name)));
     else if (st.sort === "status") v.sort((a, b) => String(a.status || "~").localeCompare(String(b.status || "~")) || stripNick(a.name).localeCompare(stripNick(b.name)));
@@ -337,16 +339,33 @@ const Registry = (() => {
   }
   function galCards(){
     const v = sortedVisible();
-    if (!v.length) return `<p class="r-galnone">No residents match. Clear the search or pick another filter.</p>`;
+    if (!v.length) return `<p class="r-galnone">${isAll() ? "No residents match. Clear the search." : "No residents match. Open Filters or tap All to see everyone."}</p>`;
     return v.map(s => { const g = gaps(s).length, age = [s.age, s.life_stage].filter(x => x != null && x !== "").join(", ");
       return `<a class="r-card" href="#/registry/${s.id}"><span class="r-card-ph">${s.portrait ? `<img src="${esc(s.portrait)}" alt="">` : `<span class="r-card-ini" style="background:${avColor(s.name)}">${esc(initials(s.name))}</span>`}${s.status ? `<span class="r-card-st">${esc(s.status)}</span>` : ""}</span>
         <span class="r-card-b"><b>${esc(s.name)}</b>${age ? `<small>${esc(age)}</small>` : ""}<span class="r-card-job">${esc(s.career || "No occupation on file")}</span>${s.residence || s.household ? `<small>${esc([s.residence, s.household].filter(Boolean).join(" \u00b7 "))}</small>` : ""}${g ? `<span class="r-gap">${g} gap${g > 1 ? "s" : ""}</span>` : ""}</span></a>`; }).join("");
   }
+  const fchk = (grp, val, label, on) => `<label class="r-fchk"><input type="checkbox" data-fk="${grp}" value="${esc(val)}" ${on ? "checked" : ""}><span>${esc(label)}</span></label>`;
+  function filterPanel(){
+    const sts = statusList(), wds = menu("worlds");
+    return `<div class="r-fpanel" role="dialog" aria-label="Filters">
+      <div class="r-fgrp"><h4>Status</h4>${sts.map(x => fchk("status", x.toLowerCase(), x, !st.f.status.has(x.toLowerCase()))).join("")}${fchk("status", NONE, "No status", !st.f.status.has(NONE))}</div>
+      <div class="r-fgrp"><h4>Worlds</h4>${wds.map(x => fchk("world", x.toLowerCase(), x, !st.f.world.has(x.toLowerCase()))).join("")}${fchk("world", NONE, "No world", !st.f.world.has(NONE))}</div>
+      <div class="r-fgrp"><h4>Photo</h4>${fchk("photo", "yes", "Photographed", st.f.yes)}${fchk("photo", "no", "Not photographed", st.f.no)}</div>
+      <button type="button" class="r-fdone" data-fopen>Done</button></div>`;
+  }
+  /* repaint just the cards and the All pill so the panel stays put while you tick boxes */
+  function refreshFilters(){
+    const gl = document.getElementById("r-gal"); if (gl) gl.innerHTML = galCards();
+    const a = root.querySelector("[data-fall]"); if (a) a.setAttribute("aria-pressed", String(isAll()));
+    root.querySelectorAll("input[data-fk]").forEach(i => { const g = i.dataset.fk; i.checked = g === "photo" ? st.f[i.value] : !st.f[g].has(i.value); });
+  }
+  function closeFilters(){ st.fOpen = false; root.querySelector(".r-fpanel")?.remove(); root.querySelector("[data-fopen]")?.setAttribute("aria-expanded", "false"); }
+
   function drawGallery(){
     root.innerHTML = `<div class="site-registry">${topHTML()}
       <div class="r-galwrap"><div class="r-galbar">
           <input class="r-search" id="r-q" type="search" placeholder="Search ${data.sims.length} residents" aria-label="Search residents" value="${esc(st.q)}">
-          <div class="r-filters">${FILTERS.map(f => `<button class="r-chip" data-filter="${f}" aria-pressed="${st.filter===f}">${f}</button>`).join("")}</div>
+          <div class="r-filters"><button class="r-chip" data-fall aria-pressed="${isAll()}">All</button><span class="r-fwrap"><button class="r-chip r-fbtn" data-fopen aria-expanded="${st.fOpen}">Filters</button>${st.fOpen ? filterPanel() : ""}</span></div>
           <label class="r-sortl">Sort <select id="r-sort">${SORTS.map(([k, n]) => `<option value="${k}" ${st.sort === k ? "selected" : ""}>${n}</option>`).join("")}</select></label>
           <div class="r-galnew">${newForm()}</div></div>
         <div class="r-gal" id="r-gal">${galCards()}</div>
@@ -361,7 +380,7 @@ const Registry = (() => {
     root.innerHTML = `<div class="site-registry">
 ${topHTML()}      <div class="r-shell solo">
         <section class="r-file">
-          <div class="r-recbar">${(() => { const order = sortedVisible().map(x => x.id), at = order.indexOf(s.id), prev = at > 0 ? order[at - 1] : null, next = at >= 0 && at < order.length - 1 ? order[at + 1] : null;
+          <div class="r-recbar">${(() => { let order = sortedVisible().map(x => x.id); if (!order.includes(s.id)) order = sortedVisible(true).map(x => x.id); const at = order.indexOf(s.id), prev = at > 0 ? order[at - 1] : null, next = at >= 0 && at < order.length - 1 ? order[at + 1] : null;
             return `<a class="r-allres" href="#/registry">All residents</a><span class="r-pn">${prev ? `<a href="#/registry/${prev}" aria-label="Previous resident">\u2039 Prev</a>` : `<span>\u2039 Prev</span>`}<em>${at >= 0 ? `${at + 1} of ${order.length}` : ""}</em>${next ? `<a href="#/registry/${next}" aria-label="Next resident">Next \u203a</a>` : `<span>Next \u203a</span>`}</span><span class="r-recno">GFB-${esc(s.file_no)}</span>`; })()}${st.edit === "basics" ? "" : `<button class="r-edit-btn" data-edit="basics">Edit basics</button>`}</div>
           <article class="r-folder ${st.clear ? "cleared" : ""}">
             <div class="r-stamp" aria-hidden="true">Restricted</div>
@@ -452,16 +471,12 @@ ${topHTML()}      <div class="r-shell solo">
         await GFB.saveSim(curId, patch);
       }
       if (key === "behavior") await GFB.saveSim(curId, {
-        traits: [0,1,2,3,4].map(i => v("trait"+i)).filter(Boolean).filter((t,i,a) => a.indexOf(t) === i),
+        traits: f.getAll("trait").map(x => String(x).trim()).filter(Boolean).filter((t,i,a) => a.findIndex(y => y.toLowerCase() === t.toLowerCase()) === i),
         aspiration: v("aspiration") || null, attachment: v("attachment") || null, love_language: v("love_language") || null });
       if (key === "prefs") {
         const patch = Object.fromEntries(PREF_KEYS.map(([k]) => [k, f.getAll(k)]));
-        for (const [k, vals] of Object.entries(patch)) { const list = data.options[k] || [], add = vals.filter(x => !list.some(y => y.toLowerCase() === x.toLowerCase())); if (add.length) await GFB.saveOptions(k, [...list, ...add].sort((a,b) => a.localeCompare(b))); }
+        for (const [k, vals] of Object.entries(patch)) { const list = menu(k), add = vals.filter(x => !list.some(y => y.toLowerCase() === x.toLowerCase())); if (add.length) await GFB.saveList(k, [...list, ...add]); }
         await GFB.saveSim(curId, patch);
-      }
-      if (key === "lists") for (const [k] of LIST_KEYS) {
-        const list = [...new Set(String(f.get(k) || "").split("\n").map(x => x.trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b));
-        await GFB.saveOptions(k, list);
       }
       if (key === "notes") await GFB.saveSim(curId, { notes: v("notes").split(/\n\s*\n/).map(x => x.trim()).filter(Boolean) });
       if (key === "secrets") await GFB.saveSim(curId, { secrets: v("secrets").split("\n").map(x => x.trim()).filter(Boolean) });
@@ -507,11 +522,14 @@ ${topHTML()}      <div class="r-shell solo">
       if (!root || !root.contains(e.target) || !root.querySelector(".site-registry")) return;
       const t = e.target;
       const fb = t.closest("[data-fmt]"); if (fb) { const box = fb.closest("form")?.querySelector(".r-notesbox"); if (box) applyFmt(fb.dataset.fmt, box); return; }
+      const at = t.closest("[data-addtrait]"); if (at) { const row = at.closest("div").querySelector(".r-traitrow"), last = row.querySelector("select:last-of-type"); if (last) { const c = last.cloneNode(true); c.value = ""; [...c.options].forEach(o => { o.selected = o.value === ""; }); row.appendChild(c); c.focus(); } return; }
       const ta = t.closest("[data-tagadd]"); if (ta) { addTag(ta.closest(".r-taginput")); return; }
       const rev = t.closest("[data-reveal]"); if (rev) { st.open.add(rev.dataset.reveal); draw(); return; }
       const re = t.closest("[data-rel]:not(form)"); if (re) { st.rel = re.dataset.rel; st.edit = null; draw(); return; }
       const op = t.closest("[data-open]"); if (op) { location.hash = "#/registry/" + op.dataset.open; if (innerWidth <= 720) scrollTo({top:0,behavior:"smooth"}); return; }
-      const fl = t.closest("[data-filter]"); if (fl) { st.filter = fl.dataset.filter; draw(); return; }
+      if (st.fOpen && !t.closest(".r-fwrap, [data-fall]")) closeFilters();
+      if (t.closest("[data-fall]")) { st.f = { status:new Set(), world:new Set(), yes:true, no:true }; refreshFilters(); return; }
+      if (t.closest("[data-fopen]")) { st.fOpen = !st.fOpen; draw(); return; }
       const tb = t.closest("[data-tab]"); if (tb) { st.tab = tb.dataset.tab; st.edit = null; st.rel = null; draw(); return; }
       const ed = t.closest("[data-edit]"); if (ed) { st.edit = ed.dataset.edit; st.rel = null; draw(); return; }
       const gp = t.closest("[data-gap]"); if (gp) { const [tab, part] = gp.dataset.gap.split(":"); if (part) { st.tab = tab; st.edit = part; } else st.edit = tab; st.rel = null; draw(); return; }
@@ -527,13 +545,17 @@ ${topHTML()}      <div class="r-shell solo">
     });
     document.addEventListener("keydown", e => {
       if (!root || !root.contains(e.target)) return;
+      if (e.key === "Escape" && st.fOpen) { closeFilters(); e.stopPropagation(); return; }
       if (e.key === "Enter" && e.target.closest?.(".r-tagadd")) { e.preventDefault(); addTag(e.target.closest(".r-taginput")); return; }
       if ((e.key === "Enter" || e.key === " ") && e.target.matches?.("g[data-open],g[data-reveal],span[data-reveal]")) { e.preventDefault(); e.target.dispatchEvent(new MouseEvent("click",{bubbles:true})); }
     });
     document.addEventListener("input", e => {
       if (e.target.id === "r-q" && root?.querySelector(".site-registry")) { st.q = e.target.value; const l = document.getElementById("r-list"), gl = document.getElementById("r-gal"); if (l) l.innerHTML = listHTML(); if (gl) gl.innerHTML = galCards(); }
     });
-    document.addEventListener("change", e => { if (e.target.id === "r-sort" && root?.contains(e.target)) { st.sort = e.target.value; draw(); return; } if (e.target.id === "r-pick") location.hash = "#/registry/" + e.target.value; });
+    document.addEventListener("change", e => {
+      const ck = e.target.closest?.("input[data-fk]");
+      if (ck && root?.contains(ck)) { const g = ck.dataset.fk; if (g === "photo") st.f[ck.value] = ck.checked; else if (ck.checked) st.f[g].delete(ck.value); else st.f[g].add(ck.value); refreshFilters(); return; }
+      if (e.target.id === "r-sort" && root?.contains(e.target)) { st.sort = e.target.value; draw(); return; } if (e.target.id === "r-pick") location.hash = "#/registry/" + e.target.value; });
     document.addEventListener("submit", e => { if (root && root.contains(e.target) && e.target.dataset.sec) { e.preventDefault(); save(e.target); } });
   }
 

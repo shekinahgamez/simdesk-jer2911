@@ -98,3 +98,12 @@ body{font:14px/1.45 "Inter",system-ui,-apple-system,"Segoe UI",sans-serif;color:
 .dock{background:rgba(243,236,224,.16);border:1px solid rgba(255,255,255,.26);box-shadow:0 10px 30px rgba(20,4,12,.35), inset 0 1px 0 rgba(255,255,255,.18);border-radius:24px}
 .dk[aria-current="true"]::after{background:#E7C3CC}
 @media (max-width:520px){ .mb-status{display:none} }
+
+/* back button: shows after a link jumps you into another app, named for where you came from */
+.wback{flex:none;display:inline-flex;align-items:center;gap:6px;height:28px;max-width:140px;padding:0 11px 0 9px;margin-left:-4px;border:none;border-radius:7px;background:var(--addr);color:var(--addrhost);font:500 12.5px/1 "Inter",system-ui,sans-serif;cursor:pointer;white-space:nowrap}
+.wback[hidden]{display:none}
+.wback svg{width:7px;height:12px;flex:none}
+.wback span{overflow:hidden;text-overflow:ellipsis}
+.wback:hover{background:#36313D}
+.wback:active{transform:scale(.97)}
+@media (max-width:720px){ .wback{height:32px;max-width:120px} }
