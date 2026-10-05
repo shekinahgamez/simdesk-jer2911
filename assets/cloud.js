@@ -2,8 +2,8 @@
    saving only to this browser. Fill them in and it asks you to sign in, then keeps your edits in your Supabase project.
    It copies the same "edits" blob data.js already keeps in localStorage, so no app needs to change. */
 const Cloud = (() => {
-  const SUPABASE_URL = "";   /* Project URL, like https://abcdxyz.supabase.co */
-  const SUPABASE_KEY = "";   /* the anon public key (safe to publish; the database rules protect your data) */
+  const SUPABASE_URL = "https://pczvxbuipkeksnpeqehp.supabase.co/rest/v1/";   /* Project URL, like https://abcdxyz.supabase.co */
+  const SUPABASE_KEY = "sb_publishable_jsZTO7qqJSsGpn_dN08Fcw_o0lHfV6h";   /* the anon public key (safe to publish; the database rules protect your data) */
 
   const EDITS = "gfb-local-edits-v1", STAMP = "gfb-local-edits-stamp", TABLE = "simdesk_state";
   const enabled = !!(SUPABASE_URL && SUPABASE_KEY && window.supabase);
