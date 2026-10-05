@@ -104,3 +104,12 @@ a.hd-row-link:hover b,a.hd-sug:hover b{color:var(--pri)}
 .hd-del{margin-left:auto;border:0;background:none;color:var(--muted);font-size:13px;cursor:pointer;min-height:34px;padding:0 6px;flex:none}.hd-del:hover{color:var(--neg)}
 .hd-addhs{font-size:12.5px;color:var(--pri);font-weight:600;margin-top:6px}
 .hd-chips{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 6px}.hd-chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 14px;cursor:pointer;font-size:14px;min-height:36px}.hd-chip[aria-pressed="true"]{background:var(--pri);border-color:var(--pri);color:#fff}
+
+/* uploaded logos and header images */
+.hd-tile.has-img{background:#fff center/cover no-repeat;color:transparent}
+.hd-banner.has-img{background:#1E2A86 center/cover no-repeat}
+.hd-thumb{display:block;margin:2px 0 6px;background:#EEF1F7 center/cover no-repeat;border:1px solid #E5E7EB}
+.hd-thumb.sq{width:64px;height:64px;border-radius:14px}.hd-thumb.wide{width:100%;max-width:240px;height:64px;border-radius:10px}
+.hd-ck{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin-bottom:6px;font-weight:400}
+.hd-f .hd-ck input{width:auto;padding:0;margin:0}
+.hd-f input[type=file]{font-size:13px;max-width:100%}

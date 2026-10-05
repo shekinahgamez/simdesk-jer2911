@@ -28,7 +28,11 @@ const Huddl = (() => {
   const me = () => simById((data.settings || {}).acting_sim) || data.sims.find(s => jobsOf(s.id).length) || data.sims[0];
   const headline = s => { const j = jobsOf(s.id)[0]; return j ? [j.m.role, j.o.name].filter(Boolean).join(" at ") : (s.career || ""); };
 
-  const tile = (o, cls = "") => `<span class="hd-tile ${cls}" style="background:${tint(o.name)}">${esc(initials(o.name))}</span>`;
+  /* company logo: the uploaded picture if there is one, otherwise colored initials */
+  const logoOf = o => o.logo || o.emblem_img || "";
+  const tile = (o, cls = "") => logoOf(o)
+    ? `<span class="hd-tile has-img ${cls}" style="background-image:url('${logoOf(o)}')" role="img" aria-label="${esc(o.name)} logo"></span>`
+    : `<span class="hd-tile ${cls}" style="background:${tint(o.name)}">${esc(initials(o.name))}</span>`;
   /* Huddl uses the professional headshot (sim.headshot), never the casual profile photo */
   const av = (name, cls = "", sim) => { sim = sim || data.sims.find(x => norm(x.name) === norm(name)); const h = sim && sim.headshot; return `<span class="hd-av ${cls}${h ? " ph" : ""}" style="background:${tint(name)}">${h ? `<img loading="lazy" decoding="async" src="${esc(h)}" alt="">` : esc(initials(name))}</span>`; };
   const simLink = (name, s) => s ? `<a class="hd-link" href="#/registry/${s.id}">${esc(name)}</a>` : esc(name);
@@ -100,7 +104,7 @@ const Huddl = (() => {
     if (tab === "people") body = `<div class="hd-card"><h3>People <button class="hd-mini" data-hd="person:${o.id}:new">Add person</button></h3>${cur.length ? cur.map(row).join("") : `<p class="hd-none">No one listed yet.</p>`}${former.length ? `<h4>Former</h4>${former.map(row).join("")}` : ""}</div>`;
     if (tab === "jobs") body = `<div class="hd-card"><h3>Open positions <button class="hd-mini" data-hd="pos:${o.id}:new">Add position</button></h3>${(o.positions || []).length ? o.positions.map(p => `<div class="hd-person">${tile(o, "sm")}<span class="hd-pt"><b>${esc(p.title)}</b><small>${esc([p.dept, p.notes].filter(Boolean).join(" \u00b7 "))}</small></span><button class="hd-mini" data-hd="pos:${o.id}:${p.id}">Edit</button></div>`).join("") : `<p class="hd-none">None open.</p>`}</div>`;
     if (tab === "posts") body = composer(o) + feed(posts().filter(p => p.author_type === "org" && p.author_id === o.id));
-    return `<div class="hd-card hd-orghead"><div class="hd-banner"><span class="hd-pattern"></span></div><div class="hd-ohead">${tile(o, "xl")}
+    return `<div class="hd-card hd-orghead"><div class="hd-banner${o.banner ? " has-img" : ""}"${o.banner ? ` style="background-image:url('${o.banner}')"` : ""}>${o.banner ? "" : `<span class="hd-pattern"></span>`}</div><div class="hd-ohead">${tile(o, "xl")}
         <div class="hd-orow"><div><h1>${esc(o.name)}</h1><p class="hd-sub">${esc([o.category, o.district, o.status && o.status !== "Active" ? o.status : ""].filter(Boolean).join(" \u00b7 "))}${cur.length ? ` \u00b7 ${cur.length} people` : ""}</p>${o.tagline ? `<p class="hd-tagline">${esc(o.tagline)}</p>` : ""}</div>
         <div class="hd-acts">${o.app ? `<a class="hd-btn ghost" href="#/${o.app}">Visit site</a>` : ""}<button class="hd-btn" data-hd="org:${o.id}">Edit page</button></div></div></div>
       <div class="hd-tabs" role="tablist">${tabs.map(([k, n]) => `<a role="tab" href="#/huddl/org/${o.id}${k === "about" ? "" : "/" + k}" aria-selected="${tab === k}">${n}</a>`).join("")}</div></div>${body}`;
@@ -130,6 +134,8 @@ const Huddl = (() => {
         ${field("Tagline", `<input name="tagline" value="${esc(o.tagline)}">`)}${field("About", `<textarea name="about">${esc(o.about)}</textarea>`)}
         <div class="hd-f2">${field("Founded", `<input name="founded_text" value="${esc(o.founded_text)}" placeholder="Year or in-game date">`)}${field("District", `<input name="district" value="${esc(o.district)}">`)}</div>
         <div class="hd-f2">${field("Led by", `<input name="leader" list="hd-sims" value="${esc(o.leader)}" autocomplete="off">`)}${field("Based at", `<select name="lot"><option value="">No lot yet</option>${data.lots.filter(l => !l.parent_id || l.id === o.lot).map(l => `<option value="${l.id}" ${o.lot === l.id ? "selected" : ""}>${esc(l.address)}</option>`).join("")}</select>`)}</div>
+        <div class="hd-f2"><div class="hd-f"><span>Logo</span>${logoOf(o) ? `<span class="hd-thumb sq" style="background-image:url('${logoOf(o)}')"></span><label class="hd-ck"><input type="checkbox" name="rm_logo"> Remove it (go back to initials)</label>` : ""}<input type="file" name="logo" accept="image/*"></div>
+        <div class="hd-f"><span>Header image</span>${o.banner ? `<span class="hd-thumb wide" style="background-image:url('${o.banner}')"></span><label class="hd-ck"><input type="checkbox" name="rm_banner"> Remove it (go back to the pattern)</label>` : ""}<input type="file" name="banner" accept="image/*"></div></div>
         ${field("Staff notes (private)", `<textarea name="notes">${esc(o.notes)}</textarea>`)}${simList()}${err}
         ${acts(a === "new" ? "" : `<button type="button" class="hd-btn danger" data-hd="del:${o.id}">Delete</button><span class="hd-grow"></span>`)}</form>`;
     }
@@ -176,6 +182,10 @@ const Huddl = (() => {
         const old = a === "new" ? null : byId(a);
         const row = { ...(old || { type:"Institution", members:[], positions:[], related:[], tagline:"", app:"" }), name:v("name"), category:v("category"), status:v("status"), tagline:v("tagline"), about:v("about"), founded_text:v("founded_text"), district:v("district"), leader:v("leader"), lot:v("lot") || null, notes:v("notes") };
         if (!old) row.id = "org-" + slug(row.name) + "-" + Math.random().toString(36).slice(2, 5);
+        const lf = f.get("logo"), bf = f.get("banner"), btn = form.querySelector("[type=submit]");
+        if ((lf && lf.size) || (bf && bf.size)) { btn.disabled = true; btn.textContent = "Uploading..."; }
+        if (lf && lf.size) { row.logo = (await GFB.uploadImage(lf, 400)).url; row.emblem_img = null; } else if (f.get("rm_logo")) { row.logo = null; row.emblem_img = null; }
+        if (bf && bf.size) row.banner = (await GFB.uploadImage(bf, 1800)).url; else if (f.get("rm_banner")) row.banner = null;
         if (row.leader && !(row.members || []).some(m => norm(m.name) === norm(row.leader))) row.members = [...(row.members || []), { name:row.leader, sim:null, role:"Leader", dept:"", since:"", current:true }];
         const saved = await GFB.saveOrg(row); st.modal = null; await refresh(); if (!old) go("org/" + saved.id); return;
       }
