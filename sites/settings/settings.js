@@ -1,7 +1,6 @@
 /* Settings: system app. For now it only sets the desktop background. Saves through GFB. */
 const Settings = (() => {
-  const st = { msg:null, err:null, busy:false, list:null, ren:null, lmsg:null };
-  const esc = x => String(x == null ? "" : x).replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "\"":"&quot;" }[c]));
+  const st = { msg:null, err:null, busy:false };
   let data = null, root = null;
   const DEFAULT_BG = "radial-gradient(120% 90% at 78% 18%, #3a2d46 0%, transparent 60%), radial-gradient(90% 80% at 10% 90%, #1f2a3a 0%, transparent 60%), linear-gradient(160deg,#231d2b,#141218)";
 
@@ -17,61 +16,10 @@ const Settings = (() => {
         <p class="st-note">Big photos are shrunk to fit. Saved to this browser.</p>
       </section>
       <section class="st-card" style="margin-top:16px"><h2>Desktop and dock</h2><p class="st-note" style="margin:0 0 10px">Use the arrows to change the order. "To dock" and "To desktop" move an app between the two.</p>${layoutHTML()}</section>
-      <section class="st-card" style="margin-top:16px"><h2>Lists</h2><p class="st-note" style="margin:0 0 10px">Worlds, traits, aspirations, likes and dislikes (one shared list), and turn ons and offs (one shared list). Renaming changes it everywhere it's used.</p>${st.lmsg ? `<p class="st-ok">${esc(st.lmsg)}</p>` : ""}${listsHTML()}</section>
+      <section class="st-card" style="margin-top:16px">${photosHTML()}</section>
       <section class="st-card" id="st-import" style="margin-top:16px"></section></div></div>`;
-    st.msg = st.err = st.lmsg = null;
+    st.msg = st.err = null;
     NotionImport.mount(root.querySelector("#st-import"), data);
-  }
-
-
-  /* Lists: shared by every Sim. Likes/dislikes share one list, turn ons/offs share one list. */
-  function listsHTML(){
-    return GFB.LISTS.map(d => { const items = GFB.listItems(d.key), open = st.list === d.key;
-      return `<div class="st-list"><button type="button" class="st-lh" data-ls="toggle:${d.key}" aria-expanded="${open}"><b>${d.label}</b><span>${items.length}</span></button>${open ? listBody(d, items) : ""}</div>`; }).join("");
-  }
-  function listBody(d, items){
-    const rows = items.map((name, i) => {
-      const u = GFB.listUsage(d.key, name), n = u.sims + u.lots;
-      const use = [u.sims ? u.sims + (u.sims === 1 ? " Sim" : " Sims") : "", u.lots ? u.lots + (u.lots === 1 ? " lot" : " lots") : ""].filter(Boolean).join(", ") || "Not used yet";
-      if (st.ren && st.ren.key === d.key && st.ren.i === i) return `<li class="st-lrow editing"><input class="st-linput" id="st-ren" value="${esc(name)}" autocomplete="off" aria-label="New name"><button type="button" class="st-sm wide" data-ls="rensave">Save</button><button type="button" class="st-sm wide" data-ls="rencancel">Cancel</button></li>`;
-      return `<li class="st-lrow"><span class="st-lname">${esc(name)}</span><small>${use}</small><button type="button" class="st-sm wide" data-ls="ren:${d.key}:${i}">Rename</button><button type="button" class="st-sm wide" data-ls="del:${d.key}:${i}" ${n ? "disabled" : ""} aria-label="Remove ${esc(name)}">Remove</button></li>`;
-    }).join("");
-    return `<div class="st-lbody"><textarea id="st-ladd" class="st-ltext" rows="2" placeholder="Add one, or paste a list (one per line or separated by commas)"></textarea><button type="button" class="st-btn" style="margin-top:8px" data-ls="add:${d.key}">Add</button>
-      <ul class="st-lrows">${rows || '<li class="st-note">Nothing here yet.</li>'}</ul><p class="st-note" style="margin-top:8px">Anything in use can't be removed. Rename it, or take it off those Sims first.</p></div>`;
-  }
-  async function listAction(cmd, btn){
-    const [act, key, idx] = cmd.split(":"), label = (GFB.LISTS.find(d => d.key === key) || {}).label;
-    st.lmsg = null;
-    try {
-      if (act === "toggle") { st.list = st.list === key ? null : key; st.ren = null; }
-      else if (act === "add") {
-        const raw = root.querySelector("#st-ladd").value, add = raw.split(/[\n,;]+/).map(x => x.trim()).filter(Boolean);
-        if (!add.length) return;
-        const have = new Set(GFB.listItems(key).map(x => x.toLowerCase())), fresh = add.filter(x => !have.has(x.toLowerCase()));
-        await GFB.saveList(key, [...GFB.listItems(key), ...fresh]);
-        st.lmsg = fresh.length ? `Added ${fresh.length} to ${label}.` : "Those are already on the list.";
-      }
-      else if (act === "ren") { st.ren = { key, i: Number(idx) }; }
-      else if (act === "rencancel") { st.ren = null; }
-      else if (act === "rensave") {
-        const r = st.ren, items = GFB.listItems(r.key), from = items[r.i], to = root.querySelector("#st-ren").value.trim();
-        st.ren = null;
-        if (to && to !== from) {
-          const u = GFB.listUsage(r.key, from), merge = items.some((x, j) => j !== r.i && x.toLowerCase() === to.toLowerCase());
-          await GFB.renameListItem(r.key, from, to);
-          const where = [u.sims ? u.sims + (u.sims === 1 ? " Sim" : " Sims") : "", u.lots ? u.lots + (u.lots === 1 ? " lot" : " lots") : ""].filter(Boolean).join(" and ");
-          st.lmsg = `${merge ? "Merged into" : "Renamed to"} ${to}${where ? ". Updated " + where : ""}.`;
-        }
-      }
-      else if (act === "del") {
-        const items = GFB.listItems(key), name = items[Number(idx)];
-        if (!UI.confirmTap(btn, "Tap again to remove")) return;
-        await GFB.saveList(key, items.filter((x, j) => j !== Number(idx)));
-        st.lmsg = `Removed ${name}.`;
-      }
-    } catch (err) { st.lmsg = err.message; }
-    data = await GFB.getAll(); draw();
-    if (st.ren) { const el = root.querySelector("#st-ren"); if (el) { el.focus(); el.select(); } }
   }
 
   /* app order: saved as settings.app_layout = { dock:[keys], desktop:[keys] } and read by desktop/desktop.js */
@@ -97,6 +45,17 @@ const Settings = (() => {
     data = await GFB.getAll(); window.dispatchEvent(new Event("gfb:layout")); draw();
   }
 
+  /* Photos: show how much of your data is photos, and move them to Supabase Storage */
+  let photoMsg = "";
+  function photosHTML(){
+    const p = GFB.photoStats(), on = GFB.cloudPhotos();
+    return `<h2>Photos</h2>
+      <p class="st-note" style="margin:0 0 10px">Your data is <b>${p.totalKB >= 1024 ? (p.totalKB / 1024).toFixed(1) + " MB" : p.totalKB + " KB"}</b>. ${p.count ? `<b>${p.count} photo${p.count === 1 ? "" : "s"}</b> (${p.photoKB >= 1024 ? (p.photoKB / 1024).toFixed(1) + " MB" : p.photoKB + " KB"}) ${p.count === 1 ? "is" : "are"} stored inside it, which slows down saving and syncing.` : "No photos are stored inside it."}</p>
+      ${on ? `<p class="st-note" style="margin:0 0 10px">Cloud photos are on. New uploads go straight to the cloud.</p>${p.count ? `<button class="st-btn" data-st="movephotos">Move my photos to the cloud</button>` : ""}`
+           : `<p class="st-note" style="margin:0 0 10px"><b>Cloud photos aren't on yet.</b> New photos are still saved inside your data. Finish the two setup steps (in Supabase and in <code>assets/cloud.js</code>), then reload.</p>`}
+      ${photoMsg ? `<p class="st-note" style="margin:10px 0 0" role="status">${photoMsg}</p>` : ""}`;
+  }
+
   async function useFile(file){
     if (!file) return;
     st.busy = true; draw();
@@ -117,8 +76,14 @@ const Settings = (() => {
     document.addEventListener("dragover", e => { const d = mine(e.target) && e.target.closest("#st-drop"); if (d) { e.preventDefault(); d.classList.add("over"); } });
     document.addEventListener("dragleave", e => { const d = mine(e.target) && e.target.closest("#st-drop"); if (d) d.classList.remove("over"); });
     document.addEventListener("drop", e => { const d = mine(e.target) && e.target.closest("#st-drop"); if (d) { e.preventDefault(); useFile(e.dataTransfer.files[0]); } });
-    document.addEventListener("click", e => { const b = mine(e.target) && e.target.closest("[data-ls]"); if (b && !b.disabled) listAction(b.dataset.ls, b); });
-    document.addEventListener("keydown", e => { if (!mine(e.target) || e.target.id !== "st-ren") return; if (e.key === "Enter") { e.preventDefault(); listAction("rensave"); } if (e.key === "Escape") { e.stopPropagation(); listAction("rencancel"); } });
+    document.addEventListener("click", async e => {
+      const b = mine(e.target) && e.target.closest("[data-st=movephotos]"); if (!b) return;
+      b.disabled = true;
+      try { const r = await GFB.movePhotosToCloud((n, t) => { b.textContent = `Moving ${n} of ${t}...`; });
+        photoMsg = `Done. ${r.moved} photo${r.moved === 1 ? "" : "s"} moved to the cloud${r.failed ? `, ${r.failed} couldn't upload (they stay on this device; try again later)` : ""}.`; }
+      catch (err) { photoMsg = "Couldn't move the photos: " + err.message; }
+      data = await GFB.getAll(); draw();
+    });
     document.addEventListener("click", e => { const b = mine(e.target) && e.target.closest("[data-lay]"); if (b && !b.disabled) moveApp(b.dataset.lay); });
     document.addEventListener("click", async e => {
       if (!mine(e.target) || !e.target.closest("[data-st=default]")) return;

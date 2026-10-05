@@ -89,6 +89,7 @@ const NotionImport = (() => {
     const sims = E.map(e => {
       if (e.r.__keep) return e.r.__keep;
       const r = e.r, traits = list(r.Traits);
+      if (traits.length > 5) rep.flags.tooManyTraits.push(`${e.name} has ${traits.length} traits`);
       if (r.Status && ex.options.status && !ex.options.status.includes(r.Status)) rep.flags.badStatus.push(`${e.name}: status "${r.Status}"`);
       const s = { id:e.id, file_no:e.file_no, name:e.name, simsta:r["Simsta Handle"] || null, age:num(r["Age (#)"]), life_stage:r.Age || null, gender:r.Gender || null,
         career:r.Career || "", residence:dropState(r.Location), household:cleanRel(r.Household) || null, status:r.Status || null,

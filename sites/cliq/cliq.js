@@ -34,7 +34,7 @@ const Cliq = (() => {
   const simFor = m => m && ((m.sim && simById(m.sim)) || data.sims.find(s => norm(s.name) === norm(m.name)));
   const lotById = id => data.lots.find(l => l.id === id);
   const go = h => { location.hash = "#/cliq" + (h ? "/" + h : ""); };
-  const av = m => { const p = (simFor(m) || {}).simsta_avatar; return `<span class="cq-av${p ? " ph" : ""}" style="background:${tint(m.name)}" title="${esc(m.name)}">${p ? `<img src="${esc(p)}" alt="">` : esc(initials(m.name))}</span>`; };
+  const av = m => { const p = (simFor(m) || {}).portrait; return `<span class="cq-av${p ? " ph" : ""}" style="background:${tint(m.name)}" title="${esc(m.name)}">${p ? `<img loading="lazy" decoding="async" src="${esc(p)}" alt="">` : esc(initials(m.name))}</span>`; };
   const nameLink = m => { const s = simFor(m); return s ? `<a class="cq-link" href="#/registry/${s.id}">${esc(m.name)}</a>` : esc(m.name); };
   const allOf = key => [...new Set(clubs().flatMap(o => o[key] || []))].sort();
   const inClub = (o, id) => (o.members || []).some(m => simFor(m)?.id === id);

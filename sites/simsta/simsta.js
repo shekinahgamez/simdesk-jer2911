@@ -23,7 +23,7 @@ const Simsta = (() => {
   function accts(){
     const out = [];
     for (const s of data.sims){
-      if (s.simsta) out.push({ key:s.id, sim:s, handle:GFB.normHandle(s.simsta), name:s.simsta_name || clean(s.name), bio:s.simsta_bio, followers:s.simsta_followers, following:s.simsta_following, avatar:s.simsta_avatar || null, alt:false });
+      if (s.simsta) out.push({ key:s.id, sim:s, handle:GFB.normHandle(s.simsta), name:s.simsta_name || clean(s.name), bio:s.simsta_bio, followers:s.simsta_followers, following:s.simsta_following, avatar:s.simsta_avatar || s.portrait || null, alt:false });
       for (const a of s.simsta_alts || []) out.push({ key:s.id + "~" + a.id, sim:s, altId:a.id, handle:GFB.normHandle(a.handle), name:a.name || clean(s.name), bio:a.bio, followers:a.followers, following:a.following, avatar:a.avatar, alt:true });
     }
     return out.sort((a,b) => a.handle.localeCompare(b.handle));
@@ -46,7 +46,7 @@ const Simsta = (() => {
   function av(a, size, ring){
     const key = a?.key || a?.id || "?", h = hue(key);
     const label = a?.name || a?.handle || "?";
-    return `<span class="sm-av s${size} ${ring ? "ring" : ""}" style="--h:${h}">${a?.avatar ? `<img src="${esc(a.avatar)}" alt="">` : esc(ini(label))}</span>`;
+    return `<span class="sm-av s${size} ${ring ? "ring" : ""}" style="--h:${h}">${a?.avatar ? `<img loading="lazy" decoding="async" src="${esc(a.avatar)}" alt="">` : esc(ini(label))}</span>`;
   }
   /* @mentions link to profiles, #tags open a tag page */
   function rich(text){
@@ -95,11 +95,11 @@ const Simsta = (() => {
     const week = posts().filter(p => nowOrd() - ord(p.date) <= 7).sort((a,b) => (b.likes || 0) - (a.likes || 0)).slice(0, 4);
     const days = []; for (let k = 0; k <= 3; k++) { const o = nowOrd() + k - 1, season = cal().seasons[Math.floor((((o % 84) + 84) % 84) / 21)].name, day = (((o % 84) + 84) % 84) % 21 + 1; cal().events.filter(e => e.season === season && e.day === day).forEach(e => days.push({ e, k })); }
     return `<aside class="sm-aside">
-      ${week.length ? `<section><h3>Trending this week</h3>${week.map(p => `<button class="sm-trend" data-post="${p.id}"><img src="${esc(p.photo)}" alt=""><span><b>${esc(nameOf(p.author))}</b><small>${fmt(p.likes)} likes</small></span></button>`).join("")}</section>` : ""}
+      ${week.length ? `<section><h3>Trending this week</h3>${week.map(p => `<button class="sm-trend" data-post="${p.id}"><img loading="lazy" decoding="async" src="${esc(p.photo)}" alt=""><span><b>${esc(nameOf(p.author))}</b><small>${fmt(p.likes)} likes</small></span></button>`).join("")}</section>` : ""}
       <section><h3>Coming up in the save</h3>${days.length ? days.slice(0, 5).map(({e, k}) => `<div class="sm-ev"><small>${k === 0 ? "Today" : k === 1 ? "Tomorrow" : "In " + k + " days"}</small>${esc(e.title)}</div>`).join("") : `<p class="sm-none" style="padding:0">Nothing on the calendar.</p>`}</section>
     </aside>`;
   }
-  const grid = list => list.length ? `<div class="sm-grid">${list.map(p => `<button data-post="${p.id}" data-ctx="${list.map(x => x.id).join(",")}"><img src="${esc(p.photo)}" alt=""></button>`).join("")}</div>` : "";
+  const grid = list => list.length ? `<div class="sm-grid">${list.map(p => `<button data-post="${p.id}" data-ctx="${list.map(x => x.id).join(",")}"><img loading="lazy" decoding="async" src="${esc(p.photo)}" alt=""></button>`).join("")}</div>` : "";
   function exploreHTML(){ const list = posts(); return `<div class="sm-prof">${grid(list) || `<div class="sm-empty">${ICON.camera}<h2>Nothing to explore yet</h2><p>Posts from every account show up here.</p></div>${suggest(12)}`}</div>`; }
   function tagHTML(t){
     const re = new RegExp("#" + t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![\\p{L}0-9_])", "iu");
@@ -180,7 +180,7 @@ const Simsta = (() => {
       if (!d.photo) return `<div class="sm-modal" data-closebg><div class="sm-form"><header><button type="button" data-close>Cancel</button><span>New post</span><span></span></header>
         <div class="sm-fbody"><label class="sm-drop big">${ICON.camera}<b>Add a screenshot</b><small>Step 1 of 2</small><input type="file" accept="image/*" id="sm-file"></label>${up}${err}</div></div></div>`;
       return `<div class="sm-modal" data-closebg><form class="sm-form wide" id="sm-post"><header><button type="button" data-close>Cancel</button><span>${editing ? "Edit post" : "New post"}</span><button class="go" type="submit">${editing ? "Save" : "Share"}</button></header>
-        <div class="sm-compose"><div class="sm-prev"><img src="${esc(d.photo)}" alt="Preview"><label>Change photo<input type="file" accept="image/*" id="sm-file"></label></div>
+        <div class="sm-compose"><div class="sm-prev"><img loading="lazy" decoding="async" src="${esc(d.photo)}" alt="Preview"><label>Change photo<input type="file" accept="image/*" id="sm-file"></label></div>
         <div class="sm-fbody">${up}
           <label>Posted by</label>${UI.simPicker("author", d.author ? [d.author] : [], acctOpts(), "Search accounts")}
           <label>Caption<textarea name="caption" placeholder="Write it like they would. Use @handles and #tags.">${esc(d.caption)}</textarea></label>

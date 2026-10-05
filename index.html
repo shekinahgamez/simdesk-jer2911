@@ -24,6 +24,7 @@
 <link rel="stylesheet" href="sites/porchlight/porchlight.css">
 <link rel="stylesheet" href="sites/huddl/huddl.css">
 <link rel="stylesheet" href="sites/cliq/cliq.css">
+<link rel="stylesheet" href="sites/notes/notes.css">
 <link rel="stylesheet" href="sites/calendar/calendar.css">
 <link rel="stylesheet" href="sites/plumb/plumb.css">
 <link rel="stylesheet" href="sites/permits/permits.css">
@@ -32,13 +33,12 @@
 </head>
 <body>
 <div class="desk" id="desk">
-  <div class="menubar"><svg class="mb-mark" viewBox="0 0 100 100" aria-hidden="true"><g transform="translate(50 50) rotate(45) scale(0.2) translate(-166 -166)" fill="currentColor"><rect x="83" y="0" width="166" height="38"/><rect x="83" y="0" width="38" height="201"/><rect x="211" y="0" width="38" height="73"/><rect x="294" y="83" width="38" height="166"/><rect x="131" y="83" width="201" height="38"/><rect x="259" y="211" width="73" height="38"/><rect x="83" y="294" width="166" height="38"/><rect x="211" y="131" width="38" height="201"/><rect x="83" y="259" width="38" height="73"/><rect x="0" y="83" width="38" height="166"/><rect x="0" y="211" width="201" height="38"/><rect x="0" y="83" width="73" height="38"/></g></svg><b class="mb-name">SimDesk</b><span id="gamedate" style="opacity:.75"></span><span class="spacer"></span><span class="mb-status"><svg viewBox="0 0 20 16" aria-hidden="true"><path d="M10 13.5l2.2-2.6a3.4 3.4 0 0 0-4.4 0zM4.3 7.8a8.6 8.6 0 0 1 11.4 0l-1.6 1.9a6.1 6.1 0 0 0-8.2 0zM1 4.3a13.6 13.6 0 0 1 18 0l-1.6 1.9a11.1 11.1 0 0 0-14.8 0z" fill="currentColor"/></svg><svg viewBox="0 0 26 13" aria-hidden="true"><rect x=".75" y=".75" width="21.5" height="11.5" rx="3" fill="none" stroke="currentColor" stroke-width="1.3" opacity=".7"/><rect x="2.6" y="2.6" width="15" height="7.8" rx="1.6" fill="currentColor"/><rect x="23.4" y="4.2" width="1.8" height="4.6" rx=".9" fill="currentColor" opacity=".7"/></svg></span><span id="clock"></span></div>
+  <div class="menubar"><svg class="mb-mark" viewBox="0 0 100 100" aria-hidden="true"><g transform="translate(50 50) rotate(45) scale(0.2) translate(-166 -166)" fill="currentColor"><rect x="83" y="0" width="166" height="38"/><rect x="83" y="0" width="38" height="201"/><rect x="211" y="0" width="38" height="73"/><rect x="294" y="83" width="38" height="166"/><rect x="131" y="83" width="201" height="38"/><rect x="259" y="211" width="73" height="38"/><rect x="83" y="294" width="166" height="38"/><rect x="211" y="131" width="38" height="201"/><rect x="83" y="259" width="38" height="73"/><rect x="0" y="83" width="38" height="166"/><rect x="0" y="211" width="201" height="38"/><rect x="0" y="83" width="73" height="38"/></g></svg><b class="mb-name">SimDesk</b><span id="gamedate" style="opacity:.75"></span><span class="spacer"></span><span class="mb-status"><svg viewBox="0 0 20 16" aria-hidden="true"><path d="M10 13.5l2.2-2.6a3.4 3.4 0 0 0-4.4 0zM4.3 7.8a8.6 8.6 0 0 1 11.4 0l-1.6 1.9a6.1 6.1 0 0 0-8.2 0zM1 4.3a13.6 13.6 0 0 1 18 0l-1.6 1.9a11.1 11.1 0 0 0-14.8 0z" fill="currentColor"/></svg><svg viewBox="0 0 26 13" aria-hidden="true"><rect x=".75" y=".75" width="21.5" height="11.5" rx="3" fill="none" stroke="currentColor" stroke-width="1.3" opacity=".7"/><rect x="2.6" y="2.6" width="15" height="7.8" rx="1.6" fill="currentColor"/><rect x="23.4" y="4.2" width="1.8" height="4.6" rx=".9" fill="currentColor" opacity=".7"/></svg></span><button class="mb-quick" id="mbQuick" aria-label="Quick note" title="Quick note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg></button><span id="clock"></span></div>
   <div class="icons" id="icons"></div>
   <nav class="dock" id="dock" aria-label="Dock"></nav>
   <section class="window" id="win" hidden aria-modal="true" role="dialog" aria-labelledby="winTitle">
     <div class="titlebar">
       <button class="close" id="winClose" aria-label="Close window"></button>
-      <button class="wback" id="winBack" hidden><svg viewBox="0 0 10 16" aria-hidden="true"><path d="M8 2L2 8l6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span></span></button>
       <div class="address"><span class="padlock" aria-hidden="true"></span><span id="winUrl"></span></div>
       <span class="wtitle" id="winTitle"></span>
     </div>
@@ -58,6 +58,7 @@
 <script src="sites/porchlight/porchlight.js"></script>
 <script src="sites/huddl/huddl.js"></script>
 <script src="sites/cliq/cliq.js"></script>
+<script src="sites/notes/notes.js"></script>
 <script src="sites/calendar/calendar.js"></script>
 <script src="sites/plumb/plumb.js"></script>
 <script src="sites/permits/permits.js"></script>

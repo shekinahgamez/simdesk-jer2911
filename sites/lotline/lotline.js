@@ -53,7 +53,7 @@ const Lotline = (() => {
     else own = l.household ? `Household: <b>${esc(l.household)}</b>` : "No household";
     if (l.owner) own = `Owner: <b>${esc(l.owner)}</b><br>` + own;
     return `<button class="ll-card" data-lot="${l.id}">
-      <div class="ll-ph">${l.photo ? `<img src="${esc(l.photo)}" alt="">` : glyphFor(l)}<span class="ll-badge">${buildBadge(l)}</span>${l.market_status ? `<span class="ll-badge right">${esc(l.market_status)}</span>` : ""}</div>
+      <div class="ll-ph">${l.photo ? `<img loading="lazy" decoding="async" src="${esc(l.photo)}" alt="">` : glyphFor(l)}<span class="ll-badge">${buildBadge(l)}</span>${l.market_status ? `<span class="ll-badge right">${esc(l.market_status)}</span>` : ""}</div>
       <div class="ll-body">
         <div class="ll-price ${price ? "" : "addr"}">${price || esc(l.address)}</div>
         <div class="ll-specs">${specs.map(s => `<span>${esc(s)}</span>`).join("")}</div>
@@ -63,7 +63,7 @@ const Lotline = (() => {
   }
 
   /* worlds come from the lots themselves (plus a lot_options.world list if one gets added); type a new one on any lot */
-  const worlds = () => [...new Set([...(data.lot_options.world || []), ...GFB.listItems("worlds"), ...data.lots.map(l => l.world)].filter(Boolean))].sort();
+  const worlds = () => [...new Set([...(data.lot_options.world || []), ...data.lots.map(l => l.world)].filter(Boolean))].sort();
   function listHTML(){
     const o = data.lot_options, v = visible();
     const sel = (id, label, any, opts, val) => `<label class="ll-fsel"><span>${label}</span><select id="${id}"><option value="All">${any}</option>${opts.map(t => `<option ${t===val?"selected":""}>${esc(t)}</option>`).join("")}</select></label>`;
@@ -116,7 +116,7 @@ const Lotline = (() => {
       : `${l.owner ? `<h3>OWNER</h3><p class="hh">${esc(l.owner)}</p>` : ""}<h3>HOUSEHOLD</h3>${l.household ? `<p class="hh">${esc(l.household)}</p>${res.map(s => `<div class="ll-res"><i>${esc(ini(s.name))}</i>${esc(s.name)}</div>`).join("") || `<p class="muted">No residents on file for this household yet.</p>`}` : `<p class="muted">Nobody lives or works here yet.</p>`}`;
     return `<div class="ll-detail">
       <button class="ll-crumb" data-act="back">${parent ? `Back to ${esc(parent.address)}` : "Back to listings"}</button>
-      <div class="ll-hero">${l.photo ? `<img src="${esc(l.photo)}" alt="${esc(l.address)}">` : glyphFor(l)}</div>
+      <div class="ll-hero">${l.photo ? `<img loading="lazy" decoding="async" src="${esc(l.photo)}" alt="${esc(l.address)}">` : glyphFor(l)}</div>
       <div class="ll-top">
         <div>
           <h1>${esc(l.address)}</h1>
@@ -142,7 +142,7 @@ const Lotline = (() => {
     const owners = [...new Set([...data.sims.map(s => stripNick(s.name)), ...households, ...data.lots.map(x => x.owner)].filter(Boolean))].sort();
     return `<div class="ll-modal" data-act="closebg"><form class="ll-form" id="ll-form" role="dialog" aria-label="Edit lot">
       <h2>${l.id ? "Edit lot" : "New lot"}</h2>
-      <div class="ll-up">${l.photo ? `<img src="${esc(l.photo)}" alt="Lot photo"><div class="ll-upacts"><label class="ll-btn ghost">Replace photo<input type="file" accept="image/*" id="ll-file"></label><button type="button" class="ll-del" data-act="rmphoto">Remove photo</button></div>`
+      <div class="ll-up">${l.photo ? `<img loading="lazy" decoding="async" src="${esc(l.photo)}" alt="Lot photo"><div class="ll-upacts"><label class="ll-btn ghost">Replace photo<input type="file" accept="image/*" id="ll-file"></label><button type="button" class="ll-del" data-act="rmphoto">Remove photo</button></div>`
         : `<label class="ll-drop">Add a screenshot of this lot<input type="file" accept="image/*" id="ll-file"></label>`}
         ${st.uploading ? `<p class="ll-note">Adding photo…</p>` : ""}${st.err ? `<p class="ll-err">${esc(st.err)}</p>` : ""}</div>
       <label>Address or lot name<input name="address" required value="${esc(l.address)}"></label>

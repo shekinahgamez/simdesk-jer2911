@@ -36,23 +36,3 @@
 .st-appbtns{display:flex;gap:6px;flex:none}
 .st-sm{border:1px solid var(--line);background:#fff;border-radius:9px;min-width:40px;min-height:40px;font-size:16px;cursor:pointer;color:var(--accent)}
 .st-sm.wide{font-size:13px;font-weight:600;padding:0 10px}.st-sm:disabled{opacity:.35;cursor:default}
-
-/* Lists card */
-.st-list{border-top:1px solid var(--line)}
-.st-list:first-of-type{border-top:none}
-.st-lh{display:flex;align-items:center;justify-content:space-between;width:100%;min-height:48px;padding:0 2px;border:none;background:none;font:inherit;color:inherit;cursor:pointer;text-align:left}
-.st-lh b{font-weight:600;font-size:15px}
-.st-lh span{font-size:13px;color:var(--muted)}
-.st-lh::after{content:"";width:8px;height:8px;margin-left:12px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg);flex:none}
-.st-lh[aria-expanded="true"]::after{transform:rotate(-135deg)}
-.st-lh span{margin-left:auto}
-.st-lbody{padding:2px 0 14px}
-.st-ltext,.st-linput{width:100%;font:inherit;font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;color:inherit;box-sizing:border-box}
-.st-lrows{list-style:none;margin:12px 0 0;padding:0}
-.st-lrow{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line);flex-wrap:wrap}
-.st-lrow:first-child{border-top:none}
-.st-lname{flex:1 1 140px;font-weight:500;min-width:0;overflow-wrap:anywhere}
-.st-lrow small{color:var(--muted);font-size:12px;flex:0 1 auto}
-.st-lrow.editing .st-linput{flex:1 1 160px;width:auto}
-@container site (max-width:560px){ .st-lname{flex:1 1 100%} .st-lrow small{flex:1 1 auto} }
-@media (max-width:560px){ .st-lname{flex:1 1 100%} .st-lrow small{flex:1 1 auto} }

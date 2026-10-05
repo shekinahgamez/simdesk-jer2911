@@ -2,6 +2,8 @@
 const APPS = [
   { key:"calendar", name:"Calendar", host:"Calendar", built:true, system:true,
     icon: () => { const c = window.GFB_SEED && (GFB._cal || window.GFB_SEED.calendar), t = c.today; return `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#FFFFFF"/><rect width="64" height="19" fill="#7A2E4A"/><text x="32" y="14" text-anchor="middle" font-family="Figtree,Inter,Arial,sans-serif" font-weight="700" font-size="10" fill="#fff" letter-spacing="1">${t.season.toUpperCase()}</text><text x="32" y="51" text-anchor="middle" font-family="Figtree,Inter,Arial,sans-serif" font-weight="600" font-size="30" fill="#231A2B">${t.day}</text></svg>`; } },
+  { key:"notes", name:"Notes", host:"Notes", built:true, system:true,
+    icon:`<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#F2B705"/><rect x="12" y="10" width="40" height="46" rx="5" fill="#FFFDF6"/><path d="M19 23h26M19 31h26M19 39h18" stroke="#C9C1AE" stroke-width="3" stroke-linecap="round"/></svg>` },
   { key:"plumb", name:"Plumb", host:"Plumb", built:true, system:true,
     icon:`<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#FFFFFF"/><path d="M32 10l13 22-13 22-13-22z" fill="#2E9E4F"/><path d="M32 10l13 22H19z" fill="#4CC26C"/></svg>` },
   { key:"permits", name:"Planning & Permits", host:"planning.simerica.gov", built:true,
@@ -71,46 +73,10 @@ function placeholder(a){
   setAddress(a.host, "/");
 }
 
-/* back trail: a link that jumps to another app (a name in Cliq opening the Registry) leaves a breadcrumb.
-   The back button returns to that exact page and scroll spot. Dock, desktop icons, and closing the window start fresh. */
-const trail = [];
-let navKind = null, pendingScroll = null, curHash = location.hash;
-const appOf = h => APPS.find(a => a.key === String(h || "").replace(/^#\/?/, "").split("/")[0]);
-const SHORT = { registry:"Registry", permits:"Permits", trust:"Harbor Trust" };
-const backBtn = document.getElementById("winBack");
-function noteNav(){
-  const prev = curHash, next = location.hash, kind = navKind;
-  curHash = next; navKind = null;
-  const pa = appOf(prev), na = appOf(next);
-  if (!na || kind === "fresh"){ trail.length = 0; return; }
-  if (kind === "back" || !pa || pa.key === na.key) return;
-  trail.push({ hash:prev, app:pa.key, scroll:site.scrollTop });
-  if (trail.length > 30) trail.shift();
-}
-function drawBack(){
-  const t = trail[trail.length - 1], a = t && APPS.find(x => x.key === t.app);
-  backBtn.hidden = !a;
-  if (a){ const n = SHORT[a.key] || a.name; backBtn.querySelector("span").textContent = n; backBtn.setAttribute("aria-label", "Back to " + n); }
-  /* keeps the address bar centered when the button takes room on the left */
-  document.querySelector(".titlebar").style.paddingRight = a && innerWidth > 720 ? (41 + backBtn.offsetWidth + 14) + "px" : "";
-}
-backBtn.addEventListener("click", () => {
-  const t = trail.pop(); if (!t) return;
-  navKind = "back"; pendingScroll = t.scroll; location.hash = t.hash;
-});
-function restoreScroll(){
-  if (pendingScroll == null) return;
-  const y = pendingScroll; pendingScroll = null;
-  const put = () => { site.scrollTop = y; };
-  requestAnimationFrame(() => { put(); requestAnimationFrame(put); });
-  setTimeout(put, 180);   /* again once photos have settled the page height */
-}
-
 async function route(){
-  noteNav();
   const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean);
   const a = APPS.find(x => x.key === parts[0]);
-  if (!a){ GFB.getAll().then(d => { GFB._cal = d.calendar; SAVED_LAYOUT = (d.settings || {}).app_layout || null; drawIcons(); tick(); }); win.hidden = true; site.innerHTML = ""; document.title = "SimDesk"; drawBack(); lastIcon?.focus(); return; }
+  if (!a){ GFB.getAll().then(d => { GFB._cal = d.calendar; SAVED_LAYOUT = (d.settings || {}).app_layout || null; drawIcons(); tick(); }); win.hidden = true; site.innerHTML = ""; document.title = "SimDesk"; lastIcon?.focus(); return; }
   const wasHidden = win.hidden;
   win.hidden = false;
   if (wasHidden){ win.classList.remove("opening"); void win.offsetWidth; win.classList.add("opening"); }
@@ -134,6 +100,10 @@ async function route(){
     const data = await GFB.getAll();
     Simsta.render(site, data, parts.slice(1));
     setAddress(a.host, Simsta.address(parts.slice(1)));
+  } else if (a.key === "notes"){
+    const data = await GFB.getAll();
+    Notes.render(site, data, parts.slice(1));
+    setAddress("Notes", ", " + Notes.label(), true);
   } else if (a.key === "plumb"){
     const data = await GFB.getAll();
     Plumb.render(site, data, parts.slice(1));
@@ -175,13 +145,9 @@ async function route(){
   } else {
     placeholder(a);
   }
-  drawBack();
-  restoreScroll();
 }
 
 document.addEventListener("click", e => {
-  const launch = e.target.closest(".app, .dk");
-  if (launch && launch.getAttribute("href") !== location.hash) navKind = "fresh";
   const ic = e.target.closest(".app");
   if (ic){ lastIcon = ic; const r = ic.getBoundingClientRect(); win.style.setProperty("--ox", r.left + r.width/2 + "px"); win.style.setProperty("--oy", r.top + "px"); }
 });
@@ -200,3 +166,6 @@ window.addEventListener("hashchange", route);
 window.addEventListener("hashchange", drawDock);
 applyWallpaper();
 route();
+
+/* menu bar pencil: quick note from anywhere */
+document.getElementById("mbQuick")?.addEventListener("click", () => Notes.openQuick());

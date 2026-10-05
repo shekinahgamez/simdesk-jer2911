@@ -99,11 +99,5 @@ body{font:14px/1.45 "Inter",system-ui,-apple-system,"Segoe UI",sans-serif;color:
 .dk[aria-current="true"]::after{background:#E7C3CC}
 @media (max-width:520px){ .mb-status{display:none} }
 
-/* back button: shows after a link jumps you into another app, named for where you came from */
-.wback{flex:none;display:inline-flex;align-items:center;gap:6px;height:28px;max-width:140px;padding:0 11px 0 9px;margin-left:-4px;border:none;border-radius:7px;background:var(--addr);color:var(--addrhost);font:500 12.5px/1 "Inter",system-ui,sans-serif;cursor:pointer;white-space:nowrap}
-.wback[hidden]{display:none}
-.wback svg{width:7px;height:12px;flex:none}
-.wback span{overflow:hidden;text-overflow:ellipsis}
-.wback:hover{background:#36313D}
-.wback:active{transform:scale(.97)}
-@media (max-width:720px){ .wback{height:32px;max-width:120px} }
+/* quick note pencil in the menu bar */
+.mb-quick{border:0;background:none;color:inherit;display:grid;place-items:center;width:30px;height:24px;cursor:pointer;opacity:.9;border-radius:6px;padding:0}.mb-quick:hover{background:rgba(255,255,255,.14)}.mb-quick svg{width:17px;height:17px}

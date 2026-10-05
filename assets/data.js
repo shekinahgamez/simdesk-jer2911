@@ -5,15 +5,18 @@ const GFB = (() => {
   const KEY = "gfb-local-edits-v1";
   let db = null;
 
-  const readEdits = () => { try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch { return {}; } };
-  const writeEdits = e => { try { localStorage.setItem(KEY, JSON.stringify(e)); if (typeof Cloud !== "undefined") Cloud.queuePush(); return true; } catch { return false; } };
+  /* edits are parsed once and kept in memory; they're re-read only if something else (cloud sync) replaced them */
+  let editsCache = null, editsRaw = null;
+  const readEdits = () => { try { const raw = localStorage.getItem(KEY) || "{}"; if (editsCache && raw === editsRaw) return editsCache; editsRaw = raw; editsCache = JSON.parse(raw); return editsCache; } catch { return {}; } };
+  const readEditsCopy = () => { readEdits(); try { return JSON.parse(editsRaw || "{}"); } catch { return {}; } };   /* startup works on its own copy */
+  const writeEdits = e => { try { const raw = JSON.stringify(e); localStorage.setItem(KEY, raw); editsCache = e; editsRaw = raw; if (typeof Cloud !== "undefined") Cloud.queuePush(); return true; } catch { return false; } };
 
   /* Simsta handles are always "@" plus lowercase, no spaces */
   const normHandle = h => { h = String(h || "").trim().replace(/\s+/g, "").replace(/^@+/, "").toLowerCase(); return h ? "@" + h : null; };
 
   function load() {
     const seed = JSON.parse(JSON.stringify(window.GFB_SEED));
-    let edits = readEdits();
+    let edits = readEditsCopy();
     /* a new seed "epoch" starts everyone from the clean seed (old edits and photos are dropped); the wallpaper is kept */
     if (seed.epoch && edits.epoch !== seed.epoch) {
       edits = { epoch: seed.epoch, ...(edits.settings ? { settings: edits.settings } : {}) };
@@ -25,7 +28,7 @@ const GFB = (() => {
       const s = seed.sims.find(x => x.id === id);
       if (s) Object.assign(s, patch);
     }
-    for (const t of ["relationships","stories","lots","accounts","transactions","loans","todos","projects","posts","organizations","households","lots_pending","huddl_posts"]) if (Array.isArray(edits[t])) seed[t] = edits[t];
+    for (const t of ["relationships","stories","lots","accounts","transactions","loans","todos","projects","posts","organizations","households","lots_pending","huddl_posts","notes"]) if (Array.isArray(edits[t])) seed[t] = edits[t];
     if (edits.options) Object.assign(seed.options, edits.options);
     if (edits.lot_options) seed.lot_options = { ...seed.lot_options, ...edits.lot_options };
     seed.settings = { ...(seed.settings || {}), ...(edits.settings || {}) };
@@ -33,7 +36,7 @@ const GFB = (() => {
     /* events and logs are a title plus one free-text details field */
     seed.calendar.events = seed.calendar.events.map(e => { if (e.details !== undefined) return e; const { story, game, ...rest } = e; return { ...rest, details: [story, game].filter(Boolean).join("\n\n") }; });
     seed.sims.forEach(x => { x.simsta = normHandle(x.simsta); });
-    seed.organizations = seed.organizations || []; seed.households = seed.households || []; seed.huddl_posts = seed.huddl_posts || [];
+    seed.organizations = seed.organizations || []; seed.households = seed.households || []; seed.huddl_posts = seed.huddl_posts || []; seed.notes = seed.notes || [];
     /* two banks share accounts and loans; anything older belongs to Harbor Trust */
     seed.accounts.forEach(a => { a.bank = a.bank || "harbor"; });
     seed.loans.forEach(l => { l.bank = l.bank || "harbor"; });
@@ -73,6 +76,9 @@ const GFB = (() => {
   /* Huddl feed posts: { id, author_type "org"|"sim", author_id, text, date {season,day,year}, auto } */
   const saveHuddlPost = p => saveRow("huddl_posts", p, "hp-");
   const deleteHuddlPost = id => deleteRow("huddl_posts", id);
+  /* Notes: { id, title, body, folder, pinned, tags[], story {status, sims[], next} | null, created, updated, trashed } */
+  const saveNote = n => saveRow("notes", { ...n, updated: Date.now() }, "n-");
+  const deleteNote = id => deleteRow("notes", id);
 
   /* Notion import: replaces the Sims, connections, lots, households, and organizations tables in one save.
      The edits from just before are kept in a separate key so the import can be undone. */
@@ -117,72 +123,6 @@ const GFB = (() => {
     edits.options = { ...(edits.options || {}), [key]: list };
     if (!writeEdits(edits)) throw new Error("This browser's storage is full.");
     return list;
-  }
-
-
-  /* Shared lists (Settings > Lists). Likes and dislikes share one list; so do turn ons and turn offs.
-     A list is whatever is saved in options plus anything a Sim or lot already uses, so nothing in use can vanish. */
-  const LISTS = [
-    { key:"worlds",     label:"Worlds",              optKeys:["worlds"],               simFields:["residence"],             lotFields:["world"] },
-    { key:"traits",     label:"Traits",              optKeys:["traits"],               simFields:["traits"],                lotFields:[] },
-    { key:"aspiration", label:"Aspirations",         optKeys:["aspiration"],           simFields:["aspiration"],            lotFields:[] },
-    { key:"likes",      label:"Likes & dislikes",    optKeys:["likes","dislikes"],     simFields:["likes","dislikes"],      lotFields:[] },
-    { key:"turn_ons",   label:"Turn ons & offs",     optKeys:["turn_ons","turn_offs"], simFields:["turn_ons","turn_offs"],  lotFields:[] },
-  ];
-  /* how many traits a file needs before it stops showing as a gap; a Sim can have as many as you like */
-  const TRAIT_MIN = { Infant:2, Toddler:2, Child:3, Teen:4 };
-  const traitMin = s => TRAIT_MIN[(s || {}).life_stage] ?? 5;
-  const lkey = x => String(x == null ? "" : x).trim().toLowerCase();
-  const listDef = k => LISTS.find(d => d.key === k) || LISTS.find(d => d.optKeys.includes(k));
-  const simVals = (s, f) => Array.isArray(s[f]) ? s[f] : (s[f] ? [s[f]] : []);
-  function listItems(key) {
-    if (!db) load();
-    const d = listDef(key); if (!d) return db.options[key] || [];
-    const vals = [];
-    d.optKeys.forEach(k => vals.push(...(db.options[k] || [])));
-    d.simFields.forEach(f => db.sims.forEach(s => vals.push(...simVals(s, f))));
-    d.lotFields.forEach(f => (db.lots || []).forEach(l => { if (l[f]) vals.push(l[f]); }));
-    const seen = new Map();
-    vals.map(v => String(v).trim()).filter(Boolean).forEach(v => { if (!seen.has(lkey(v))) seen.set(lkey(v), v); });
-    return [...seen.values()].sort((a, b) => a.localeCompare(b));
-  }
-  function listUsage(key, name) {
-    if (!db) load();
-    const d = listDef(key), n = lkey(name); if (!d) return { sims:0, lots:0 };
-    return {
-      sims: db.sims.filter(s => d.simFields.some(f => simVals(s, f).some(v => lkey(v) === n))).length,
-      lots: (db.lots || []).filter(l => d.lotFields.some(f => lkey(l[f]) === n)).length,
-    };
-  }
-  /* saves the whole list; the partner key (dislikes, turn offs) is emptied so removed entries stay removed */
-  async function saveList(key, items) {
-    if (!db) load();
-    const d = listDef(key), clean = [...new Map(items.map(v => String(v).trim()).filter(Boolean).map(v => [lkey(v), v])).values()].sort((a, b) => a.localeCompare(b));
-    const edits = readEdits(); edits.options = { ...(edits.options || {}) };
-    d.optKeys.forEach((k, i) => { const v = i === 0 ? clean : []; db.options[k] = v; edits.options[k] = v; });
-    if (!writeEdits(edits)) throw new Error("This browser's storage is full.");
-    return clean;
-  }
-  /* renaming changes it on every Sim and lot that uses it; renaming into an existing name merges the two */
-  async function renameListItem(key, from, to) {
-    if (!db) load();
-    const d = listDef(key), f = lkey(from); to = String(to).trim();
-    if (!d || !to) return;
-    const swap = arr => [...new Map(arr.map(v => lkey(v) === f ? to : v).map(v => [lkey(v), v])).values()];
-    for (const s of db.sims) {
-      const patch = {};
-      for (const fld of d.simFields) {
-        if (Array.isArray(s[fld]) && s[fld].some(v => lkey(v) === f)) patch[fld] = swap(s[fld]);
-        else if (!Array.isArray(s[fld]) && lkey(s[fld]) === f) patch[fld] = to;
-      }
-      if (Object.keys(patch).length) await saveSim(s.id, patch);
-    }
-    for (const l of (db.lots || [])) {
-      const patch = {};
-      for (const fld of d.lotFields) if (lkey(l[fld]) === f) patch[fld] = to;
-      if (Object.keys(patch).length) await saveLot({ ...l, ...patch });
-    }
-    await saveList(key, listItems(key).map(v => lkey(v) === f ? to : v).filter(v => lkey(v) !== f || v === to));
   }
 
   /* Row tables: stories (Black Tea), lots (Lotline). Each maps to a Supabase table later. */
@@ -257,6 +197,19 @@ const GFB = (() => {
      Later: uploads to Supabase Storage and returns the public link instead. Same return shape. */
   /* Photos: resized in halving steps with high-quality smoothing (one big jump looks soft and jagged),
      then saved as WebP where the browser supports it (sharper at the same size), otherwise as a high-quality JPEG. */
+  /* Photos: resized in halving steps with high-quality smoothing, saved as WebP where supported (else high-quality JPEG).
+     With the cloud connected they upload to Supabase Storage and only a short link is kept in your data;
+     otherwise the photo is kept inside your data like before. */
+  const BUCKET = "simdesk-images";
+  const cloudClient = () => (typeof Cloud !== "undefined" && Cloud.client && Cloud.client() && Cloud.userId && Cloud.userId()) ? Cloud.client() : null;
+  const cloudPhotos = () => !!cloudClient();
+  async function putCloud(blob, ext) {
+    const sb = cloudClient(); if (!sb) return null;
+    const path = `${Cloud.userId()}/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const { error } = await sb.storage.from(BUCKET).upload(path, blob, { contentType:blob.type, cacheControl:"31536000", upsert:false });
+    if (error) { console.warn("Photo upload to the cloud failed, keeping it on this device.", error); return null; }
+    return sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+  }
   async function uploadImage(file, max = 1400) {
     if (!file || !file.type.startsWith("image/")) throw new Error("That file isn't an image.");
     const bmp = await createImageBitmap(file);
@@ -271,7 +224,32 @@ const GFB = (() => {
     const cx = c.getContext("2d"); cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = "high"; cx.drawImage(src, 0, 0, W, H);
     let url = c.toDataURL("image/webp", 0.88);
     if (!url.startsWith("data:image/webp")) url = c.toDataURL("image/jpeg", 0.9);
+    if (cloudPhotos()) { const blob = await (await fetch(url)).blob(); const link = await putCloud(blob, blob.type === "image/webp" ? "webp" : "jpg"); if (link) url = link; }
     return { url, width: W, height: H };
+  }
+  /* One-time move: every photo still stored inside your data goes to Supabase Storage and is replaced by its link. */
+  function photoStats() {
+    const raw = localStorage.getItem(KEY) || "", m = raw.match(/"data:image\/[^"]+"/g) || [];
+    return { count: new Set(m).size, photoKB: Math.round(m.reduce((a, x) => a + x.length, 0) / 1024), totalKB: Math.round(raw.length / 1024) };
+  }
+  async function movePhotosToCloud(progress) {
+    if (!cloudPhotos()) throw new Error("The cloud photo connection isn't on yet.");
+    const edits = readEdits(), done = new Map(), found = [];
+    const walk = (o, fn) => { if (Array.isArray(o)) o.forEach((v, i) => fn(o, i, v)); else if (o && typeof o === "object") Object.keys(o).forEach(k => fn(o, k, o[k])); };
+    const collect = o => walk(o, (p, k, v) => { if (typeof v === "string" && v.startsWith("data:image/")) found.push(v); else if (v && typeof v === "object") collect(v); });
+    collect(edits);
+    const unique = [...new Set(found)]; let n = 0, failed = 0;
+    for (const d of unique) {
+      const blob = await (await fetch(d)).blob(), ext = blob.type.includes("webp") ? "webp" : blob.type.includes("png") ? "png" : "jpg";
+      const link = await putCloud(blob, ext); if (link) done.set(d, link); else failed++;
+      n++; if (progress) progress(n, unique.length);
+    }
+    const swap = o => walk(o, (p, k, v) => { if (typeof v === "string" && done.has(v)) p[k] = done.get(v); else if (v && typeof v === "object") swap(v); });
+    swap(edits);
+    if (!writeEdits(edits)) throw new Error("Couldn't save after moving the photos.");
+    if (done.size) { try { localStorage.removeItem("gfb-import-undo"); } catch {} }
+    db = null; load();
+    return { moved: done.size, failed };
   }
 
   /* Calendar: events are rows; today is a single setting. */
@@ -299,5 +277,5 @@ const GFB = (() => {
   function resetLocal() { try { localStorage.removeItem(KEY); } catch {} if (typeof Cloud !== "undefined") Cloud.queuePush(); db = null; load(); }
   function hasLocalEdits() { const e = readEdits(); return Object.keys(e.sims || {}).length > 0 || ["stories","lots","accounts","transactions","loans","todos","projects","posts"].some(t => Array.isArray(e[t])) || !!e.calendar; }
 
-  return { normHandle, saveOrg, deleteOrg, saveHuddlPost, deleteHuddlPost, importReplace, undoImport, canUndoImport, exportEdits, getAll, saveSim, addSim, saveOptions, traitMin, LISTS, listItems, listUsage, saveList, renameListItem, saveSetting, saveRel, deleteRel, saveStory, deleteStory, saveLot, deleteLot, saveAccount, saveLoan, savePost, deletePost, saveTodo, deleteTodo, saveProject, deleteProject, deleteLoan, postTransaction, saveEvent, deleteEvent, saveLog, deleteLog, setToday, uploadImage, resetLocal, hasLocalEdits };
+  return { saveNote, deleteNote, cloudPhotos, photoStats, movePhotosToCloud, normHandle, saveOrg, deleteOrg, saveHuddlPost, deleteHuddlPost, importReplace, undoImport, canUndoImport, exportEdits, getAll, saveSim, addSim, saveOptions, saveSetting, saveRel, deleteRel, saveStory, deleteStory, saveLot, deleteLot, saveAccount, saveLoan, savePost, deletePost, saveTodo, deleteTodo, saveProject, deleteProject, deleteLoan, postTransaction, saveEvent, deleteEvent, saveLog, deleteLog, setToday, uploadImage, resetLocal, hasLocalEdits };
 })();
