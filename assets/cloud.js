@@ -3,7 +3,7 @@
    It copies the same "edits" blob data.js already keeps in localStorage, so no app needs to change. */
 const Cloud = (() => {
  const SUPABASE_URL = "https://pczvxbuipkeksnpeqehp.supabase.co";   /* Project URL, like https://abcdxyz.supabase.co */
-  const SUPABASE_KEY = "sb_publishable_jsZTO7qqJSsGpn_dN08Fcw_o0lHfV6h";   /* the anon public key (safe to publish; the database rules protect your data) */
+  const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBjenZ4YnVpcGtla3NucGVxZWhwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTExNjY3NDksImV4cCI6MjEwNjc0Mjc0OX0.MEV0CwE25fBVjQLq3kd3urHTwNE16ZU11Z9xnNY4dQg";   /* the anon public key (safe to publish; the database rules protect your data) */
 
   const EDITS = "gfb-local-edits-v1", STAMP = "gfb-local-edits-stamp", TABLE = "simdesk_state";
   const enabled = !!(SUPABASE_URL && SUPABASE_KEY && window.supabase);
