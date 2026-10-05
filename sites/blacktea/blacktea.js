@@ -12,7 +12,34 @@ const BlackTea = (() => {
   const fmt = d => UI.gameLabel(d);
   const gtoday = () => UI.gameToday(data.calendar);
   const dateKey = d => typeof d === "object" && d ? String(UI.gameOrd(d, data.calendar)).padStart(6, "0") : "";
-  const paras = t => String(t || "").split(/\n\s*\n/).filter(Boolean).map(p => `<p>${esc(p)}</p>`).join("");
+  /* Articles are written in plain text with a few marks; the toolbar types them for you.
+     ## heading, ### subheading, **bold**, *italic*, > quote, - bullets, 1. numbers, [text](link), --- divider */
+  const inline = t => esc(t)
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g, (m, a, u) => `<a href="${u}" target="_blank" rel="noopener">${a}</a>`)
+    .replace(/\*\*(?=\S)(.+?)(?<=\S)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*(?=[^\s*])(.+?)(?<=[^\s*])\*(?!\*)/g, "$1<em>$2</em>");
+  function md(t){
+    const out = []; let para = [], list = null, quote = null;
+    const flush = () => {
+      if (para.length) { out.push(`<p>${para.map(inline).join("<br>")}</p>`); para = []; }
+      if (list) { out.push(`<${list.t}>${list.i.map(x => `<li>${inline(x)}</li>`).join("")}</${list.t}>`); list = null; }
+      if (quote) { out.push(`<blockquote>${quote.map(inline).join("<br>")}</blockquote>`); quote = null; }
+    };
+    for (const line of String(t || "").replace(/\r/g, "").split("\n")) {
+      const x = line.trim(); let m;
+      if (!x) { flush(); continue; }
+      if ((m = x.match(/^(#{1,3})\s+(.+)$/))) { flush(); out.push(m[1].length === 3 ? `<h3>${inline(m[2])}</h3>` : `<h2>${inline(m[2])}</h2>`); continue; }
+      if (/^(-{3,}|\*{3,})$/.test(x)) { flush(); out.push("<hr>"); continue; }
+      if ((m = x.match(/^>\s?(.*)$/))) { if (!quote) { flush(); quote = []; } quote.push(m[1]); continue; }
+      if ((m = x.match(/^[-*\u2022]\s+(.+)$/))) { if (!list || list.t !== "ul") { flush(); list = { t:"ul", i:[] }; } list.i.push(m[1]); continue; }
+      if ((m = x.match(/^\d+[.)]\s+(.+)$/))) { if (!list || list.t !== "ol") { flush(); list = { t:"ol", i:[] }; } list.i.push(m[1]); continue; }
+      if (list || quote) flush();
+      para.push(x);
+    }
+    flush(); return out.join("");
+  }
+  const paras = md;
+  const plain = t => String(t || "").replace(/^#{1,3}\s+/gm, "").replace(/^>\s?/gm, "").replace(/^[-*\u2022]\s+/gm, "").replace(/^\d+[.)]\s+/gm, "").replace(/^(-{3,}|\*{3,})$/gm, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/\*\*|\*/g, "");
   const simName = id => (data.sims.find(s => s.id === id) || {}).name || id;
   const today = () => new Date().toISOString().slice(0,10);
 
@@ -47,7 +74,7 @@ const BlackTea = (() => {
 
   const published = () => data.stories.filter(s => s.status === "Published").sort((a,b) => dateKey(b.date).localeCompare(dateKey(a.date)) || String(b.date || "").localeCompare(String(a.date || "")));
   const clean = n => String(n || "").replace(/\s*[\u201c\u201d"].*?[\u201c\u201d"]\s*/g, " ").trim();
-  const excerpt = (t, n = 170) => { t = String(t || "").replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n).replace(/\s\S*$/, "") + "\u2026" : t; };
+  const excerpt = (t, n = 170) => { t = plain(t).replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n).replace(/\s\S*$/, "") + "\u2026" : t; };
   const readable = p => p.kind === "standard" || p.kind === "photo" || !p.kind;
   function storyCard(p, lead){
     const sec = p.kind === "photo" ? "PHOTO" : (p.section || "").toUpperCase();
@@ -101,7 +128,7 @@ const BlackTea = (() => {
   /* ---------- staff desk ---------- */
   function cardHTML(s){
     const sims = (s.sims||[]).map(id => `<span class="bt-chip">${esc(simName(id).replace(/\s*[\u201c\u201d"].*?[\u201c\u201d"]\s*/g," "))}</span>`).join("");
-    const title = s.headline || s.tip || s.body || "Untitled";
+    const title = s.headline || s.tip || plain(s.body).trim() || "Untitled";
     const who = [s.byline, s.photo_by && "Photo: " + s.photo_by].filter(Boolean).join(" · ");
     return `<button class="bt-card ${s.kind==="blind"?"blind":""}" data-story="${s.id}">${s.photo ? `<img class="bt-thumb" src="${esc(s.photo)}" alt="">` : ""}
       <span class="s">${esc((s.section || KINDS[s.kind] || "").toUpperCase())}${s.sample?" · SAMPLE":""}</span>
@@ -145,7 +172,7 @@ const BlackTea = (() => {
         ${st.uploading ? `<p class="bt-note">Adding photo…</p>` : ""}${st.err ? `<p class="bt-err">${esc(st.err)}</p>` : ""}
       </div>
       <label>Tip text (tip line posts only)<textarea name="tip">${esc(s.tip)}</textarea></label>
-      <label>Story<textarea name="body">${esc(s.body)}</textarea></label>
+      ${storyField(s)}
       <div class="row">
         <label>Byline<select name="byline"><option value="">None</option>${opt([...staff,"Black Tea Staff"], s.byline)}</select></label>
         <label>Photo credit<select name="photo_by"><option value="">None</option>${opt(staff, s.photo_by)}</select></label>
@@ -159,6 +186,51 @@ const BlackTea = (() => {
     </form></div>`;
   }
 
+  const FMT = [["h","Heading","Head"],["sh","Subheading","Sub"],["b","Bold","<b>B</b>"],["i","Italic","<i>I</i>"],["q","Quote","Quote"],["ul","Bulleted list","\u2022"],["ol","Numbered list","1."],["link","Link","Link"],["hr","Divider","\u2014"]];
+  function storyField(s){
+    const tabs = `<div class="bt-tabs" role="tablist"><button type="button" role="tab" aria-selected="${!st.preview}" data-bt="write">Write</button><button type="button" role="tab" aria-selected="${!!st.preview}" data-bt="preview">Preview</button></div>`;
+    if (st.preview) return `<div class="bt-write"><div class="bt-whead"><span class="lbl">Story</span>${tabs}</div><textarea name="body" hidden>${esc(s.body)}</textarea>
+      <div class="bt-preview"><div class="body">${s.body ? md(s.body) : '<p class="bt-help">Nothing written yet.</p>'}</div></div></div>`;
+    return `<div class="bt-write"><div class="bt-whead"><span class="lbl">Story</span>${tabs}</div>
+      <div class="bt-fmtbar" role="toolbar" aria-label="Formatting">${FMT.map(([k, label, face]) => `<button type="button" data-btf="${k}" aria-label="${label}" title="${label}">${face}</button>`).join("")}</div>
+      <div class="bt-linkrow" hidden><input type="url" id="bt-url" placeholder="Paste the link, like https://" aria-label="Link address" autocomplete="off"><button type="button" class="bt-btn" data-btf="linkadd">ADD</button><button type="button" class="bt-btn ghost" data-btf="linkcancel">CANCEL</button></div>
+      <textarea name="body" id="bt-body" class="bt-bodybox" aria-label="Story">${esc(s.body)}</textarea>
+      <p class="bt-help">Select words, then tap a button. Or type it: <code>## Heading</code> <code>**bold**</code> <code>*italic*</code> <code>&gt; quote</code> <code>- bullet</code>. Blank line between paragraphs.</p></div>`;
+  }
+  /* toolbar actions work right on the textarea, so nothing else on the form is disturbed */
+  function fmtApply(kind){
+    const ta = root.querySelector("#bt-body"); if (!ta) return;
+    let a = ta.selectionStart, b = ta.selectionEnd, v = ta.value;
+    const set = (text, s2, e2) => { ta.value = text; ta.focus(); ta.setSelectionRange(s2, e2); };
+    if (kind === "b" || kind === "i") {
+      const m = kind === "b" ? "**" : "*", sel = v.slice(a, b);
+      if (sel.length >= 2 * m.length && sel.startsWith(m) && sel.endsWith(m) && !(m === "*" && sel.startsWith("**"))) { const inner = sel.slice(m.length, -m.length); return set(v.slice(0, a) + inner + v.slice(b), a, a + inner.length); }
+      if (v.slice(a - m.length, a) === m && v.slice(b, b + m.length) === m && sel && !(m === "*" && v[a - 2] === "*")) return set(v.slice(0, a - m.length) + sel + v.slice(b + m.length), a - m.length, b - m.length);
+      const word = sel || (kind === "b" ? "bold" : "italic");
+      return set(v.slice(0, a) + m + word + m + v.slice(b), a + m.length, a + m.length + word.length);
+    }
+    if (kind === "hr") { const ins = (a > 0 && !/\n\n$/.test(v.slice(0, a)) ? (/\n$/.test(v.slice(0, a)) ? "\n" : "\n\n") : "") + "---\n\n"; return set(v.slice(0, a) + ins + v.slice(b), a + ins.length, a + ins.length); }
+    /* line formats: apply to every line the selection touches; tap again to take it off */
+    const ls = v.lastIndexOf("\n", a - 1) + 1, le0 = v.indexOf("\n", b), le = le0 < 0 ? v.length : le0;
+    const lines = v.slice(ls, le).split("\n"), strip = l => l.replace(/^(#{1,3}\s+|>\s?|[-*\u2022]\s+|\d+[.)]\s+)/, "");
+    const pre = { h:"## ", sh:"### ", q:"> ", ul:"- " }[kind];
+    const has = l => kind === "ol" ? /^\d+[.)]\s+/.test(l) : l.startsWith(pre);
+    const off = lines.filter(l => l.trim()).every(has);
+    let n = 0;
+    const next = lines.map(l => { if (!l.trim()) return l; const base = strip(l); if (off) return base; n++; return (kind === "ol" ? n + ". " : pre) + base; }).join("\n");
+    set(v.slice(0, ls) + next + v.slice(le), ls, ls + next.length);
+  }
+  let linkSel = null;
+  function linkOpen(){ const ta = root.querySelector("#bt-body"); linkSel = [ta.selectionStart, ta.selectionEnd]; const row = root.querySelector(".bt-linkrow"); row.hidden = false; const u = row.querySelector("input"); u.value = ""; u.focus(); }
+  function linkClose(){ const row = root.querySelector(".bt-linkrow"); if (row) row.hidden = true; root.querySelector("#bt-body")?.focus(); }
+  function linkAdd(){
+    const ta = root.querySelector("#bt-body"), u = root.querySelector("#bt-url");
+    let url = (u.value || "").trim(); if (!url) return;
+    if (!/^(https?:\/\/|mailto:)/i.test(url)) url = "https://" + url;
+    const [a, b] = linkSel || [ta.selectionStart, ta.selectionEnd], v = ta.value, text = v.slice(a, b) || "link text", md2 = `[${text}](${url})`;
+    ta.value = v.slice(0, a) + md2 + v.slice(b); root.querySelector(".bt-linkrow").hidden = true; ta.focus(); ta.setSelectionRange(a + 1, a + 1 + text.length);
+  }
+
   function readForm(form){
     const f = new FormData(form), v = k => (f.get(k) || "").trim();
     return { ...st.editing,
@@ -167,7 +239,7 @@ const BlackTea = (() => {
   }
 
   /* ---------- render + events ---------- */
-  function draw(){ root.innerHTML = view === "desk" ? deskHTML() : frontHTML(); if (view === "story") root.closest(".viewport")?.scrollTo(0, 0); }
+  function draw(){ if (!st.editing) st.preview = false; root.innerHTML = view === "desk" ? deskHTML() : frontHTML(); if (view === "story") root.closest(".viewport")?.scrollTo(0, 0); }
 
   let bound = false;
   function bind(){
@@ -177,11 +249,14 @@ const BlackTea = (() => {
       const t = e.target;
       const sec = t.closest("[data-sec]");
       if (sec){ st.section = sec.dataset.sec; if (view === "story") location.hash = "#/blacktea"; else draw(); return; }
+      const fb = t.closest("[data-btf]");
+      if (fb) { const k = fb.dataset.btf; if (k === "link") linkOpen(); else if (k === "linkadd") linkAdd(); else if (k === "linkcancel") linkClose(); else fmtApply(k); return; }
       const card = t.closest("[data-story]");
       if (card){ st.editing = JSON.parse(JSON.stringify(data.stories.find(s => s.id === card.dataset.story))); draw(); return; }
       const act = t.closest("[data-bt]")?.dataset.bt;
       if (act === "closebg" && t.classList.contains("bt-modal")){ st.editing = null; draw(); }
       if (act === "cancel"){ st.editing = null; st.err = null; draw(); }
+      if (act === "write" || act === "preview"){ const fm = root.querySelector(".bt-form"), y = fm ? fm.scrollTop : 0; st.editing = readForm(root.querySelector("#bt-form")); st.preview = act === "preview"; draw(); const f2 = root.querySelector(".bt-form"); if (f2) f2.scrollTop = y; return; }
       if (act === "desk"){ location.hash = "#/blacktea/desk"; }
       if (act === "front"){ if (view === "front") { st.section = "Latest"; draw(); } else location.hash = "#/blacktea"; }
       if (act === "new"){ st.editing = { status:"Pitched", kind:"standard", section:"Culture", sims:[], date:gtoday() }; draw(); }
@@ -210,6 +285,12 @@ const BlackTea = (() => {
       try { const up = await GFB.uploadImage(e.target.files[0], 2048); st.editing.photo = up.url; }
       catch (err) { st.err = err.message; }
       st.uploading = false; draw();
+    });
+    document.addEventListener("mousedown", e => { if (e.target.closest?.(".bt-fmtbar button") && root?.contains(e.target)) e.preventDefault(); });
+    document.addEventListener("keydown", e => {
+      if (!root?.contains(e.target)) return;
+      if (e.target.id === "bt-url" && e.key === "Enter") { e.preventDefault(); linkAdd(); return; }
+      if (e.target.id === "bt-body" && (e.metaKey || e.ctrlKey) && ["b","i"].includes(e.key.toLowerCase())) { e.preventDefault(); fmtApply(e.key.toLowerCase()); }
     });
     document.addEventListener("keydown", e => { if (e.key === "Escape" && st.editing && root?.querySelector(".bt-modal")){ e.stopImmediatePropagation(); st.editing = null; draw(); } }, true);
   }
