@@ -153,8 +153,8 @@ const Cliq = (() => {
           rules:lines(f.get("rules")), activities:csv(f.get("activities")), requirements:csv(f.get("requirements")), emblem:v("emblem"), lot:v("lot") || null, notes:v("notes") };
         if (!old) row.id = "club-" + slug(row.name) + "-" + Math.random().toString(36).slice(2, 5);
         const bf = f.get("banner"), ef = f.get("emblem_img");
-        if (bf && bf.size) row.banner = (await GFB.uploadImage(bf, 1200)).url; else if (f.get("rm_banner")) row.banner = null;
-        if (ef && ef.size) row.emblem_img = (await GFB.uploadImage(ef, 300)).url; else if (f.get("rm_emblem")) row.emblem_img = null;
+        if (bf && bf.size) row.banner = (await GFB.uploadImage(bf, 1800)).url; else if (f.get("rm_banner")) row.banner = null;
+        if (ef && ef.size) row.emblem_img = (await GFB.uploadImage(ef, 400)).url; else if (f.get("rm_emblem")) row.emblem_img = null;
         const saved = await GFB.saveOrg(row); st.modal = null; await refresh(); if (!old) go("club/" + saved.id); return;
       }
       const o = byId(a), s = data.sims.find(x => norm(x.name) === norm(v("name")));

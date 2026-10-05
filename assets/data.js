@@ -189,14 +189,23 @@ const GFB = (() => {
 
   /* Photos. Today: shrinks the image and keeps it as a data link in the browser.
      Later: uploads to Supabase Storage and returns the public link instead. Same return shape. */
+  /* Photos: resized in halving steps with high-quality smoothing (one big jump looks soft and jagged),
+     then saved as WebP where the browser supports it (sharper at the same size), otherwise as a high-quality JPEG. */
   async function uploadImage(file, max = 1400) {
     if (!file || !file.type.startsWith("image/")) throw new Error("That file isn't an image.");
     const bmp = await createImageBitmap(file);
     const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
-    const c = document.createElement("canvas");
-    c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
-    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
-    return { url: c.toDataURL("image/jpeg", 0.8), width: c.width, height: c.height };
+    const W = Math.round(bmp.width * scale), H = Math.round(bmp.height * scale);
+    let src = bmp, w = bmp.width, h = bmp.height;
+    while (w / 2 >= W && h / 2 >= H) {
+      const step = document.createElement("canvas"); w = Math.round(w / 2); h = Math.round(h / 2);
+      step.width = w; step.height = h; const sx = step.getContext("2d"); sx.imageSmoothingEnabled = true; sx.imageSmoothingQuality = "high"; sx.drawImage(src, 0, 0, w, h); src = step;
+    }
+    const c = document.createElement("canvas"); c.width = W; c.height = H;
+    const cx = c.getContext("2d"); cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = "high"; cx.drawImage(src, 0, 0, W, H);
+    let url = c.toDataURL("image/webp", 0.88);
+    if (!url.startsWith("data:image/webp")) url = c.toDataURL("image/jpeg", 0.9);
+    return { url, width: W, height: H };
   }
 
   /* Calendar: events are rows; today is a single setting. */

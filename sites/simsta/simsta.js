@@ -291,10 +291,10 @@ const Simsta = (() => {
       if (e.target.id === "sm-file" && e.target.files[0]) {
         const form = root.querySelector("#sm-post"); if (form) st.draft = readDraft(form);
         st.uploading = true; st.err = null; draw();
-        try { st.draft.photo = (await GFB.uploadImage(e.target.files[0])).url; if (!st.draft.id && !st.draft.likes && st.draft.author) st.draft.likes = suggestLikes(st.draft.author); } catch (err) { st.err = err.message; }
+        try { st.draft.photo = (await GFB.uploadImage(e.target.files[0], 2048)).url; if (!st.draft.id && !st.draft.likes && st.draft.author) st.draft.likes = suggestLikes(st.draft.author); } catch (err) { st.err = err.message; }
         st.uploading = false; draw();
       }
-      if (e.target.id === "sm-avfile" && e.target.files[0]) { st.uploading = true; draw(); try { st.draft.avatar = (await GFB.uploadImage(e.target.files[0])).url; } catch (err) { st.err = err.message; } st.uploading = false; draw(); }
+      if (e.target.id === "sm-avfile" && e.target.files[0]) { st.uploading = true; draw(); try { st.draft.avatar = (await GFB.uploadImage(e.target.files[0], 640)).url; } catch (err) { st.err = err.message; } st.uploading = false; draw(); }
     });
     document.addEventListener("keydown", e => {
       if (!root?.querySelector(".site-sm")) return;

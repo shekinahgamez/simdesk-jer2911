@@ -236,7 +236,7 @@ const Lotline = (() => {
       if (e.target.id === "ll-build"){ st.build = e.target.value; draw(); }
       if (e.target.id === "ll-file" && e.target.files[0]){
         st.editing = readForm(root.querySelector("#ll-form")); st.uploading = true; st.err = null; draw();
-        try { st.editing.photo = (await GFB.uploadImage(e.target.files[0])).url; } catch (err) { st.err = err.message; }
+        try { st.editing.photo = (await GFB.uploadImage(e.target.files[0], 1800)).url; } catch (err) { st.err = err.message; }
         st.uploading = false; draw();
       }
     });

@@ -263,3 +263,81 @@ button.r-rel-main:hover .who{color:var(--link);text-decoration:underline}
 .r-pendchip{border:1px dashed var(--rule);background:var(--panel);padding:7px 12px;margin:0 6px 6px 0;font-size:14px;cursor:pointer;color:var(--ink);min-height:38px}.r-pendchip span{color:var(--link);font-size:12px;font-weight:700;margin-left:4px}
 .r-allres{color:var(--link);font-weight:700;text-decoration:none;margin-right:auto}.r-allres::before{content:"\2190  "}
 @container site (max-width:720px){ .r-galwrap{padding:0 10px 30px}.r-gal{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.r-galnew{margin-left:0}.r-card-ini{font-size:34px} }
+
+/* ================= Cleaner pass (UI/UX review 2): keep the navy .gov frame, calm everything inside it ================= */
+/* header: one slim band */
+.r-banner{padding:4px 24px;font-size:11.5px}
+.r-agency{padding:12px 24px;border-bottom-width:3px}
+.r-agency h1{font-size:22px}.r-seal{width:40px;height:40px}
+.r-count{font-size:12px;line-height:1.4}
+.r-access button{padding:6px 12px;font-size:13px}
+
+/* record pages: one centered column, no repeated resident list */
+.r-shell.solo{display:block;max-width:1000px;margin:0 auto}
+.r-shell.solo .r-file{padding:22px 24px 60px}
+.r-recbar{gap:14px;font-size:13px;padding:8px 16px}
+.r-pn{display:flex;align-items:center;gap:12px;margin:0 auto}.r-pn a{color:var(--link);font-weight:700;text-decoration:none;padding:6px 4px}.r-pn a:hover{text-decoration:underline}
+.r-pn>span{color:var(--rule);padding:6px 4px}.r-pn em{font-style:normal;color:var(--muted);font-size:12.5px;min-width:64px;text-align:center}
+.r-recno{color:var(--muted);font-variant-numeric:tabular-nums}
+.r-folder{padding:28px 32px 32px;border-top:3px solid var(--navy)}
+
+/* the head: photo, name, facts with more air and fewer lines */
+.r-head{gap:26px;align-items:center}
+.r-head h2{font-size:30px;letter-spacing:-.01em}
+.r-facts{border-top:0;padding-top:6px;gap:14px 28px}
+.r-facts dt{font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:600}
+.r-facts dd{font-size:14.5px}
+
+/* gaps: a quiet to-do line instead of a red alarm */
+.r-gapbar{background:var(--panel2);border-left:3px solid var(--rule);color:var(--muted);padding:8px 12px;margin-top:20px}
+.r-gapbar b{color:var(--ink);font-weight:600}
+.r-gapchip{border-color:var(--rule);color:var(--link);background:var(--panel);font-weight:600}
+.r-gapchip:hover{background:var(--link);border-color:var(--link);color:#fff}
+
+/* tabs and sections: hairlines and small caps instead of gray bars */
+.r-tabs{margin-top:24px;border-bottom:1px solid var(--rule)}
+.r-tabs button{padding:10px 14px;margin-bottom:-1px}
+.r-tabs button[aria-selected="true"]{border-bottom-color:var(--navy)}
+.r-sec{margin-top:30px}
+.r-sec h3{background:none;border-left:0;padding:0 0 8px;border-bottom:1px solid var(--rule);font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.r-sec h3 small{text-transform:none;letter-spacing:0}
+:root[data-theme="dark"] .r-sec h3{color:var(--muted)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .r-sec h3{color:var(--muted)}}
+.r-sec h3 .r-sec-edit{border-color:var(--rule);font-weight:600}
+.r-callist a{border-color:var(--rule)}
+
+/* gallery: light toolbar, lighter cards, quiet badges */
+.r-galbar{background:var(--panel);color:var(--ink);border:1px solid var(--rule);border-bottom:1px solid var(--rule);margin-top:18px}
+.r-galbar .r-search{background:var(--panel2);color:var(--ink);border:1px solid var(--rule)}
+.r-galbar .r-chip{color:var(--ink);border-color:var(--rule)}
+.r-galbar .r-chip[aria-pressed="true"]{background:var(--navy);border-color:var(--navy);color:#fff}
+.r-sortl{color:var(--muted)}.r-sortl select{background:var(--panel);color:var(--ink);border-color:var(--rule)}
+.r-galnew .r-newbtn{color:var(--link);border-color:var(--link)}
+.r-galnew .r-newform .r-search{background:var(--panel)}
+.r-gal{gap:16px}
+.r-card{border-color:var(--rule)}
+.r-card-ph{aspect-ratio:4/5;background:var(--panel2)}
+.r-card-ini{background:none!important;color:var(--navy)!important;font-size:38px;opacity:.55}
+.r-card-st{background:rgba(255,255,255,.92);color:var(--navy);border:1px solid var(--rule)}
+.r-card .r-gap{background:none;color:var(--muted);padding:0;font-weight:600}
+.r-card-b{gap:1px}
+
+@container site (max-width:720px){
+  .r-agency{padding:10px 14px}.r-agency h1{font-size:19px}
+  .r-shell.solo .r-file{padding:12px 10px 50px}
+  .r-folder{padding:20px 16px 24px}
+  .r-head h2{font-size:24px}
+  .r-recbar{flex-wrap:wrap}.r-pn{order:3;width:100%;justify-content:space-between;margin:0}
+}
+.r-head .r-av.lg:not(.r-photo){background:var(--panel2)!important;color:var(--navy);border:1px solid var(--rule);opacity:1}
+:root[data-theme="dark"] .r-head .r-av.lg:not(.r-photo){color:var(--ink)}
+
+/* case-note formatting */
+.r-fmt{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 6px}
+.r-fmt button{border:1px solid var(--rule);background:var(--panel);color:var(--ink);padding:6px 12px;min-height:38px;min-width:42px;font-size:14px;cursor:pointer;border-radius:2px}
+.r-fmt button:hover{border-color:var(--link);color:var(--link)}
+.r-notesbox{min-height:220px!important;font-size:16px;line-height:1.55}
+.r-help code{background:var(--panel2);padding:0 4px;font-size:12.5px}
+.r-notes h4.r-nh{font-size:15px;margin:18px 0 4px;color:var(--navy)}.r-notes h4.r-nh:first-child{margin-top:0}
+:root[data-theme="dark"] .r-notes h4.r-nh{color:var(--ink)}
+.r-notes ul{margin:4px 0 12px;padding-left:22px}.r-notes li{margin:2px 0}

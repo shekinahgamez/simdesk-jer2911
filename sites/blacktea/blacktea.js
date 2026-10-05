@@ -207,7 +207,7 @@ const BlackTea = (() => {
       if (e.target.id !== "bt-file" || !e.target.files[0]) return;
       st.editing = readForm(root.querySelector("#bt-form"));
       st.uploading = true; st.err = null; draw();
-      try { const up = await GFB.uploadImage(e.target.files[0]); st.editing.photo = up.url; }
+      try { const up = await GFB.uploadImage(e.target.files[0], 2048); st.editing.photo = up.url; }
       catch (err) { st.err = err.message; }
       st.uploading = false; draw();
     });

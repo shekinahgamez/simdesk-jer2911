@@ -239,9 +239,39 @@ const Registry = (() => {
       <span class="r-lbl" style="margin-top:14px">Credit score (Porchlight)</span>${s.credit_score ? esc(s.credit_score) : '<span class="r-none">Not on file</span>'}</div></div>`;
   }
 
+  /* case-note formatting: ## heading, **bold**, *italic*, "- " bullets. Text is escaped before any formatting is applied. */
+  const inline = t => t.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/(^|[^*])\*(?!\s)(.+?)\*(?!\*)/g, "$1<em>$2</em>").replace(/(^|\W)_(?!\s)(.+?)_(?=\W|$)/g, "$1<em>$2</em>");
+  function fmtNote(block){
+    const out = []; let list = [], para = [];
+    const flushPara = () => { if (para.length) out.push(`<p>${para.map(inline).join("<br>")}</p>`); para = []; };
+    const flushList = () => { if (list.length) out.push(`<ul>${list.map(x => `<li>${inline(x)}</li>`).join("")}</ul>`); list = []; };
+    esc(block).split("\n").forEach(line => {
+      const h = line.match(/^\s*#{1,3}\s+(.*)$/), b = line.match(/^\s*[-\u2022*]\s+(.*)$/);
+      if (h) { flushPara(); flushList(); out.push(`<h4 class="r-nh">${inline(h[1])}</h4>`); }
+      else if (b) { flushPara(); list.push(b[1]); }
+      else if (line.trim()) { flushList(); para.push(line); }
+    });
+    flushPara(); flushList(); return out.join("");
+  }
+  function applyFmt(kind, ta){
+    const v = ta.value, a = ta.selectionStart, z = ta.selectionEnd, sel = v.slice(a, z);
+    if (kind === "b" || kind === "i") {
+      const m = kind === "b" ? "**" : "*", inner = sel || (kind === "b" ? "bold text" : "italic text");
+      ta.value = v.slice(0, a) + m + inner + m + v.slice(z); ta.setSelectionRange(a + m.length, a + m.length + inner.length);
+    } else {
+      const ls = v.lastIndexOf("\n", a - 1) + 1, nl = v.indexOf("\n", z), le = nl === -1 ? v.length : nl;
+      const pre = kind === "h" ? "## " : "- ", lines = v.slice(ls, le).split("\n");
+      const strip = l => kind === "h" ? l.replace(/^#{1,3}\s*/, "") : l.replace(/^[-\u2022*]\s+/, "");
+      const on = lines.every(l => l.startsWith(pre)), next = lines.map(l => on ? l.slice(pre.length) : pre + strip(l)).join("\n");
+      ta.value = v.slice(0, ls) + next + v.slice(le); ta.setSelectionRange(ls, ls + next.length);
+    }
+    ta.focus();
+  }
+
   function notesTab(s){
-    const notesView = `<div class="r-notes">${(s.notes||[]).map(n => `<p>${esc(n)}</p>`).join("") || '<span class="r-none">No notes yet</span>'}</div>`;
-    const notesEdit = form("notes", `<label><textarea name="notes" aria-label="Case notes">${esc((s.notes||[]).join("\n\n"))}</textarea><div class="r-help">Leave a blank line between paragraphs.</div></label>`);
+    const notesView = `<div class="r-notes">${(s.notes||[]).map(fmtNote).join("") || '<span class="r-none">No notes yet</span>'}</div>`;
+    const tb = `<div class="r-fmt" role="toolbar" aria-label="Formatting"><button type="button" data-fmt="h" aria-label="Heading">Heading</button><button type="button" data-fmt="b" aria-label="Bold"><b>B</b></button><button type="button" data-fmt="i" aria-label="Italic"><i>I</i></button><button type="button" data-fmt="ul" aria-label="Bulleted list">\u2022 List</button></div>`;
+    const notesEdit = form("notes", `<label><span class="r-lbl">Case notes</span>${tb}<textarea name="notes" class="r-notesbox" aria-label="Case notes">${esc((s.notes||[]).join("\n\n"))}</textarea><div class="r-help">Select words, then tap a button. Or type: <code>## Heading</code>, <code>**bold**</code>, <code>*italic*</code>, and <code>- </code> at the start of a line for bullets. Leave a blank line between paragraphs.</div></label>`);
     const secretsView = (s.secrets||[]).map((t,i) => { const k = s.id + ":sec:" + i; return `<button class="r-redact ${isOpen(k)?"open":""}" data-reveal="${k}" ${isOpen(k) ? 'aria-disabled="true"' : 'aria-label="Redacted line. Select to declassify"'}><span class="txt">${esc(t)}</span></button>`; }).join("") || '<span class="r-none">Nothing restricted</span>';
     const secretsEdit = form("secrets", `<label><textarea name="secrets" aria-label="Restricted lines">${esc((s.secrets||[]).join("\n"))}</textarea><div class="r-help">One secret per line. Each line gets its own redaction bar.</div></label>`);
     return sec("notes", "Case notes", "", st.edit === "notes" ? notesEdit : notesView)
@@ -297,12 +327,16 @@ const Registry = (() => {
 
   /* ---------- gallery (Registry home) ---------- */
   const SORTS = [["name","Name"],["file","File number"],["gaps","Most file gaps"],["status","Status"]];
-  function galCards(){
+  function sortedVisible(){
     const v = [...visible()];
     if (st.sort === "file") v.sort((a, b) => (parseInt(a.file_no, 10) || 0) - (parseInt(b.file_no, 10) || 0));
     else if (st.sort === "gaps") v.sort((a, b) => gaps(b).length - gaps(a).length || stripNick(a.name).localeCompare(stripNick(b.name)));
     else if (st.sort === "status") v.sort((a, b) => String(a.status || "~").localeCompare(String(b.status || "~")) || stripNick(a.name).localeCompare(stripNick(b.name)));
     else v.sort((a, b) => stripNick(a.name).localeCompare(stripNick(b.name)));
+    return v;
+  }
+  function galCards(){
+    const v = sortedVisible();
     if (!v.length) return `<p class="r-galnone">No residents match. Clear the search or pick another filter.</p>`;
     return v.map(s => { const g = gaps(s).length, age = [s.age, s.life_stage].filter(x => x != null && x !== "").join(", ");
       return `<a class="r-card" href="#/registry/${s.id}"><span class="r-card-ph">${s.portrait ? `<img src="${esc(s.portrait)}" alt="">` : `<span class="r-card-ini" style="background:${avColor(s.name)}">${esc(initials(s.name))}</span>`}${s.status ? `<span class="r-card-st">${esc(s.status)}</span>` : ""}</span>
@@ -325,18 +359,10 @@ const Registry = (() => {
     const s = simById(curId), g = gaps(s);
     const body = { profile:profileTab, connections:connectionsTab, property:propertyTab, notes:notesTab, activity:activityTab }[st.tab](s);
     root.innerHTML = `<div class="site-registry">
-${topHTML()}      <div class="r-mpick"><label class="r-lbl" for="r-pick">Resident record</label><div class="r-mrow">${UI.picker({ id:"r-pick", cls:"field", value:curId, options:[...data.sims].sort((a, b) => stripNick(a.name).localeCompare(stripNick(b.name))).map(x => ({ v:x.id, t:x.name, s:x.career || "" })), placeholder:"Search residents", label:"Resident record" })}<button class="r-btn ghost" data-act="new">+ New</button></div>${st.creating ? newForm() : ""}</div>
-      <div class="r-shell">
-        <nav class="r-index" aria-label="Resident index">
-          <input class="r-search" id="r-q" type="search" placeholder="Search residents" aria-label="Search residents" value="${esc(st.q)}">
-          <div class="r-filters">${FILTERS.map(f => `<button class="r-chip" data-filter="${f}" aria-pressed="${st.filter===f}">${f}</button>`).join("")}</div>
-          ${newForm()}
-          <div id="r-list">${listHTML()}</div>
-          ${pendingNames().length ? `<div class="r-ixh">Awaiting processing</div>${pendingNames().map(p => `<button class="r-pending r-pendbtn" data-file="${esc(p)}">${esc(p)}<span>Open file</span></button>`).join("")}` : ""}
-          ${GFB.hasLocalEdits() ? `<button class="r-reset" data-act="reset">Discard my local edits</button>` : ""}
-        </nav>
+${topHTML()}      <div class="r-shell solo">
         <section class="r-file">
-          <div class="r-recbar"><a class="r-allres" href="#/registry">All residents</a><span>Resident record <b>GFB-${esc(s.file_no)}</b></span>${st.edit === "basics" ? "" : `<button class="r-edit-btn" data-edit="basics">Edit basics</button>`}</div>
+          <div class="r-recbar">${(() => { const order = sortedVisible().map(x => x.id), at = order.indexOf(s.id), prev = at > 0 ? order[at - 1] : null, next = at >= 0 && at < order.length - 1 ? order[at + 1] : null;
+            return `<a class="r-allres" href="#/registry">All residents</a><span class="r-pn">${prev ? `<a href="#/registry/${prev}" aria-label="Previous resident">\u2039 Prev</a>` : `<span>\u2039 Prev</span>`}<em>${at >= 0 ? `${at + 1} of ${order.length}` : ""}</em>${next ? `<a href="#/registry/${next}" aria-label="Next resident">Next \u203a</a>` : `<span>Next \u203a</span>`}</span><span class="r-recno">GFB-${esc(s.file_no)}</span>`; })()}${st.edit === "basics" ? "" : `<button class="r-edit-btn" data-edit="basics">Edit basics</button>`}</div>
           <article class="r-folder ${st.clear ? "cleared" : ""}">
             <div class="r-stamp" aria-hidden="true">Restricted</div>
             <div class="r-head">${face(s,"lg")}
@@ -348,7 +374,7 @@ ${topHTML()}      <div class="r-mpick"><label class="r-lbl" for="r-pick">Residen
             </div>
             ${st.edit === "basics" ? basicsForm(s) : ""}
             ${st.msg ? `<p class="r-saved ${st.err ? "err" : ""}" role="status">${esc(st.msg)}</p>` : ""}
-            ${g.length ? `<div class="r-gapbar"><b>File gaps</b>${g.map(([t, to]) => `<button class="r-gapchip" data-gap="${to}">${t}</button>`).join("")}</div>` : ""}
+            ${g.length ? `<div class="r-gapbar"><b>Still to fill in</b>${g.map(([t, to]) => `<button class="r-gapchip" data-gap="${to}">${t}</button>`).join("")}</div>` : ""}
             <div class="r-tabs" role="tablist">${TABS.map(([k,n]) => `<button role="tab" data-tab="${k}" aria-selected="${st.tab===k}">${n}${k === "connections" ? ` <span>${relsFor(s.id).length}</span>` : ""}</button>`).join("")}</div>
             ${body}
             <div class="r-foot"><span>File GFB-${esc(s.file_no)}</span></div>
@@ -417,10 +443,10 @@ ${topHTML()}      <div class="r-mpick"><label class="r-lbl" for="r-pick">Residen
         const patch = { name: v("name") || s.name, simsta: v("simsta") || null, age: v("age") === "" ? null : Number(v("age")), life_stage: v("life_stage") || null,
           gender: v("gender") || null, status: v("status") || null, career: v("career"), residence: v("residence"), household: v("household") || null };
         const file = f.get("portrait");
-        if (file && file.size) patch.portrait = (await GFB.uploadImage(file, 480)).url;
+        if (file && file.size) patch.portrait = (await GFB.uploadImage(file, 800)).url;
         else if (f.get("noportrait")) patch.portrait = null;
         const hs = f.get("headshot");
-        if (hs && hs.size) patch.headshot = (await GFB.uploadImage(hs, 480)).url;
+        if (hs && hs.size) patch.headshot = (await GFB.uploadImage(hs, 800)).url;
         else if (f.get("noheadshot")) patch.headshot = null;
         if (stripNick(patch.name) !== stripNick(s.name)) for (const l of lots().filter(l => l.owner === stripNick(s.name))) await GFB.saveLot({ ...l, owner: stripNick(patch.name) });
         await GFB.saveSim(curId, patch);
@@ -480,6 +506,7 @@ ${topHTML()}      <div class="r-mpick"><label class="r-lbl" for="r-pick">Residen
     document.addEventListener("click", e => {
       if (!root || !root.contains(e.target) || !root.querySelector(".site-registry")) return;
       const t = e.target;
+      const fb = t.closest("[data-fmt]"); if (fb) { const box = fb.closest("form")?.querySelector(".r-notesbox"); if (box) applyFmt(fb.dataset.fmt, box); return; }
       const ta = t.closest("[data-tagadd]"); if (ta) { addTag(ta.closest(".r-taginput")); return; }
       const rev = t.closest("[data-reveal]"); if (rev) { st.open.add(rev.dataset.reveal); draw(); return; }
       const re = t.closest("[data-rel]:not(form)"); if (re) { st.rel = re.dataset.rel; st.edit = null; draw(); return; }
