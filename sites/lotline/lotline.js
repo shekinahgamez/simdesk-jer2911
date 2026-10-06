@@ -1,6 +1,6 @@
 /* Lotline: listings, lot pages, and editing. Reads and saves through GFB (assets/data.js). */
 const Lotline = (() => {
-  const st = { q:"", world:"All", build:"All", market:"All", types:null, pmin:null, pmax:null, beds:0, baths:0, exact:false, open:null, draft:null,
+  const st = { q:"", world:"All", build:"All", markets:null, types:null, pmin:null, pmax:null, beds:0, baths:0, exact:false, open:null, draft:null,
     tab:"all", page:null, editing:null, err:null, uploading:false };
   let data = null, root = null, curId = null;
 
@@ -49,7 +49,7 @@ const Lotline = (() => {
       if (st.world !== "All" && (l.world || "") !== st.world) return false;
       if (st.types && !st.types.includes(l.lot_type)) return false;
       if (st.build !== "All" && l.build_status !== st.build) return false;
-      if (st.market !== "All" && !family.some(x => x.market_status === st.market)) return false;
+      if (st.markets && !family.some(x => st.markets.includes(x.market_status))) return false;
       if (st.pmin != null || st.pmax != null){
         if (!family.some(x => x.price != null && x.price !== "" && (st.pmin == null || +x.price >= st.pmin) && (st.pmax == null || +x.price <= st.pmax))) return false;
       }
@@ -105,17 +105,15 @@ const Lotline = (() => {
 
   /* ---------- Zillow-style filter row ---------- */
   function filtersHTML(){
-    const o = data.lot_options, segs = ["All", ...(o.market_status || [])], i = Math.max(0, segs.indexOf(st.market));
-    const seg = `<div class="ll-seg" role="radiogroup" aria-label="Market status" style="--n:${segs.length};--i:${i}"><span class="ll-segthumb" aria-hidden="true"></span>
-      ${segs.map((m, k) => `<button role="radio" aria-checked="${k === i}" data-seg="${esc(m)}" data-k="${k}">${esc(m === "All" ? "Any" : m)}</button>`).join("")}</div>`;
+    const mktLbl = !st.markets ? "Market status" : st.markets.length === 1 ? st.markets[0] : `${st.markets.length} statuses`;
     const priceLbl = st.pmin != null && st.pmax != null ? `${fmtK(st.pmin)} to ${fmtK(st.pmax)}` : st.pmin != null ? `${fmtK(st.pmin)}+` : st.pmax != null ? `Up to ${fmtK(st.pmax)}` : "Price";
     const bbLbl = st.beds || st.baths ? [st.beds ? `${st.beds}${st.exact ? "" : "+"} bd` : "", st.baths ? `${st.baths}+ ba` : ""].filter(Boolean).join(", ") : "Beds & baths";
     const typeLbl = !st.types ? "Property type" : st.types.length === 1 ? st.types[0] : `${st.types.length} types`;
     const btn = (key, label, on) => `<div class="ll-fb"><button class="ll-fbtn ${on ? "on" : ""}" data-pop="${key}" aria-expanded="${st.open === key}">${esc(label)}<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>${st.open === key ? popHTML(key) : ""}</div>`;
-    const any = st.world !== "All" || st.build !== "All" || st.market !== "All" || st.types || st.pmin != null || st.pmax != null || st.beds || st.baths;
+    const any = st.world !== "All" || st.build !== "All" || st.markets || st.types || st.pmin != null || st.pmax != null || st.beds || st.baths;
     return `<div class="ll-filterwrap"><div class="ll-filters ll-zf" role="group" aria-label="Filters">
-      ${seg}
       <div class="ll-fbs">
+        ${btn("market", mktLbl, !!st.markets)}
         ${btn("world", st.world === "All" ? "All worlds" : st.world, st.world !== "All")}
         ${btn("price", priceLbl, st.pmin != null || st.pmax != null)}
         ${btn("bb", bbLbl, st.beds || st.baths)}
@@ -152,10 +150,10 @@ const Lotline = (() => {
         <label class="ll-check"><input type="checkbox" id="ll-exact" ${d.exact ? "checked" : ""}>Use exact match</label></div>
         ${head("Number of bathrooms")}<div class="ll-popbody"><span class="ll-poplbl">Bathrooms</span>${row("baths", BATHS)}${apply}</div></div>`;
     }
-    if (key === "type"){
-      const all = o.lot_type || [], on = d.types || all;
-      return `<div class="ll-pop small" role="dialog" aria-label="Property type">${head(`<button class="ll-selall" data-act="selall">${on.length === all.length ? "Deselect all" : "Select all"}</button>`)}<div class="ll-popbody">
-        ${all.map(t => `<label class="ll-check"><input type="checkbox" name="lltype" value="${esc(t)}" ${on.includes(t) ? "checked" : ""}>${esc(t)}</label>`).join("")}${apply}</div></div>`;
+    if (key === "type" || key === "market"){
+      const all = (key === "type" ? o.lot_type : o.market_status) || [], on = (key === "type" ? d.types : d.markets) || all;
+      return `<div class="ll-pop small" role="dialog" aria-label="${key === "type" ? "Property type" : "Market status"}">${head(`<button class="ll-selall" data-act="selall">${on.length === all.length ? "Deselect all" : "Select all"}</button>`)}<div class="ll-popbody">
+        ${all.map(t => `<label class="ll-check"><input type="checkbox" name="llcheck" value="${esc(t)}" ${on.includes(t) ? "checked" : ""}>${esc(t)}</label>`).join("")}${apply}</div></div>`;
     }
     return "";
   }
@@ -294,10 +292,8 @@ const Lotline = (() => {
     document.addEventListener("click", async e => {
       if (!inSite(e.target)) return;
       const t = e.target;
-      const seg = t.closest("[data-seg]");
-      if (seg){ const box = seg.closest(".ll-seg"); box.style.setProperty("--i", seg.dataset.k); box.querySelectorAll("[data-seg]").forEach(b => b.setAttribute("aria-checked", b === seg)); st.market = seg.dataset.seg; st.open = null; setTimeout(draw, 200); return; }
       const pop = t.closest("[data-pop]");
-      if (pop){ const k = pop.dataset.pop; if (st.open === k){ st.open = null; } else { st.open = k; st.draft = { pmin:st.pmin, pmax:st.pmax, beds:st.beds, baths:st.baths, exact:st.exact, types:st.types ? [...st.types] : null }; } draw(); return; }
+      if (pop){ const k = pop.dataset.pop; if (st.open === k){ st.open = null; } else { st.open = k; st.draft = { pmin:st.pmin, pmax:st.pmax, beds:st.beds, baths:st.baths, exact:st.exact, types:st.types ? [...st.types] : null, markets:st.markets ? [...st.markets] : null }; } draw(); return; }
       const pick = t.closest("[data-pick]");
       if (pick){ st[pick.dataset.pick] = pick.dataset.v; st.open = null; draw(); return; }
       const pb = t.closest("[data-pb]");
@@ -310,15 +306,15 @@ const Lotline = (() => {
       const row = t.closest("[data-lot]");
       if (row && !st.editing){ location.hash = "#/lotline/" + row.dataset.lot; return; }
       const act = t.closest("[data-act]")?.dataset.act;
-      if (act === "clear"){ st.world = st.market = st.build = "All"; st.types = st.pmin = st.pmax = null; st.beds = st.baths = 0; st.exact = false; st.open = null; draw(); }
+      if (act === "clear"){ st.world = st.build = "All"; st.markets = st.types = st.pmin = st.pmax = null; st.beds = st.baths = 0; st.exact = false; st.open = null; draw(); }
       if (act === "apply"){
         const d = st.draft || {};
         if (st.open === "price"){ let a = d.pmin, b = d.pmax; if (a != null && b != null && a > b) [a, b] = [b, a]; st.pmin = a; st.pmax = b; }
         if (st.open === "bb"){ st.beds = d.beds || 0; st.baths = d.baths || 0; st.exact = !!d.exact; }
-        if (st.open === "type"){ const all = data.lot_options.lot_type || [], on = [...root.querySelectorAll("input[name=lltype]:checked")].map(x => x.value); st.types = on.length === all.length ? null : on; }
+        if (st.open === "type" || st.open === "market"){ const k = st.open, all = (k === "type" ? data.lot_options.lot_type : data.lot_options.market_status) || [], on = [...root.querySelectorAll("input[name=llcheck]:checked")].map(x => x.value), v = on.length === all.length ? null : on; if (k === "type") st.types = v; else st.markets = v; }
         st.open = null; draw();
       }
-      if (act === "selall"){ const boxes = [...root.querySelectorAll("input[name=lltype]")], allOn = boxes.every(b => b.checked); boxes.forEach(b => b.checked = !allOn); t.textContent = allOn ? "Select all" : "Deselect all"; }
+      if (act === "selall"){ const boxes = [...root.querySelectorAll("input[name=llcheck]")], allOn = boxes.every(b => b.checked); boxes.forEach(b => b.checked = !allOn); t.textContent = allOn ? "Select all" : "Deselect all"; }
       if (act === "home"){ st.tab = "all"; if (curId || st.page) location.hash = "#/lotline"; else draw(); }
       if (act === "back"){ const l = lotById(curId); location.hash = "#/lotline" + (l?.parent_id ? "/" + l.parent_id : ""); }
       if (act === "new"){ st.editing = { build_status:"Proposed", market_status:"Off market", world:"Lennox Park", notes:"" }; st.err = null; draw(); }
