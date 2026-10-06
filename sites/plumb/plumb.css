@@ -1,109 +1,117 @@
-/* Plumb: the save's to-do app. Calm, white, lots of air, one plumbob-green accent. Always light. */
+/* Plumb: gameplay to-dos, Things 3 style, organized by household and Sim. Calm, white, one plumbob-green accent. Always light. */
 .site-pl{
   color-scheme:light;
   --bg:#FFFFFF; --side:#F7F8F7; --ink:#1C1F1D; --ink2:#3F4642; --muted:#79817C; --faint:#A7AEAA; --line:#ECEEEC;
-  --green:#2E9E4F; --greenSoft:#E8F5EC; --today:#E8A317; --someday:#B3A57D; --due:#C2410C;
+  --green:#2E9E4F; --greenSoft:#E8F5EC; --blue:#3B6FB0;
   --sans:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
   background:var(--bg); color:var(--ink); font:15px/1.5 var(--sans); min-height:100%;
-  display:grid; grid-template-columns:250px minmax(0,1fr); -webkit-font-smoothing:antialiased;
+  display:grid; grid-template-columns:260px minmax(0,1fr); -webkit-font-smoothing:antialiased;
 }
 :where(.site-pl) :where(button,input,select,textarea){font:inherit;color:inherit}
 .site-pl :focus-visible{outline:2px solid var(--green);outline-offset:2px}
+
+/* progress pie, Things-style project circle */
+.pl-pie{--p:0%;width:16px;height:16px;border-radius:50%;flex:none;border:1.6px solid var(--green);
+  background:radial-gradient(circle,#fff 0 55%,transparent 56%),conic-gradient(var(--green) var(--p),transparent 0);box-sizing:border-box}
+.pl-pie.big{width:26px;height:26px;border-width:2px}
 
 /* sidebar */
 .pl-side{background:var(--side);border-right:1px solid var(--line);padding:22px 12px 30px;display:flex;flex-direction:column;gap:2px}
 .pl-brand{display:flex;align-items:center;gap:8px;padding:0 10px 18px;font-weight:700;font-size:18px;letter-spacing:-.01em}
 .pl-brand svg{width:20px;height:20px}
-.pl-nav{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:none;background:none;padding:8px 10px;border-radius:8px;cursor:pointer;font-weight:500;font-size:14.5px;color:var(--ink2);min-height:38px}
+.pl-nav{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:none;background:none;padding:7px 10px;border-radius:8px;cursor:pointer;font-weight:500;font-size:14.5px;color:var(--ink2);min-height:36px}
 .pl-nav:hover{background:#EEF0EE}
 .pl-nav[aria-current="true"]{background:#E6E9E7;color:var(--ink)}
 .pl-nav .ic{width:18px;height:18px;flex:none;display:grid;place-items:center}
+.pl-nav .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pl-nav .ct{margin-left:auto;font-size:12.5px;color:var(--faint);font-weight:500}
-.pl-gap{height:14px}
-.pl-area{font-size:12px;font-weight:600;color:var(--faint);padding:10px 10px 4px}
-.pl-newproj{border:none;background:none;color:var(--muted);font-size:13.5px;padding:8px 10px;text-align:left;cursor:pointer;border-radius:8px}
-.pl-newproj:hover{background:#EEF0EE}
-.pl-reset{margin-top:auto;border:none;background:none;color:var(--faint);font-size:12px;text-align:left;padding:8px 10px;cursor:pointer}
+.pl-hhnav{margin-top:12px;font-size:13px;font-weight:600;color:var(--muted);min-height:30px}
+.pl-simnav{padding-left:16px}
+.pl-gap{height:6px}
+.pl-area{font-size:13px;font-weight:600;color:var(--muted);padding:14px 10px 4px}
+.pl-sidehint{font-size:13px;color:var(--faint);padding:14px 10px}
 
 /* main */
 .pl-main{padding:40px 48px 80px;max-width:760px;width:100%}
 .pl-title{display:flex;align-items:center;gap:12px;margin:0 0 4px}
 .pl-title h1{font-size:30px;font-weight:700;letter-spacing:-.02em;margin:0}
 .pl-title .ic{width:28px;height:28px}
-.pl-sub{color:var(--muted);font-size:14px;margin:0 0 22px}
-.pl-titleinput{font-size:30px;font-weight:700;letter-spacing:-.02em;border:none;background:none;padding:0;width:100%;outline:none}
-.pl-add{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;border:1px dashed transparent;margin:0 -12px 6px}
+.pl-sub{color:var(--muted);font-size:14px;margin:0 0 22px 38px}
+.pl-link{color:var(--green);font-weight:600;text-decoration:none;white-space:nowrap}
+.pl-link:hover{text-decoration:underline}
+
+.pl-add{display:flex;align-items:center;gap:12px;padding:8px 12px;border-radius:10px;border:1px solid transparent;margin:0 -12px 6px}
 .pl-add:focus-within{border-color:var(--line);background:#FBFCFB}
-.pl-add input{border:none;background:none;outline:none;flex:1;font-size:15px;padding:4px 0}
+.pl-add input{border:none;background:none;outline:none;flex:1;font-size:15px;padding:4px 0;min-width:0}
 .pl-add input::placeholder{color:var(--faint)}
-.pl-plus{width:20px;height:20px;border-radius:50%;border:1.5px dashed var(--faint);flex:none}
+.pl-plus{width:18px;height:18px;border-radius:5px;border:1.5px dashed var(--faint);flex:none}
 
-.pl-group{margin-top:22px}
-.pl-group h2{font-size:13px;font-weight:700;color:var(--ink2);margin:0 0 4px;padding-bottom:6px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between}
-.pl-group h2 span{color:var(--faint);font-weight:500}
+.pl-group{margin-top:24px}
+.pl-group h2{font-size:14px;font-weight:700;color:var(--green);margin:0 0 4px;padding-bottom:6px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+.pl-group h2 span{color:var(--faint);font-weight:500;font-size:12.5px}
+.pl-h2link{border:none;background:none;padding:0;font-weight:700;color:var(--green);cursor:pointer;font-size:14px}
+.pl-h2link:hover{text-decoration:underline}
 
-.pl-row{display:flex;align-items:flex-start;gap:12px;padding:9px 12px;margin:0 -12px;border-radius:10px;cursor:pointer}
+/* rows: rounded-square checkbox like Things */
+.pl-row{display:flex;align-items:flex-start;gap:12px;padding:8px 12px;margin:0 -12px;border-radius:10px;cursor:pointer}
 .pl-row:hover{background:#F7F8F7}
 .pl-row.open{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.06);cursor:default;margin:8px -12px;padding:14px 12px}
-.pl-check{width:20px;height:20px;border-radius:50%;border:1.6px solid #B9C0BC;background:#fff;flex:none;margin-top:2px;cursor:pointer;display:grid;place-items:center;padding:0}
+.pl-check{width:18px;height:18px;border-radius:5px;border:1.6px solid #B9C0BC;background:#fff;flex:none;margin-top:2px;cursor:pointer;display:grid;place-items:center;padding:0}
 .pl-check:hover{border-color:var(--green)}
 .pl-check.done{background:var(--green);border-color:var(--green)}
-.pl-check.done::after{content:"";width:6px;height:10px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg) translate(-1px,-1px)}
+.pl-check.done::after{content:"";width:5px;height:9px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg) translate(-1px,-1px)}
 .pl-body{flex:1;min-width:0}
 .pl-t{font-size:15px;color:var(--ink);line-height:1.4}
 .pl-row.isdone .pl-t{color:var(--faint);text-decoration:line-through}
-.pl-meta{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12.5px;color:var(--muted);margin-top:2px}
-.pl-meta .today{color:var(--today);font-weight:600}
-.pl-meta .date{color:var(--due);font-weight:600}
-.pl-meta .src{color:var(--green);font-weight:600}
+.pl-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:12.5px;color:var(--muted);margin-top:3px}
+.pl-tag{border:1px solid var(--line);border-radius:999px;padding:0 8px;color:var(--ink2)}
+.pl-tag.hh{color:var(--muted)}
+.pl-prog{display:inline-flex;align-items:center;gap:8px;color:var(--ink2);font-weight:500}
+.pl-minibar{display:inline-block;width:64px;height:4px;border-radius:2px;background:var(--line);overflow:hidden}
+.pl-minibar i{display:block;height:100%;background:var(--green)}
+.pl-showdone{border:none;background:none;color:var(--faint);font-size:13px;font-weight:600;padding:14px 0 6px;cursor:pointer}
+.pl-showdone:hover{color:var(--muted)}
+.pl-idle{font-size:13px;color:var(--faint);margin:22px 0 0}
+.pl-idlelink{border:none;background:none;padding:0;color:var(--muted);font-size:13px;cursor:pointer;text-decoration:underline;text-decoration-color:var(--line)}
+
+/* editor */
 .pl-edit input.pl-et{width:100%;border:none;outline:none;font-size:15px;font-weight:600;padding:0;background:none}
-.pl-edit textarea{width:100%;border:none;outline:none;resize:vertical;min-height:60px;font-size:14px;line-height:1.55;color:var(--ink2);padding:6px 0;background:none}
+.pl-edit textarea{width:100%;border:none;border-bottom:1px solid var(--line);outline:none;resize:vertical;min-height:56px;font-size:14px;line-height:1.55;color:var(--ink2);padding:6px 0;background:none}
 .pl-edit textarea::placeholder,.pl-edit input::placeholder{color:var(--faint)}
-.pl-cl{margin:6px 0 4px;padding:6px 0;border-top:1px solid var(--line)}
+.pl-cl{margin:6px 0 4px;padding:4px 0}
 .pl-cli{display:flex;align-items:center;gap:10px;padding:4px 0;font-size:14px}
 .pl-cli input[type=text]{flex:1;border:none;outline:none;background:none;padding:2px 0}
-.pl-mini{width:16px;height:16px;border-radius:4px;border:1.5px solid #B9C0BC;background:#fff;flex:none;padding:0;cursor:pointer}
+.pl-mini{width:15px;height:15px;border-radius:4px;border:1.5px solid #B9C0BC;background:#fff;flex:none;padding:0;cursor:pointer}
 .pl-mini.done{background:var(--green);border-color:var(--green)}
 .pl-cli.done input{color:var(--faint);text-decoration:line-through}
 .pl-x{border:none;background:none;color:var(--faint);cursor:pointer;font-size:16px;padding:0 4px}
-.pl-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
-.pl-bar select{border:1px solid var(--line);border-radius:8px;background:#fff;padding:6px 10px;font-size:13px;min-height:34px}
+.pl-lbl{display:block;font-size:11.5px;font-weight:600;color:var(--muted);margin:12px 0 4px}
+.pl-goalrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pl-goalrow select,.pl-hhsel{border:1px solid var(--line);border-radius:8px;background:#fff;padding:6px 10px;font-size:13px;min-height:34px;color:var(--ink2)}
+.pl-num{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
+.pl-num input{width:90px;border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:14px;min-height:34px;background:#fff}
+.pl-num.off{display:none}
+.pl-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
 .pl-bar .spacer{flex:1}
 .pl-btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer;min-height:34px;color:var(--ink2)}
 .pl-btn.green{background:var(--green);border-color:var(--green);color:#fff}
 .pl-del{border:none;background:none;color:#B42318;font-size:13px;font-weight:600;cursor:pointer;padding:6px 4px}
-.pl-empty{color:var(--faint);padding:40px 0;text-align:center;font-size:14.5px}
-.pl-auto{display:flex;align-items:flex-start;gap:12px;padding:10px 12px;margin:0 -12px;border-radius:10px}
-.pl-auto:hover{background:#F7F8F7}
-.pl-dot{width:20px;height:20px;border-radius:50%;background:var(--greenSoft);flex:none;margin-top:1px;display:grid;place-items:center}
-.pl-dot::after{content:"";width:7px;height:7px;border-radius:50%;background:var(--green)}
-.pl-auto .acts{display:flex;gap:6px;flex:none}
-.pl-auto a{color:var(--ink2);font-size:13px;font-weight:600;text-decoration:none;border:1px solid var(--line);border-radius:8px;padding:5px 10px;white-space:nowrap}
-.pl-auto a:hover{border-color:var(--green)}
-.pl-note{font-size:13px;color:var(--muted);background:var(--side);border-radius:10px;padding:10px 14px;margin:0 0 18px}
-
-@container site (max-width:760px){
-  .site-pl{grid-template-columns:1fr}
-  .pl-side{flex-direction:row;flex-wrap:wrap;gap:4px;padding:12px;border-right:none;border-bottom:1px solid var(--line)}
-  .pl-brand,.pl-gap,.pl-area,.pl-newproj,.pl-reset{display:none}
-  .pl-nav{width:auto}
-  .pl-main{padding:24px 18px 60px}
-  .pl-auto{flex-wrap:wrap}
-}
-.pl-lbl{display:block;font-size:11.5px;font-weight:600;color:var(--muted);margin-top:10px}
-.pl-meta .pl-sim{color:#3B6FB0;font-weight:600}
-.pl-newbtn{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:1px dashed var(--line);background:none;cursor:pointer;color:var(--muted);font-size:15px;min-height:46px}
-.pl-newbtn:hover{border-color:var(--green);color:var(--ink)}
-.pl-edit textarea{border-bottom:1px solid var(--line)}
+.pl-empty{color:var(--faint);padding:36px 0;text-align:center;font-size:14.5px}
 .site-pl .simpick .sp-search{border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:14px;background:#fff;outline:none}
 .site-pl .simpick .sp-search:focus{border-color:var(--green)}
-.pl-areasel{border:1px solid var(--line);border-radius:8px;background:#fff;padding:4px 8px;font-size:13px;color:var(--ink2)}
 
-@container site (max-width:760px){ .site-pl{grid-template-rows:auto 1fr} .pl-side{align-items:center;align-content:flex-start} }
-
-/* UI/UX pass: find any Sim, search all to-dos, Sim header with Registry link */
+/* find a Sim, search */
 .pl-findsim{display:flex;align-items:center;gap:8px;margin:0 0 10px;padding:6px 10px;border:1px solid #E3E6E3;border-radius:10px;background:#fff}
 .pl-findsim .ic{width:18px;height:18px;flex:none}.pl-findsim .ui-pick{flex:1;min-width:0}.pl-findsim .ui-pick-cur{max-width:140px;font-weight:500;color:#555}
-.pl-search{margin:0 0 18px}.pl-search input{width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid #E3E6E3;border-radius:10px;font-size:16px;background:#FAFBFA}
-.pl-reglink{color:#2E9E4F;font-weight:600;text-decoration:none;margin-left:4px;white-space:nowrap}.pl-reglink:hover{text-decoration:underline}
-@container site (max-width:760px){ .pl-findsim{margin:0;flex:1 1 100%;order:9} }
+.pl-search{margin:0 0 22px}.pl-search input{width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid #E3E6E3;border-radius:10px;font-size:16px;background:#FAFBFA}
+
+/* narrow: sidebar becomes a chip row of households; Sims are reached from the household page or Find a Sim */
+@container site (max-width:760px){
+  .site-pl{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  .pl-side{flex-direction:row;flex-wrap:wrap;align-items:center;align-content:flex-start;gap:4px;padding:12px;border-right:none;border-bottom:1px solid var(--line)}
+  .pl-brand,.pl-gap,.pl-area,.pl-simnav,.pl-sidehint{display:none}
+  .pl-nav,.pl-hhnav{width:auto;margin:0;font-size:14px;font-weight:500;color:var(--ink2)}
+  .pl-findsim{margin:0;flex:1 1 100%;order:-1}
+  .pl-main{padding:24px 18px 60px}
+  .pl-sub{margin-left:0}
+}
