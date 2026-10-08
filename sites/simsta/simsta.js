@@ -64,11 +64,18 @@ const Simsta = (() => {
     dice:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="9" cy="9" r="1.2" fill="currentColor"/><circle cx="15" cy="15" r="1.2" fill="currentColor"/><circle cx="15" cy="9" r="1.2" fill="currentColor"/><circle cx="9" cy="15" r="1.2" fill="currentColor"/></svg>`
   };
 
+  /* ---------- comments and likes: the post's own (bundle) plus any in the simsta_comments / simsta_likes tables ---------- */
+  const CL = () => GFB.simsta;
+  const commentsOf = p => [...(p.comments || []), ...CL().commentsOf(p.id).map(c => ({ author:c.author, text:c.body, cloud:true }))];
+  const likedBy = p => [...new Set([...(p.liked_by || []), ...CL().likersOf(p.id)])];
+  const likesOf = p => Number(p.likes || 0) + CL().addedOf(p.id);
+  async function loadCloud(){ try { if (await CL().refresh()) draw(); } catch (e) { console.warn("Simsta comments didn't load.", e); } }
+
   /* ---------- post card ---------- */
   function postHTML(p, full){
-    const a = acct(p.author), me = actor(), comments = p.comments || [];
+    const a = acct(p.author), me = actor(), comments = commentsOf(p);
     const showAll = full || st.open[p.id], shown = showAll ? comments : comments.slice(-2);
-    const liked = me && (p.liked_by || []).includes(me.key);
+    const liked = me && likedBy(p).includes(me.key), nLikes = likesOf(p);
     const tags = (p.tags || []).map(k => acct(k) || (sim(k) ? { key:k, handle:clean(sim(k).name) } : null)).filter(Boolean);
     return `<article class="sm-post">
       <div class="sm-phead"><button class="sm-handle" data-u="${p.author}" aria-label="Open profile">${av(a, 32, postedRecently(p.author))}</button>
@@ -76,7 +83,7 @@ const Simsta = (() => {
         <span style="flex:1"></span><button class="sm-handle sm-dots" data-edit="${p.id}" aria-label="Edit post">${ICON.more}</button></div>
       <img class="sm-photo" src="${esc(p.photo)}" alt="${esc(p.caption || "Photo")}" data-dbl="${p.id}">
       <div class="sm-actions"><button data-like="${p.id}" class="${liked ? "liked" : ""}" aria-label="${liked ? "Unlike" : "Like"}">${ICON.heart}</button><button data-focus="${p.id}" aria-label="Comment">${ICON.comment}</button></div>
-      <div class="sm-likes">${fmt(p.likes)} like${Number(p.likes) === 1 ? "" : "s"}</div>
+      <div class="sm-likes">${fmt(nLikes)} like${nLikes === 1 ? "" : "s"}</div>
       ${p.caption ? `<div class="sm-cap"><b data-u="${p.author}">${esc(a ? a.handle : "")}</b>${rich(p.caption)}</div>` : ""}
       ${tags.length ? `<div class="sm-tags">with ${tags.map(t => `<button data-u="${t.key}">${esc(t.handle)}</button>`).join(", ")}</div>` : ""}
       ${!showAll && comments.length > 2 ? `<button class="sm-more" data-all="${p.id}">View all ${comments.length} comments</button>` : ""}
@@ -92,10 +99,10 @@ const Simsta = (() => {
     return `<div class="sm-feedwrap"><div class="sm-feed">${feed}</div>${asideHTML()}</div>`;
   }
   function asideHTML(){
-    const week = posts().filter(p => nowOrd() - ord(p.date) <= 7).sort((a,b) => (b.likes || 0) - (a.likes || 0)).slice(0, 4);
+    const week = posts().filter(p => nowOrd() - ord(p.date) <= 7).sort((a,b) => likesOf(b) - likesOf(a)).slice(0, 4);
     const days = []; for (let k = 0; k <= 3; k++) { const o = nowOrd() + k - 1, season = cal().seasons[Math.floor((((o % 84) + 84) % 84) / 21)].name, day = (((o % 84) + 84) % 84) % 21 + 1; cal().events.filter(e => e.season === season && e.day === day).forEach(e => days.push({ e, k })); }
     return `<aside class="sm-aside">
-      ${week.length ? `<section><h3>Trending this week</h3>${week.map(p => `<button class="sm-trend" data-post="${p.id}"><img loading="lazy" decoding="async" src="${esc(p.photo)}" alt=""><span><b>${esc(nameOf(p.author))}</b><small>${fmt(p.likes)} likes</small></span></button>`).join("")}</section>` : ""}
+      ${week.length ? `<section><h3>Trending this week</h3>${week.map(p => `<button class="sm-trend" data-post="${p.id}"><img loading="lazy" decoding="async" src="${esc(p.photo)}" alt=""><span><b>${esc(nameOf(p.author))}</b><small>${fmt(likesOf(p))} likes</small></span></button>`).join("")}</section>` : ""}
       <section><h3>Coming up in the save</h3>${days.length ? days.slice(0, 5).map(({e, k}) => `<div class="sm-ev"><small>${k === 0 ? "Today" : k === 1 ? "Tomorrow" : "In " + k + " days"}</small>${esc(e.title)}</div>`).join("") : `<p class="sm-none" style="padding:0">Nothing on the calendar.</p>`}</section>
     </aside>`;
   }
@@ -103,7 +110,7 @@ const Simsta = (() => {
   function exploreHTML(){ const list = posts(); return `<div class="sm-prof">${grid(list) || `<div class="sm-empty">${ICON.camera}<h2>Nothing to explore yet</h2><p>Posts from every account show up here.</p></div>${suggest(12)}`}</div>`; }
   function tagHTML(t){
     const re = new RegExp("#" + t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![\\p{L}0-9_])", "iu");
-    const list = posts().filter(p => re.test(p.caption || "") || (p.comments || []).some(c => re.test(c.text)));
+    const list = posts().filter(p => re.test(p.caption || "") || commentsOf(p).some(c => re.test(c.text)));
     return `<div class="sm-prof"><div class="sm-dirhead"><h1>#${esc(t)}</h1><span class="sm-sub">${list.length} post${list.length === 1 ? "" : "s"}</span></div>${grid(list) || `<p class="sm-none">No posts with this tag yet.</p>`}</div>`;
   }
 
@@ -229,6 +236,7 @@ const Simsta = (() => {
     const me = actor(); if (!me) return;
     const p = data.posts.find(z => z.id === id), by = p.liked_by || [], has = by.includes(me.key);
     if (has && onlyLike) return;
+    if (!has && CL().likersOf(id).includes(me.key)) return;   /* liked from the likes table: stays liked */
     await savePost(id, { liked_by: has ? by.filter(k => k !== me.key) : [...by, me.key], likes: Math.max(0, Number(p.likes || 0) + (has ? -1 : 1)) });
   }
   async function saveProfile(form){
@@ -291,6 +299,9 @@ const Simsta = (() => {
       if (has("u")) { st.tab = "posts"; st.q = ""; st.lb = null; go("u/" + x("u")); return; }
       if (t.closest("[data-go]")) { go(x("go")); return; }
     });
+    /* coming back to Simsta picks up comments Claude added */
+    const back = () => { if (document.visibilityState === "visible" && root?.querySelector(".site-sm") && !st.modal && !(root.contains(document.activeElement) && document.activeElement.value)) loadCloud(); };   /* never while she's mid-typing */
+    document.addEventListener("visibilitychange", back); window.addEventListener("focus", back);
     document.addEventListener("dblclick", e => { if (!mine(e.target)) return; const id = e.target.closest("[data-dbl]")?.dataset.dbl; if (id) toggleLike(id, true); });
     document.addEventListener("input", e => {
       if (!mine(e.target)) return;
@@ -321,7 +332,9 @@ const Simsta = (() => {
         if (e.target.matches("[data-cpost]")) {
           const text = (f.get("text") || "").trim(), me = actor(); if (!text || !me) return;
           const p = data.posts.find(z => z.id === e.target.dataset.cpost); st.open[p.id] = true;
-          await savePost(p.id, { comments: [...(p.comments || []), { author: me.key, text }] }); root.querySelector(`[data-cpost="${p.id}"] input`)?.focus(); return;
+          if (CL().ready()) { e.target.reset(); await CL().addComment(p.id, me.key, text, { ...cal().today, year: cal().year }); draw(); }
+          else await savePost(p.id, { comments: [...(p.comments || []), { author: me.key, text }] });
+          root.querySelector(`[data-cpost="${p.id}"] input`)?.focus(); return;
         }
         if (e.target.id === "sm-post") {
           const d = readDraft(e.target);
@@ -335,7 +348,7 @@ const Simsta = (() => {
     });
   }
 
-  function render(el, d, parts){ root = el; data = d; data.posts = data.posts || []; route = parts || []; if (route[0] !== "u") st.tab = "posts"; st.lb = null; bind(); draw(); }
+  function render(el, d, parts){ root = el; data = d; data.posts = data.posts || []; route = parts || []; if (route[0] !== "u") st.tab = "posts"; st.lb = null; bind(); draw(); loadCloud(); }
   function address(parts){ const [v, a] = parts || []; if (v === "u") { const ac = data && acct(a); return "/" + (ac ? ac.handle.slice(1) : a); } if (v === "p") return "/p/" + a; if (v === "explore") return "/explore"; if (v === "accounts") return "/directory"; if (v === "tag") return "/explore/tags/" + a; return "/"; }
   return { render, address };
 })();

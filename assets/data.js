@@ -367,8 +367,56 @@ const GFB = (() => {
     return { ready, refresh, ensure, add, find, isLoaded:() => loaded, threads:() => threads, list:id => byThread.get(id) || [] };
   })();
 
+  /* Simsta comments and likes added outside the app (by Claude) or typed while the cloud is on live in their own Supabase tables,
+     simsta_comments and simsta_likes, never in the edits bundle. Comments typed before Oct 8 stay in each post's bundle "comments".
+     Simsta shows both together. Field guide: SIMSTA-SCHEMA.md in the SimDesk folder. */
+  const simsta = (() => {
+    let comments = new Map(), likes = new Map(), loaded = false, since = null, busy = null;
+    const sb = () => cloudClient();
+    const ready = () => !!sb();
+    async function pageAll(build) {
+      const out = [];
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await build().range(from, from + 999);
+        if (error) throw new Error(error.message || "Couldn't reach Simsta comments.");
+        out.push(...(data || [])); if (!data || data.length < 1000) return out;
+      }
+    }
+    function add(map, rows) {
+      for (const r of rows) {
+        const list = map.get(r.post_id) || [], i = list.findIndex(x => x.id === r.id);
+        if (i >= 0) list[i] = r; else list.push(r);
+        list.sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)) || String(a.id).localeCompare(String(b.id)));
+        map.set(r.post_id, list);
+        if (!since || r.created_at > since) since = r.created_at;
+      }
+    }
+    async function refresh() {
+      if (!ready()) return false;
+      if (busy) return busy;
+      busy = (async () => {
+        const c = sb(), from = loaded ? since : null;
+        const q = t => () => { let x = c.from(t).select("*"); if (from) x = x.gte("created_at", from); return x.order("created_at", { ascending:true }).order("id"); };
+        const [cm, lk] = await Promise.all([pageAll(q("simsta_comments")), pageAll(q("simsta_likes"))]);
+        if (!loaded) { comments = new Map(); likes = new Map(); }
+        add(comments, cm); add(likes, lk); loaded = true;
+        return true;
+      })();
+      try { return await busy; } finally { busy = null; }
+    }
+    async function addComment(post_id, author, body, game_date = null) {
+      const { data, error } = await sb().from("simsta_comments").insert({ user_id:Cloud.userId(), post_id, author, body, game_date }).select().single();
+      if (error) throw new Error(error.message || "Couldn't post that comment.");
+      add(comments, [data]); return data;
+    }
+    const commentsOf = id => comments.get(id) || [];
+    const likersOf = id => (likes.get(id) || []).map(l => l.account).filter(Boolean);
+    const addedOf = id => (likes.get(id) || []).reduce((n, l) => n + (Number(l.added) || 0), 0);
+    return { ready, refresh, addComment, commentsOf, likersOf, addedOf, isLoaded:() => loaded };
+  })();
+
   function resetLocal() { try { localStorage.removeItem(KEY); } catch {} if (typeof Cloud !== "undefined") Cloud.queuePush(); db = null; load(); }
   function hasLocalEdits() { const e = readEdits(); return Object.keys(e.sims || {}).length > 0 || ["stories","lots","accounts","transactions","loans","todos","projects","posts"].some(t => Array.isArray(e[t])) || !!e.calendar; }
 
-  return { messages, saveTossUp, saveSlide, saveNote, deleteNote, cloudPhotos, photoStats, movePhotosToCloud, normHandle, saveOrg, deleteOrg, saveHuddlPost, deleteHuddlPost, importReplace, undoImport, canUndoImport, exportEdits, getAll, saveSim, addSim, saveOptions, saveSetting, saveRel, deleteRel, saveStory, deleteStory, saveLot, deleteLot, saveAccount, saveLoan, savePost, deletePost, saveTodo, deleteTodo, saveProject, deleteProject, deleteLoan, postTransaction, saveEvent, deleteEvent, saveLog, deleteLog, setToday, uploadImage, resetLocal, hasLocalEdits };
+  return { messages, simsta, saveTossUp, saveSlide, saveNote, deleteNote, cloudPhotos, photoStats, movePhotosToCloud, normHandle, saveOrg, deleteOrg, saveHuddlPost, deleteHuddlPost, importReplace, undoImport, canUndoImport, exportEdits, getAll, saveSim, addSim, saveOptions, saveSetting, saveRel, deleteRel, saveStory, deleteStory, saveLot, deleteLot, saveAccount, saveLoan, savePost, deletePost, saveTodo, deleteTodo, saveProject, deleteProject, deleteLoan, postTransaction, saveEvent, deleteEvent, saveLog, deleteLog, setToday, uploadImage, resetLocal, hasLocalEdits };
 })();
