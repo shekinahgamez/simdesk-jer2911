@@ -29,6 +29,8 @@ const GFB = (() => {
       if (s) Object.assign(s, patch);
     }
     for (const t of ["relationships","stories","lots","accounts","transactions","loans","todos","projects","posts","organizations","households","lots_pending","huddl_posts","notes"]) if (Array.isArray(edits[t])) seed[t] = edits[t];
+    if (edits.tossup && typeof edits.tossup === "object") seed.tossup = edits.tossup;
+    if (edits.slide && typeof edits.slide === "object") seed.slide = edits.slide;
     if (edits.options) Object.assign(seed.options, edits.options);
     if (edits.lot_options) seed.lot_options = { ...seed.lot_options, ...edits.lot_options };
     seed.settings = { ...(seed.settings || {}), ...(edits.settings || {}) };
@@ -104,6 +106,27 @@ const GFB = (() => {
   }
   const canUndoImport = () => !!localStorage.getItem(UNDO);
   const exportEdits = () => readEdits();
+
+  /* Toss Up: its decks, where each deck is, and the game night chat, kept as one object. */
+  async function saveTossUp(t) {
+    if (!db) load();
+    db.tossup = t;
+    const edits = readEdits();
+    edits.tossup = t;
+    if (!writeEdits(edits)) throw new Error("This browser's storage is full.");
+    return t;
+  }
+
+  /* Slide: whose phone is open, each Sim's distance and burner setting, every swipe (by swiping Sim), and the match list, as one object.
+     Swipes are stored as { swiperId: { otherId: "p" | "l" | "s" } } (pass, slide, shot) to stay small as the save grows. */
+  async function saveSlide(t) {
+    if (!db) load();
+    db.slide = t;
+    const edits = readEdits();
+    edits.slide = t;
+    if (!writeEdits(edits)) throw new Error("This browser's storage is full.");
+    return t;
+  }
 
   /* Desktop settings (wallpaper). Later: a settings row in Supabase. */
   async function saveSetting(key, value) {
@@ -274,8 +297,78 @@ const GFB = (() => {
   async function deleteLog(id) { if (!db) load(); db.calendar.logs = (db.calendar.logs || []).filter(x => x.id !== id); persistCal(); }
   async function setToday(today, year) { if (!db) load(); db.calendar.today = today; if (year) db.calendar.year = year; persistCal(); }
 
+  /* Messages: every Sim conversation lives in its own Supabase tables (message_threads, messages), never in the edits bundle.
+     Rows are private to the signed-in user (row level security). Claude adds most of them straight to Supabase;
+     the app reads them, and Slide and Simsta start threads. Field guide: MESSAGES-SCHEMA.md in the SimDesk folder.
+     Loads everything once, then only rows created since the last load. */
+  const messages = (() => {
+    let threads = [], byThread = new Map(), loaded = false, since = null, busy = null;
+    const sb = () => cloudClient();
+    const ready = () => !!sb();
+    const sameSims = (a, b) => a.length === b.length && a.every(x => b.includes(x));
+    async function pageAll(build) {
+      const out = [];
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await build().range(from, from + 999);
+        if (error) throw new Error(error.message || "Couldn't reach Messages.");
+        out.push(...(data || [])); if (!data || data.length < 1000) return out;
+      }
+    }
+    function addRows(rows) {
+      for (const m of rows) {
+        const list = byThread.get(m.thread_id) || [];
+        const i = list.findIndex(x => x.id === m.id);
+        if (i >= 0) list[i] = m; else list.push(m);
+        list.sort((a, b) => a.seq - b.seq);
+        byThread.set(m.thread_id, list);
+        if (!since || m.created_at > since) since = m.created_at;
+      }
+    }
+    const sortThreads = () => threads.sort((a, b) => String(b.last_message_at).localeCompare(String(a.last_message_at)));
+    async function refresh() {
+      if (!ready()) throw new Error("Messages needs the cloud connection. Sign in to SimDesk's cloud, then open Messages again.");
+      if (busy) return busy;
+      busy = (async () => {
+        const c = sb();
+        const t = await pageAll(() => c.from("message_threads").select("*").order("last_message_at", { ascending:false }).order("id"));
+        const rows = await pageAll(() => { let q = c.from("messages").select("*"); if (loaded && since) q = q.gte("created_at", since); return q.order("created_at", { ascending:true }).order("id"); });
+        if (!loaded) byThread = new Map();
+        threads = t; addRows(rows); loaded = true; sortThreads();
+        return true;
+      })();
+      try { return await busy; } finally { busy = null; }
+    }
+    /* a thread with exactly these Sims (any order); origin optional */
+    const find = (simIds, origin) => threads.find(t => sameSims(t.sim_ids, simIds) && (!origin || t.origin === origin)) || null;
+    async function createThread({ sim_ids, origin, title = null }) {
+      const { data, error } = await sb().from("message_threads").insert({ user_id:Cloud.userId(), sim_ids, origin, title }).select().single();
+      if (error) throw new Error(error.message || "Couldn't start that thread.");
+      threads.unshift(data); sortThreads(); return data;
+    }
+    /* list: [{ sender, kind:"text"|"system", body, game_date }]; the order number is filled in by the database */
+    async function add(threadId, list) {
+      const rows = list.map(m => ({ thread_id:threadId, user_id:Cloud.userId(), sender_sim_id:m.kind === "system" ? null : m.sender, kind:m.kind || "text", body:m.body, game_date:m.game_date || null }));
+      const { data, error } = await sb().from("messages").insert(rows).select();
+      if (error) throw new Error(error.message || "Couldn't add that message.");
+      addRows(data || []);
+      const t = threads.find(x => x.id === threadId), last = (data || []).map(m => m.created_at).sort().pop();
+      if (t && last && last > t.last_message_at) { t.last_message_at = last; sortThreads(); }
+      return data;
+    }
+    /* find the thread, or start it (with an optional opening system line) */
+    async function ensure(simIds, origin, { anyOrigin = false, system = null, game_date = null } = {}) {
+      if (!loaded) await refresh();
+      const t = find(simIds, anyOrigin ? null : origin);
+      if (t) return { thread:t, created:false };
+      const made = await createThread({ sim_ids:simIds, origin });
+      if (system) await add(made.id, [{ kind:"system", body:system, game_date }]);
+      return { thread:made, created:true };
+    }
+    return { ready, refresh, ensure, add, find, isLoaded:() => loaded, threads:() => threads, list:id => byThread.get(id) || [] };
+  })();
+
   function resetLocal() { try { localStorage.removeItem(KEY); } catch {} if (typeof Cloud !== "undefined") Cloud.queuePush(); db = null; load(); }
   function hasLocalEdits() { const e = readEdits(); return Object.keys(e.sims || {}).length > 0 || ["stories","lots","accounts","transactions","loans","todos","projects","posts"].some(t => Array.isArray(e[t])) || !!e.calendar; }
 
-  return { saveNote, deleteNote, cloudPhotos, photoStats, movePhotosToCloud, normHandle, saveOrg, deleteOrg, saveHuddlPost, deleteHuddlPost, importReplace, undoImport, canUndoImport, exportEdits, getAll, saveSim, addSim, saveOptions, saveSetting, saveRel, deleteRel, saveStory, deleteStory, saveLot, deleteLot, saveAccount, saveLoan, savePost, deletePost, saveTodo, deleteTodo, saveProject, deleteProject, deleteLoan, postTransaction, saveEvent, deleteEvent, saveLog, deleteLog, setToday, uploadImage, resetLocal, hasLocalEdits };
+  return { messages, saveTossUp, saveSlide, saveNote, deleteNote, cloudPhotos, photoStats, movePhotosToCloud, normHandle, saveOrg, deleteOrg, saveHuddlPost, deleteHuddlPost, importReplace, undoImport, canUndoImport, exportEdits, getAll, saveSim, addSim, saveOptions, saveSetting, saveRel, deleteRel, saveStory, deleteStory, saveLot, deleteLot, saveAccount, saveLoan, savePost, deletePost, saveTodo, deleteTodo, saveProject, deleteProject, deleteLoan, postTransaction, saveEvent, deleteEvent, saveLog, deleteLog, setToday, uploadImage, resetLocal, hasLocalEdits };
 })();

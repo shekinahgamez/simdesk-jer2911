@@ -118,7 +118,7 @@ const Simsta = (() => {
     const others = accts().filter(x => x.sim.id === a.sim.id && x.key !== key);
     return `<div class="sm-prof">
       <div class="sm-phero">${av(a, 150, postedRecently(key))}
-        <div class="sm-pinfo"><div class="sm-prow"><h1>${esc(a.handle)}</h1><button class="sm-btn" data-editprof="${key}">Edit profile</button>${actor()?.key === key ? `<span class="sm-pill">Acting as</span>` : `<button class="sm-btn hot" data-actas="${key}">Act as ${esc(a.handle)}</button>`}</div>
+        <div class="sm-pinfo"><div class="sm-prow"><h1>${esc(a.handle)}</h1><button class="sm-btn" data-editprof="${key}">Edit profile</button><button class="sm-btn" data-msg="${key}">Message</button>${actor()?.key === key ? `<span class="sm-pill">Acting as</span>` : `<button class="sm-btn hot" data-actas="${key}">Act as ${esc(a.handle)}</button>`}</div>
           <div class="sm-stats"><span><b>${mine.length}</b> post${mine.length === 1 ? "" : "s"}</span><span><b>${fmt(a.followers)}</b> followers</span><span><b>${fmt(a.following)}</b> following</span></div>
           <div class="sm-name">${esc(a.name)}</div>${a.bio ? `<p class="sm-bio">${rich(a.bio)}</p>` : ""}
           <p class="sm-owner">${a.alt ? "Alt account of" : "Main account of"} <button class="sm-mention" data-reg="${a.sim.id}">${esc(clean(a.sim.name))}</button>${others.length ? `. Also ${others.map(o => `<button class="sm-mention" data-u="${o.key}">${esc(o.handle)}</button>`).join(", ")}` : ""}</p></div></div>
@@ -248,6 +248,17 @@ const Simsta = (() => {
     return s.id;
   }
 
+  /* Message button: opens the thread between the Sim you're acting as and this profile's Sim, or starts one tagged Simsta.
+     On your own (acting as) profile it opens every thread that Sim is in. */
+  async function messageSim(key, btn){
+    const a = acct(key), me = actor(); if (!a) return;
+    if (!me || me.sim.id === a.sim.id) { location.hash = "#/messages/sim/" + a.sim.id; return; }
+    if (!GFB.messages || !GFB.messages.ready()) { btn.textContent = "Messages needs the cloud"; return; }
+    btn.disabled = true; btn.textContent = "Opening...";
+    try { const r = await GFB.messages.ensure([me.sim.id, a.sim.id], "simsta", { anyOrigin:true }); location.hash = "#/messages/t/" + r.thread.id + "/" + me.sim.id; }
+    catch (e) { btn.disabled = false; btn.textContent = "Couldn't open. Try again"; }
+  }
+
   let bound = false;
   function bind(){
     if (bound) return; bound = true;
@@ -261,6 +272,7 @@ const Simsta = (() => {
       if (has("switch")) { st.sq = ""; st.modal = { kind:"switch" }; draw(); root.querySelector("#sm-sq")?.focus(); return; }
       if (has("pick")) { setActor(x("pick")); st.modal = null; draw(); return; }
       if (has("actas")) { setActor(x("actas")); draw(); return; }
+      if (has("msg")) { await messageSim(x("msg"), t.closest("[data-msg]")); return; }
       if (has("reg")) { location.hash = "#/registry/" + x("reg"); return; }
       if (has("delpost")) { if (UI.confirmTap(t.closest("[data-delpost]"))) { await GFB.deletePost(x("delpost")); st.modal = null; st.lb = null; if (route[0] === "p") go(""); else draw(); } return; }
       if (has("delalt")) { if (UI.confirmTap(t.closest("[data-delalt]"))) { const [sid, aid] = x("delalt").split("~"); const s = sim(sid); await GFB.saveSim(sid, { simsta_alts:(s.simsta_alts || []).filter(a => a.id !== aid) }); st.modal = null; go("u/" + sid); } return; }

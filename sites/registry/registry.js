@@ -73,6 +73,8 @@ const Registry = (() => {
 
   /* ---------- small builders ---------- */
   const tagList = arr => arr && arr.length ? `<div class="r-tags">${arr.map(t => `<span class="r-tagi">${esc(t)}</span>`).join("")}</div>` : `<span class="r-none">Not on file</span>`;
+  /* attraction choices: the basics plus whatever the matching Toss Up deck can land on */
+  const attrOpts = key => [...new Set(["Opposite sex", "Same sex", "Both", ...((data.tossup && data.tossup.decks) || []).filter(d => d.registry === key).flatMap(d => (d.outcomes || []).map(o => o.label))])];
   const orNone = v => v ? esc(v) : `<span class="r-none">Not on file</span>`;
   const sel = (name, opts, val, blank="Not on file") => { const o = val && !opts.includes(val) ? [val, ...opts] : opts; return `<select name="${name}"><option value="">${blank}</option>${o.map(x => `<option ${x===val?"selected":""}>${esc(x)}</option>`).join("")}</select>`; };
   const dl = (id, vals) => `<datalist id="${id}">${vals.map(v => `<option value="${esc(v)}">`).join("")}</datalist>`;
@@ -138,6 +140,8 @@ const Registry = (() => {
         <div><span class="r-lbl">Aspiration</span>${orNone(s.aspiration)}</div>
         <div><span class="r-lbl">Attachment style</span>${orNone(s.attachment)}</div>
         <div><span class="r-lbl">Love language</span>${orNone(s.love_language)}</div>
+        <div><span class="r-lbl">Sexual attraction</span>${orNone(s.sexual_attraction)}</div>
+        <div><span class="r-lbl">Romantic attraction</span>${orNone(s.romantic_attraction)}</div>
       </div>`;
     const behaviorEdit = form("behavior", `
       <div><span class="r-lbl">Traits</span><div class="row">${[0,1,2,3,4].map(i => sel("trait"+i, menu("traits"), (s.traits||[])[i], "Open slot")).join("")}</div></div>
@@ -145,6 +149,10 @@ const Registry = (() => {
         <label><span class="r-lbl">Aspiration</span>${sel("aspiration", menu("aspiration"), s.aspiration)}</label>
         <label><span class="r-lbl">Attachment style</span>${sel("attachment", o.attachment, s.attachment)}</label>
         <label><span class="r-lbl">Love language</span>${sel("love_language", o.love_language, s.love_language)}</label>
+      </div>
+      <div class="row">
+        <label><span class="r-lbl">Sexual attraction</span>${sel("sexual_attraction", attrOpts("sexual_attraction"), s.sexual_attraction)}</label>
+        <label><span class="r-lbl">Romantic attraction</span>${sel("romantic_attraction", attrOpts("romantic_attraction"), s.romantic_attraction)}</label>
       </div>`);
     const prefsView = `<div class="r-grid2">
         <div><span class="r-lbl">Likes</span>${tagList(s.likes)}</div><div><span class="r-lbl">Dislikes</span>${tagList(s.dislikes)}</div>
@@ -455,7 +463,8 @@ ${topHTML()}      <div class="r-shell solo">
       }
       if (key === "behavior") await GFB.saveSim(curId, {
         traits: [0,1,2,3,4].map(i => v("trait"+i)).filter(Boolean).filter((t,i,a) => a.indexOf(t) === i),
-        aspiration: v("aspiration") || null, attachment: v("attachment") || null, love_language: v("love_language") || null });
+        aspiration: v("aspiration") || null, attachment: v("attachment") || null, love_language: v("love_language") || null,
+        sexual_attraction: v("sexual_attraction") || null, romantic_attraction: v("romantic_attraction") || null });
       if (key === "prefs") {
         const patch = Object.fromEntries(PREF_KEYS.map(([k]) => [k, f.getAll(k)]));
         for (const [k, vals] of Object.entries(patch)) { const list = data.options[k] || [], add = vals.filter(x => !list.some(y => y.toLowerCase() === x.toLowerCase())); if (add.length) await GFB.saveOptions(k, [...list, ...add].sort((a,b) => a.localeCompare(b))); }
