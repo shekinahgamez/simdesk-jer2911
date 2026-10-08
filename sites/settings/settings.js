@@ -15,7 +15,7 @@ const Settings = (() => {
         ${w ? `<button class="st-btn" data-st="default">Use the default background</button>` : ""}
         <p class="st-note">Big photos are shrunk to fit. Saved to this browser.</p>
       </section>
-      <section class="st-card" style="margin-top:16px"><h2>Desktop and dock</h2><p class="st-note" style="margin:0 0 10px">Use the arrows to change the order. "To dock" and "To desktop" move an app between the two.</p>${layoutHTML()}</section>
+      <section class="st-card" style="margin-top:16px"><h2>Desktop and dock</h2><p class="st-note" style="margin:0 0 10px">Drag the handle to change the order, or drag an app between the dock and the desktop. "To dock" and "To desktop" still work too.</p><div id="st-lay">${layoutHTML()}</div></section>
       <section class="st-card" style="margin-top:16px">${photosHTML()}</section>
       <section class="st-card" id="st-import" style="margin-top:16px"></section>
       <p class="st-note" style="text-align:center;margin:18px 0 6px">SimDesk build <b>${window.SIMDESK_BUILD || "dev"}</b></p></div></div>`;
@@ -27,10 +27,10 @@ const Settings = (() => {
   function layoutHTML(){
     if (!window.SimDeskLayout) return "";
     const L = SimDeskLayout.layout(), apps = Object.fromEntries(SimDeskLayout.apps().map(a => [a.key, a]));
-    const row = (k, where, i, n) => `<li class="st-app"><span class="st-ic">${apps[k].icon}</span><b>${apps[k].name}</b>
-      <span class="st-appbtns"><button class="st-sm" data-lay="up:${where}:${k}" ${i === 0 ? "disabled" : ""} aria-label="Move ${apps[k].name} up">↑</button><button class="st-sm" data-lay="down:${where}:${k}" ${i === n - 1 ? "disabled" : ""} aria-label="Move ${apps[k].name} down">↓</button>
-      ${k === "settings" && where === "dock" ? "" : `<button class="st-sm wide" data-lay="move:${where}:${k}">${where === "dock" ? "To desktop" : "To dock"}</button>`}</span></li>`;
-    const list = (where, title) => `<h3 class="st-h3">${title}</h3><ol class="st-apps">${L[where].map((k, i) => row(k, where, i, L[where].length)).join("") || '<li class="st-note">Empty</li>'}</ol>`;
+    const GRIP = `<svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><g fill="currentColor"><circle cx="7" cy="5" r="1.6"/><circle cx="13" cy="5" r="1.6"/><circle cx="7" cy="10" r="1.6"/><circle cx="13" cy="10" r="1.6"/><circle cx="7" cy="15" r="1.6"/><circle cx="13" cy="15" r="1.6"/></g></svg>`;
+    const row = (k, where) => `<li class="st-app" data-key="${k}"><button type="button" class="st-grip" data-grip="${where}:${k}" aria-label="Reorder ${apps[k].name}. Drag, or use the up and down arrow keys.">${GRIP}</button><span class="st-ic">${apps[k].icon}</span><b>${apps[k].name}</b>
+      <span class="st-appbtns">${k === "settings" && where === "dock" ? "" : `<button class="st-sm wide" data-lay="move:${where}:${k}">${where === "dock" ? "To desktop" : "To dock"}</button>`}</span></li>`;
+    const list = (where, title) => `<h3 class="st-h3">${title}</h3><ol class="st-apps" data-where="${where}">${L[where].map(k => row(k, where)).join("") || '<li class="st-note st-empty">Empty</li>'}</ol>`;
     return list("dock", "Dock") + list("desktop", "Desktop") + `<button class="st-btn" data-lay="reset">Back to the original order</button>`;
   }
   async function moveApp(cmd){
@@ -43,7 +43,69 @@ const Settings = (() => {
       if (act === "move") { list.splice(i, 1); L[where === "dock" ? "desktop" : "dock"].push(k); }
       await GFB.saveSetting("app_layout", L);
     }
-    data = await GFB.getAll(); window.dispatchEvent(new Event("gfb:layout")); draw();
+    await layoutSaved();
+  }
+  /* redraw only the app lists, so the rest of Settings (scroll position, the Notion import) stays put */
+  async function layoutSaved(focusKey){
+    data = await GFB.getAll();
+    SimDeskLayout.setSaved?.((data.settings || {}).app_layout);
+    window.dispatchEvent(new Event("gfb:layout"));
+    const box = root && root.querySelector("#st-lay"); if (!box) return draw();
+    box.innerHTML = layoutHTML();
+    if (focusKey) box.querySelector(`[data-grip$=":${focusKey}"]`)?.focus();
+  }
+
+  /* drag to reorder: press the handle, drag, let go. Works with a finger, pen, or mouse.
+     Settings can be reordered inside the dock but never leaves it. */
+  let drag = null;
+  function dragStart(e, grip){
+    const li = grip.closest(".st-app"), r = li.getBoundingClientRect(), key = li.dataset.key;
+    e.preventDefault();
+    const gap = document.createElement("li"); gap.className = "st-gap"; gap.style.height = r.height + "px";
+    li.after(gap);
+    Object.assign(li.style, { position:"fixed", left:r.left + "px", top:r.top + "px", width:r.width + "px", zIndex:50, pointerEvents:"none" });
+    li.classList.add("lift");
+    drag = { li, gap, key, dy:e.clientY - r.top, id:e.pointerId, scroller:root.closest(".viewport") || root, y:e.clientY, raf:0 };
+    try { grip.setPointerCapture(e.pointerId); } catch {}
+    tick();
+  }
+  function place(y){
+    const d = drag; d.li.style.top = (y - d.dy) + "px";
+    const lists = [...root.querySelectorAll(".st-apps")].filter(l => d.key !== "settings" || l.dataset.where === "dock");
+    /* the list under the finger, else the nearest one */
+    let target = lists[0], best = Infinity;
+    for (const l of lists) { const r = l.getBoundingClientRect(); const dist = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0; if (dist < best) { best = dist; target = l; } }
+    const rows = [...target.querySelectorAll(".st-app")].filter(x => x !== d.li);
+    const before = rows.find(x => { const r = x.getBoundingClientRect(); return y < r.top + r.height / 2; });
+    target.querySelector(".st-empty")?.setAttribute("hidden", "");
+    if (before) { if (d.gap.nextElementSibling !== before) target.insertBefore(d.gap, before); }
+    else if (d.gap.parentElement !== target || d.gap.nextElementSibling) target.appendChild(d.gap);
+  }
+  /* keeps the list scrolling while the finger rests near the top or bottom edge */
+  function tick(){
+    const d = drag; if (!d) return;
+    const r = d.scroller.getBoundingClientRect(), edge = 60;
+    const v = d.y < r.top + edge ? -Math.ceil((r.top + edge - d.y) / 6) : d.y > r.bottom - edge ? Math.ceil((d.y - (r.bottom - edge)) / 6) : 0;
+    if (v) { d.scroller.scrollTop += v; place(d.y); }
+    d.raf = requestAnimationFrame(tick);
+  }
+  async function dragEnd(cancel){
+    const d = drag; if (!d) return; drag = null; cancelAnimationFrame(d.raf);
+    if (cancel) { d.gap.remove(); return layoutSaved(); }
+    d.gap.replaceWith(d.li);
+    const L = { dock:[], desktop:[] };
+    root.querySelectorAll(".st-apps").forEach(l => l.querySelectorAll(".st-app").forEach(x => L[l.dataset.where].push(x.dataset.key)));
+    if (!L.dock.includes("settings")) return layoutSaved();
+    const before = JSON.stringify(SimDeskLayout.layout());
+    if (JSON.stringify(L) !== before) await GFB.saveSetting("app_layout", L);
+    await layoutSaved();
+  }
+  /* keyboard: arrow keys on a handle move the app one spot */
+  async function keyMove(grip, dir){
+    const [where, k] = grip.dataset.grip.split(":"), L = SimDeskLayout.layout(), list = L[where], i = list.indexOf(k), j = i + dir;
+    if (j < 0 || j >= list.length) return;
+    [list[i], list[j]] = [list[j], list[i]];
+    await GFB.saveSetting("app_layout", L); await layoutSaved(k);
   }
 
   /* Photos: show how much of your data is photos, and move them to Supabase Storage */
@@ -86,6 +148,14 @@ const Settings = (() => {
       data = await GFB.getAll(); draw();
     });
     document.addEventListener("click", e => { const b = mine(e.target) && e.target.closest("[data-lay]"); if (b && !b.disabled) moveApp(b.dataset.lay); });
+    document.addEventListener("pointerdown", e => { const g = mine(e.target) && e.target.closest("[data-grip]"); if (g && !drag && e.button <= 0) dragStart(e, g); });
+    document.addEventListener("pointermove", e => { if (drag && e.pointerId === drag.id) { e.preventDefault(); drag.y = e.clientY; place(e.clientY); } }, { passive:false });
+    document.addEventListener("pointerup", e => { if (drag && e.pointerId === drag.id) dragEnd(false); });
+    document.addEventListener("pointercancel", e => { if (drag && e.pointerId === drag.id) dragEnd(true); });
+    document.addEventListener("keydown", e => {
+      const g = mine(e.target) && e.target.closest("[data-grip]"); if (!g) return;
+      if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); keyMove(g, e.key === "ArrowUp" ? -1 : 1); }
+    });
     document.addEventListener("click", async e => {
       if (!mine(e.target) || !e.target.closest("[data-st=default]")) return;
       await GFB.saveSetting("wallpaper", null); data = await GFB.getAll(); st.msg = "Back to the default."; draw();

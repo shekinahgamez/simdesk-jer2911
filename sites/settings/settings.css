@@ -34,5 +34,10 @@
 .st-ic{width:34px;height:34px;border-radius:9px;overflow:hidden;flex:none;display:block}.st-ic svg,.st-ic img{width:100%;height:100%;display:block}
 .st-app b{flex:1;font-weight:500;min-width:0}
 .st-appbtns{display:flex;gap:6px;flex:none}
+.st-grip{border:0;background:none;width:40px;height:44px;display:grid;place-items:center;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;flex:none;margin:0 -6px 0 -4px;color:#8E8E93;border-radius:8px}
+.st-grip:active{cursor:grabbing}
+.st-app.lift{background:#fff;box-shadow:0 10px 28px rgba(0,0,0,.18);border:1px solid var(--line);border-radius:12px;transform:scale(1.02)}
+.st-gap{list-style:none;background:rgba(0,122,255,.08);border:2px dashed rgba(0,122,255,.45);border-radius:10px;margin:4px;box-sizing:border-box}
+.st-apps{-webkit-user-select:none;user-select:none}
 .st-sm{border:1px solid var(--line);background:#fff;border-radius:9px;min-width:40px;min-height:40px;font-size:16px;cursor:pointer;color:var(--accent)}
 .st-sm.wide{font-size:13px;font-weight:600;padding:0 10px}.st-sm:disabled{opacity:.35;cursor:default}

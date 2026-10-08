@@ -50,7 +50,8 @@ function layout(){
   keys.forEach(k => { if (dock.includes(k) || desktop.includes(k)) return; if (saved.dock && DOCK.includes(k)) { const i = dock.indexOf("settings"); dock.splice(i < 0 ? dock.length : i, 0, k); } else desktop.push(k); });
   return { dock, desktop };
 }
-window.SimDeskLayout = { layout, apps: () => APPS.map(a => ({ key:a.key, name:a.name, icon:typeof a.icon === "function" ? a.icon() : a.icon })) };
+/* setSaved: Settings hands over a just-saved layout so the next read is current right away (the gfb:layout event reloads it a moment later) */
+window.SimDeskLayout = { layout, setSaved: s => { SAVED_LAYOUT = s || null; drawIcons(); }, apps: () => APPS.map(a => ({ key:a.key, name:a.name, icon:typeof a.icon === "function" ? a.icon() : a.icon })) };
 window.addEventListener("gfb:layout", () => GFB.getAll().then(d => { SAVED_LAYOUT = (d.settings || {}).app_layout || null; drawIcons(); }));
 const iconHTML = a => typeof a.icon === "function" ? a.icon() : a.icon;
 const HOME_MARK = `<svg viewBox="0 0 100 100" aria-hidden="true"><g transform="translate(50 50) rotate(45) scale(0.13) translate(-166 -166)" fill="currentColor"><rect x="83" y="0" width="166" height="38"/><rect x="83" y="0" width="38" height="201"/><rect x="211" y="0" width="38" height="73"/><rect x="294" y="83" width="38" height="166"/><rect x="131" y="83" width="201" height="38"/><rect x="259" y="211" width="73" height="38"/><rect x="83" y="294" width="166" height="38"/><rect x="211" y="131" width="38" height="201"/><rect x="83" y="259" width="38" height="73"/><rect x="0" y="83" width="38" height="166"/><rect x="0" y="211" width="201" height="38"/><rect x="0" y="83" width="73" height="38"/></g></svg>`;
