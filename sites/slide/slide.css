@@ -86,20 +86,26 @@
 .sl-namebar p{margin-top:5px;font-size:14px;color:var(--dim);display:flex;gap:4px 12px;flex-wrap:wrap}
 .sl-body{flex:0 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:14px 18px 26px;display:grid;gap:12px;align-content:start;scrollbar-width:thin;-webkit-mask-image:linear-gradient(#000 calc(100% - 20px),transparent);mask-image:linear-gradient(#000 calc(100% - 20px),transparent)}
 .sl-chips{display:flex;flex-wrap:wrap;gap:6px}.sl-chip{font-size:12.5px;padding:4px 10px;border-radius:99px;background:var(--smoke2)}
-.sl-likes{font-size:13px;color:var(--dim);line-height:1.5;max-height:3em;overflow:hidden}
-.sl-likes.dis{max-height:1.5em;margin-top:2px}
-.sl-more.open .sl-likes{max-height:none}
-.sl-showmore{background:none;border:0;padding:6px 0 0;font-size:12.5px;font-weight:700;color:var(--ember);text-align:left}
+.sl-likes{font-size:13px;color:var(--dim);line-height:1.5}
+.sl-likes.dis{margin-top:6px}
+.sl-likes.dis span{opacity:.85}
+.sl-more.collapsed .sl-morebody{display:none}
+.sl-showmore{background:none;border:0;padding:0;min-height:44px;font-size:13px;font-weight:700;color:var(--ember);text-align:left}
 .sl-likes b{font-size:11px;letter-spacing:.1em;text-transform:uppercase;margin-right:4px}
 .sl-likes span:not(:last-child)::after{content:", "}
 .sl-likes span.sh{color:var(--honey)}
 .sl-likes.dis span{opacity:.8}
-.sl-compat{display:grid;gap:7px;font-size:13.5px}
-.sl-compat div{display:flex;gap:8px;align-items:baseline}
-.sl-compat b{flex:none;width:64px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
-.sl-compat .good{color:var(--mint)}.sl-compat .bad{color:var(--neg)}.sl-compat .like{color:var(--honey)}
-.sl-alert{display:flex;gap:10px;align-items:flex-start;background:rgba(255,181,71,.1);border:1px solid rgba(255,181,71,.35);border-radius:14px;padding:10px 12px;font-size:13px}
-.sl-alert svg{width:18px;height:18px;flex:none;color:var(--honey);margin-top:1px}
+.sl-compat{display:grid;gap:8px}
+.sl-compat>div{display:flex;gap:10px;align-items:baseline}
+.sl-compat b{flex:none;width:52px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.sl-cc{display:flex;flex-wrap:wrap;gap:5px}
+.sl-cchip{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;padding:3px 10px 3px 7px;border-radius:99px;color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent)}
+.sl-cchip svg{width:13px;height:13px;flex:none}
+.sl-cc.good{--c:var(--mint)}.sl-cc.bad{--c:var(--neg)}.sl-cc.like{--c:var(--honey)}
+.sl-cc.like .sl-cchip svg{fill:currentColor}
+.sl-world{display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--honey);line-height:1.35}
+.sl-world svg{width:16px;height:16px;flex:none;margin-top:1px}
+.sl-world span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .sl-flash{font-size:13.5px;color:var(--dim);background:var(--smoke2);border-radius:99px;padding:6px 14px}
 
 /* buttons */
@@ -173,3 +179,10 @@
 .sl-formbtns{display:flex;gap:10px;flex-wrap:wrap}.sl-formbtns .sl-btn{flex:1 1 120px}
 .sl-box .sl-btn{background:var(--smoke);border:1px solid var(--line);padding:11px 14px;font-size:14px}
 .sl-tag.icon{width:34px;height:34px;padding:0;display:grid;place-items:center}.sl-tag.icon svg{width:24px;height:24px}
+
+/* bigger tap targets, and Undo */
+.sl-edit{width:44px;height:44px}.sl-edit svg{width:20px}
+.sl-x{width:44px;height:44px}
+.sl-pill{min-height:40px}
+.sl-bt.undo .sl-circ{width:46px;height:46px;margin-top:8px}.sl-bt.undo .sl-circ svg{width:22px;height:22px}
+.sl-bt[disabled]{opacity:.35;cursor:default}.sl-bt[disabled]:hover .sl-circ{transform:none}

@@ -30,11 +30,11 @@ const Slide = (() => {
 
   /* ---------- saved state ---------- */
   let data = null, root = null, S = null;
-  const st = { editId:null, more:false, sheet:null, q:"", filter:"all", match:null, err:null, drag:null, flash:null };
+  const st = { pin:null, editId:null, more:null, sheet:null, q:"", filter:"all", match:null, err:null, drag:null, flash:null };
   function state() {
     const saved = data.slide;
     S = saved && typeof saved === "object" ? saved : {};
-    S.v = 1; S.profiles = S.profiles || {}; S.prefs = S.prefs || {}; S.swipes = S.swipes || {}; S.matches = S.matches || []; S.phone = S.phone || "";
+    S.v = 1; S.undo = S.undo || null; S.profiles = S.profiles || {}; S.prefs = S.prefs || {}; S.swipes = S.swipes || {}; S.matches = S.matches || []; S.phone = S.phone || "";
     return S;
   }
   async function persist() { await GFB.saveSlide(S); data = await GFB.getAll(); }
@@ -167,7 +167,8 @@ const Slide = (() => {
     const seen = swipesOf(a.id), matched = new Set(S.matches.filter(m => m.a === a.id || m.b === a.id).map(m => m.a === a.id ? m.b : m.a));
     return data.sims.map(b => !seen[b.id] && !matched.has(b.id) ? fit(a, b) : null).filter(Boolean)
       .filter(c => st.filter !== "fun" || c.justFun)
-      .sort((x, y) => y.read.score - x.read.score || x.d - y.d || stripNick(x.b.name).localeCompare(stripNick(y.b.name)));
+      .sort((x, y) => y.read.score - x.read.score || x.d - y.d || stripNick(x.b.name).localeCompare(stripNick(y.b.name)))
+      .sort((x, y) => (y.b.id === st.pin) - (x.b.id === st.pin));
   }
   /* would b slide back? Same attraction both ways (already true), a has to be in b's range, b can't have passed on a,
      and a can't trip more of b's turn offs than they hit turn ons. */
@@ -184,16 +185,18 @@ const Slide = (() => {
   /* ---------- swiping ---------- */
   const today = () => UI.gameToday(data.calendar);
   async function swipe(kind) {
-    st.more = false;
+    st.more = null; st.pin = null;
     const a = simById(S.phone), c = a && deck(a)[0]; if (!c) return;
     const b = c.b;
     swipesOf(a.id)[b.id] = kind === "pass" ? "p" : kind === "shot" ? "s" : "l";
+    S.undo = { a:a.id, b:b.id };
     if (kind === "pass") { await persist(); draw(); return; }
     const w = kind === "shot" ? { yes:true } : wouldMatch(a, b);
     if (!w.yes) { st.flash = `Slid on ${first(b.name)}. No match yet.`; await persist(); draw(); return; }
     await makeMatch(a, b, c, kind === "shot" ? "shot" : "mutual");
   }
   async function makeMatch(a, b, c, how) {
+    S.undo = null;   /* a match is already logged in the Registry; Undo only takes back passes and plain slides */
     const date = today(), label = "Matched on Slide, " + UI.gameLabel(date);
     const m = { id:uid("sm-"), a:a.id, b:b.id, date, how, fun:!!c.justFun, far:!!c.far, texted:false };
     S.matches.unshift(m);
@@ -235,6 +238,9 @@ const Slide = (() => {
     alert:'<path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17v.5"/>',
     menu:'<path d="M4 7h16M4 12h16M4 17h16"/>',
     hush:'<circle cx="12" cy="12" r="9"/><path d="M9 9.5h.01M15 9.5h.01" stroke-width="2.6"/><rect x="10.8" y="11.5" width="2.4" height="8.5" rx="1.2" fill="#121014"/>',
+    check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+    world:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/>',
+    undo:'<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
     edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
     heart:'<path d="M12 20s-7.5-4.6-7.5-10.2A4.2 4.2 0 0 1 12 7.3a4.2 4.2 0 0 1 7.5 2.5C19.5 15.4 12 20 12 20z"/>'
   };
@@ -271,21 +277,21 @@ const Slide = (() => {
     const ok = [b.age, b.life_stage && !b.age ? b.life_stage : ""].filter(Boolean).join("");
     const likes = sh.likes, dislikes = sh.dislikes;
     const shared = new Set(r.shared.map(low));
-    const line = (k, cls, list) => list.length ? `<div><b>${k}</b><span class="${cls}">${list.map(esc).join(", ")}</span></div>` : "";
+    const line = (k, cls, icon, list) => list.length ? `<div><b>${k}</b><span class="sl-cc ${cls}">${list.map(x => `<span class="sl-cchip">${ic(icon, 3)}${esc(x)}</span>`).join("")}</span></div>` : "";
     return `<article class="sl-card ${ghost ? "ghost" : ""}" ${ghost ? 'aria-hidden="true"' : `id="sl-card" aria-label="${esc(stripNick(b.name))}"`}>
       <div class="sl-photo">${b.portrait ? `<img src="${esc(b.portrait)}" alt="" draggable="false">` : `<span class="sl-ph">${esc(initials(b.name))}</span>`}
         <span class="sl-stamp like">Slide</span><span class="sl-stamp nope">Pass</span>
         <div class="sl-badges">${badges}</div>
         <button type="button" class="sl-edit" data-sl="edit:${b.id}" aria-label="Edit ${esc(first(b.name))}'s profile">${ic("edit", 2)}</button>
-        <div class="sl-namebar"><h3>${esc(stripNick(b.name))}${ok ? ` <span>${esc(ok)}</span>` : ""}</h3><p>${sh.job ? `<span>${esc(sh.job)}</span>` : ""}<span>${esc(place(b) || "No city on file")}</span></p></div></div>
+        <div class="sl-namebar"><h3>${esc(stripNick(b.name))}${ok ? ` <span>${esc(ok)}</span>` : ""}</h3><p><span>${esc([sh.job, place(b) || "No city on file"].filter(Boolean).join(" · "))}</span></p></div></div>
       <div class="sl-body">
+        ${sw.length ? `<p class="sl-world">${ic("world", 2)}<span>${esc(sw.join("; ").replace(/^./, x => x.toUpperCase()))}</span></p>` : ""}
         ${sh.traits.length ? `<div class="sl-chips">${sh.traits.map(t => `<span class="sl-chip">${esc(t)}</span>`).join("")}</div>` : ""}
-        ${r.hits.length || r.trips.length || r.shared.length ? `<div class="sl-compat">${line("Hits", "good", r.hits)}${line("Trips", "bad", r.trips)}${line("Shared", "like", r.shared)}</div>` : `<p class="sl-hint">Nothing on file to compare yet.</p>`}
-        ${sw.length ? `<div class="sl-alert">${ic("alert", 2)}<span><b>Small world.</b> ${esc(sw.join("; ").replace(/^./, x => x.toUpperCase()))}.</span></div>` : ""}
-        ${likes.length || dislikes.length ? `<div class="sl-more ${st.more ? "open" : ""}">
+        ${r.hits.length || r.trips.length || r.shared.length ? `<div class="sl-compat">${line("Hits", "good", "check", r.hits)}${line("Trips", "bad", "pass", r.trips)}${line("Shared", "like", "heart", r.shared)}</div>` : `<p class="sl-hint">Nothing on file to compare yet.</p>`}
+        ${likes.length || dislikes.length ? `<div class="sl-more" data-name="${esc(first(b.name))}"><div class="sl-morebody">
           ${likes.length ? `<div class="sl-likes"><b>Likes</b> ${likes.map(l => `<span class="${shared.has(low(l)) ? "sh" : ""}">${esc(l)}</span>`).join("")}</div>` : ""}
-          ${dislikes.length ? `<div class="sl-likes dis"><b>Dislikes</b> ${dislikes.map(l => `<span>${esc(l)}</span>`).join("")}</div>` : ""}
-          <button type="button" class="sl-showmore" data-sl="more" hidden>${st.more ? "Show less" : "Show more"}</button></div>` : ""}
+          ${dislikes.length ? `<div class="sl-likes dis"><b>Dislikes</b> ${dislikes.map(l => `<span>${esc(l)}</span>`).join("")}</div>` : ""}</div>
+          <button type="button" class="sl-showmore" data-sl="more" hidden></button></div>` : ""}
       </div></article>`;
   }
   function centerHTML(a) {
@@ -297,6 +303,7 @@ const Slide = (() => {
     return `${top}<div class="sl-deck">${list[1] ? card(a, list[1], true) : ""}${card(a, list[0])}</div>
       ${st.flash ? `<p class="sl-flash" role="status">${esc(st.flash)}</p>` : ""}
       <div class="sl-btns">
+        <button type="button" class="sl-bt undo" data-sl="undo" ${S.undo && S.undo.a === a.id ? "" : "disabled"}><span class="sl-circ undo">${ic("undo", 2.2)}</span>Undo</button>
         <button type="button" class="sl-bt" data-sl="swipe:pass"><span class="sl-circ pass">${ic("pass", 2.6)}</span>Pass</button>
         <button type="button" class="sl-bt" data-sl="swipe:like"><span class="sl-circ slide">${ic("slide")}</span>Slide</button>
         <button type="button" class="sl-bt" data-sl="swipe:shot"><span class="sl-circ shot">${ic("shot")}</span>Shoot your shot</button>
@@ -354,8 +361,17 @@ const Slide = (() => {
       ${st.match ? `<div class="sl-modal">${matchScreen()}</div>` : st.sheet ? `<div class="sl-modal" data-sl-scrim>${st.sheet === "phone" ? pickerSheet() : st.sheet === "edit" ? editSheet() : menuSheet(a)}</div>` : ""}</div>`;
     if (st.sheet === "phone" && st.focusQ) { const q = root.querySelector("[data-sl-q]"); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }
     st.focusQ = false;
-    root.querySelectorAll(".sl-more:not(.open)").forEach(m => { if (m.parentElement.closest("#sl-card")) { const over = [...m.querySelectorAll(".sl-likes")].some(x => x.scrollHeight > x.clientHeight + 1); m.querySelector(".sl-showmore").hidden = !over; } });
-    root.querySelectorAll(".sl-more.open .sl-showmore").forEach(b => b.hidden = false);
+    fitMore();
+  }
+
+  /* Likes and dislikes show in full when the card has room. Only when it doesn't do they fold behind "More about [name]". */
+  function fitMore() {
+    const m = root.querySelector("#sl-card .sl-more"); if (!m) return;
+    const btn = m.querySelector(".sl-showmore"), body = root.querySelector("#sl-card .sl-body"), fold = () => { m.classList.add("collapsed"); btn.hidden = false; btn.textContent = "More about " + m.dataset.name + " \u25BE"; };
+    m.classList.remove("collapsed"); btn.hidden = true;
+    if (st.more === true) { btn.hidden = false; btn.textContent = "Less \u25B4"; return; }
+    if (st.more === false) return fold();
+    if (body.scrollHeight > body.clientHeight + 1) fold();
   }
 
   /* ---------- drag to swipe ---------- */
@@ -381,12 +397,13 @@ const Slide = (() => {
     const [k, v] = cmd.split(":");
     try {
       if (k === "phone") { st.sheet = "phone"; st.q = ""; st.focusQ = true; return draw(); }
-      if (k === "more") { st.more = !st.more; return draw(); }
+      if (k === "more") { const m = root.querySelector("#sl-card .sl-more"); st.more = !!(m && m.classList.contains("collapsed")); return draw(); }
+      if (k === "undo") { const u = S.undo; if (!u || u.a !== S.phone) return; delete swipesOf(u.a)[u.b]; S.undo = null; st.pin = u.b; st.flash = null; st.more = null; await persist(); return draw(); }
       if (k === "edit") { st.sheet = "edit"; st.editId = v; return draw(); }
       if (k === "reset") { delete S.profiles[v]; st.sheet = null; await persist(); return draw(); }
       if (k === "menu") { st.sheet = "menu"; return draw(); }
       if (k === "close") { st.sheet = null; return draw(); }
-      if (k === "pick") { st.more = false; S.phone = v; st.sheet = null; st.flash = null; st.filter = "all"; await persist(); return draw(); }
+      if (k === "pick") { st.more = null; st.pin = null; S.phone = v; st.sheet = null; st.flash = null; st.filter = "all"; await persist(); return draw(); }
       if (k === "filter") { st.filter = v; st.flash = null; return draw(); }
       if (k === "burner") { const p = pref(S.phone); S.prefs[S.phone] = { ...p, burner:!p.burner }; await persist(); return draw(); }
       if (k === "swipe") { st.flash = null; return swipe(v); }
