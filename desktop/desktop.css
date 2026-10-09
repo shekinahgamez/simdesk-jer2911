@@ -108,9 +108,10 @@ body{font:14px/1.45 "Inter",system-ui,-apple-system,"Segoe UI",sans-serif;color:
 
 /* ---------- Oct 9: iPhone-style dock, wallpaper to the bottom edge, and auto-hide inside apps (phones only) ---------- */
 /* home screen web app: run the desk under the home indicator (100lvh is the whole screen there; in Safari the toolbar would cover it) */
-html.standalone .desk{bottom:auto;height:100vh;height:100lvh}
-@media (display-mode:standalone){ .desk{bottom:auto;height:100vh;height:100lvh} }
+/* the desk is pinned to all four edges of the real screen (no height math, which iOS gets wrong in the home screen app), and the page behind it wears the same gradient so a short desk can never leave a black band */
 .desk{padding-bottom:0}
+html{background:radial-gradient(1200px 700px at 78% 18%, #3a2d46 0%, transparent 60%),radial-gradient(900px 600px at 10% 90%, #1f2a3a 0%, transparent 60%),linear-gradient(160deg,var(--wall2),var(--wall));background-color:var(--wall)}
+body{background:transparent}
 .dock-handle,.dock-scrim{display:none}
 @media (max-width:720px){
   /* floats like the iPhone dock: inset from the sides, rounded, a small gap above the bottom edge (into the home indicator area, as on iPhone) */

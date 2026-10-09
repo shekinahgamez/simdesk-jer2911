@@ -57,9 +57,13 @@ function layout(all){
   const show = k => k === "settings" || !SAVED_HIDDEN.includes(k);
   return { dock:dock.filter(show), desktop:desktop.filter(show) };
 }
-function loadSaved(d){ const s = (d && d.settings) || {}; SAVED_LAYOUT = s.app_layout || null; SAVED_HIDDEN = Array.isArray(s.hidden_apps) ? s.hidden_apps : []; SAVED_GRID = s.grid || null; }
+/* the home screen remembers its own last look on this device, so it opens on your layout and wallpaper at once instead of drawing the defaults and swapping a moment later */
+const HOME_CACHE = "simdesk-home-v1";
+function cacheHome(extra){ try { const o = Object.assign(JSON.parse(localStorage.getItem(HOME_CACHE) || "{}"), { app_layout:SAVED_LAYOUT, hidden_apps:SAVED_HIDDEN, grid:SAVED_GRID }, extra || {}); localStorage.setItem(HOME_CACHE, JSON.stringify(o)); } catch (e) {} }
+function readHomeCache(){ try { return JSON.parse(localStorage.getItem(HOME_CACHE) || "null"); } catch (e) { return null; } }
+function loadSaved(d){ const s = (d && d.settings) || {}; SAVED_LAYOUT = s.app_layout || null; SAVED_HIDDEN = Array.isArray(s.hidden_apps) ? s.hidden_apps : []; SAVED_GRID = s.grid || null; cacheHome(); }
 /* setSaved: Settings hands over a just-saved layout so the next read is current right away (the gfb:layout event reloads it a moment later) */
-window.SimDeskLayout = { layout, setSaved: s => { SAVED_LAYOUT = s || null; drawIcons(); }, setHidden: h => { SAVED_HIDDEN = h || []; drawIcons(); }, setGrid: g => { SAVED_GRID = g || null; drawIcons(); }, grid: gridOf, gridFit, hidden: () => SAVED_HIDDEN.slice(), apps: () => APPS.map(a => ({ key:a.key, name:a.name, icon:typeof a.icon === "function" ? a.icon() : a.icon })) };
+window.SimDeskLayout = { layout, setSaved: s => { SAVED_LAYOUT = s || null; cacheHome(); drawIcons(); }, setHidden: h => { SAVED_HIDDEN = h || []; cacheHome(); drawIcons(); }, setGrid: g => { SAVED_GRID = g || null; cacheHome(); drawIcons(); }, grid: gridOf, gridFit, hidden: () => SAVED_HIDDEN.slice(), apps: () => APPS.map(a => ({ key:a.key, name:a.name, icon:typeof a.icon === "function" ? a.icon() : a.icon })) };
 window.addEventListener("gfb:layout", () => GFB.getAll().then(d => { loadSaved(d); drawIcons(); }));
 const iconHTML = a => typeof a.icon === "function" ? a.icon() : a.icon;
 const HOME_MARK = `<svg viewBox="0 0 100 100" aria-hidden="true"><g transform="translate(50 50) rotate(45) scale(0.13) translate(-166 -166)" fill="currentColor"><rect x="83" y="0" width="166" height="38"/><rect x="83" y="0" width="38" height="201"/><rect x="211" y="0" width="38" height="73"/><rect x="294" y="83" width="38" height="166"/><rect x="131" y="83" width="201" height="38"/><rect x="259" y="211" width="73" height="38"/><rect x="83" y="294" width="166" height="38"/><rect x="211" y="131" width="38" height="201"/><rect x="83" y="259" width="38" height="73"/><rect x="0" y="83" width="38" height="166"/><rect x="0" y="211" width="201" height="38"/><rect x="0" y="83" width="73" height="38"/></g></svg>`;
@@ -70,13 +74,14 @@ function drawDock(){
   document.getElementById("dock").innerHTML = home + layout().dock.map(k => APPS.find(a => a.key === k)).filter(Boolean).map(a =>
     `<a class="dk" href="#/${a.key}" data-app="${a.key}" aria-label="${a.name}" title="${a.name}" ${a.key === open ? 'aria-current="true"' : ""}><span class="ic">${iconHTML(a)}</span></a>`).join("");
 }
+function paintWallpaper(w){
+  const desk = document.getElementById("desk");
+  desk.style.backgroundImage = w ? `url("${w}")` : ""; desk.classList.toggle("has-wall", !!w);
+  /* the page behind the desk wears the wallpaper too, so no dark band can show at the bottom edge */
+  document.documentElement.style.background = w ? `#141218 url("${w}") center / cover no-repeat fixed` : "";
+}
 function applyWallpaper(){
-  GFB.getAll().then(d => {
-    const w = (d.settings || {}).wallpaper, desk = document.getElementById("desk");
-    desk.style.backgroundImage = w ? `url("${w}")` : ""; desk.classList.toggle("has-wall", !!w);
-    /* the page behind the desk wears the wallpaper too, so no dark band can show at the bottom edge of an iPhone */
-    document.documentElement.style.background = w ? `#141218 url("${w}") center / cover no-repeat fixed` : "";
-  });
+  GFB.getAll().then(d => { const w = (d.settings || {}).wallpaper || null; paintWallpaper(w); cacheHome({ wallpaper:w }); });
 }
 window.addEventListener("gfb:wallpaper", applyWallpaper);
 /* Home screen grid (Settings > Home screen): rows 2 to 8, columns Auto or 2 to 10, fill Down or Across. iPad and computer only; the phone keeps 4 across.
@@ -258,7 +263,10 @@ document.addEventListener("keydown", e => { if (e.key === "Escape" && deskEl.cla
 if (window.navigator.standalone || window.matchMedia("(display-mode: standalone)").matches) document.documentElement.classList.add("standalone");
 
 GFB.getAll().then(d => { GFB._cal = d.calendar; loadSaved(d); drawIcons(); tick(); });
-drawIcons(); tick(); setInterval(tick, 30000);
+/* first paint: use the remembered look. With nothing remembered yet (first visit on this device) the icons wait for your saved layout rather than flashing the default. */
+{ const c = readHomeCache();
+  if (c) { SAVED_LAYOUT = c.app_layout || null; SAVED_HIDDEN = Array.isArray(c.hidden_apps) ? c.hidden_apps : []; SAVED_GRID = c.grid || null; paintWallpaper(c.wallpaper || null); drawIcons(); } }
+tick(); setInterval(tick, 30000);
 window.addEventListener("hashchange", route);
 window.addEventListener("hashchange", drawDock);
 applyWallpaper();
