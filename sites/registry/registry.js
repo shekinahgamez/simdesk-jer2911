@@ -4,7 +4,7 @@
    Until the one-time move runs, connections show from the old list, read only, with a banner to check the counts and move. */
 const Registry = (() => {
   const st = { q:"", filter:"All", where:"", sort:"name", tab:"profile", editing:false, draft:null, focus:null, openLink:null, sheet:null, hideSecrets:false,
-    creating:false, msg:"", err:false, move:null, batch:null, oldOpen:false, lists:false, busy:false, tl:{ filter:"all", add:null, edit:null } };
+    msg:"", err:false, move:null, batch:null, oldOpen:false, lists:false, busy:false, tl:{ filter:"all", add:null, edit:null } };
   let data = null, curId = null, root = null;
 
   const LIFE_STAGES = ["Infant","Toddler","Child","Teen","Young Adult","Adult","Elder"];
@@ -97,18 +97,51 @@ const Registry = (() => {
     const filed = new Set(data.sims.map(s => s.name.toLowerCase()));
     return [...new Set([...R().all().filter(l => !l.b_sim && l.b_name && !l.secret).map(l => l.b_name), ...(data.pending || [])])].filter(n => !filed.has(String(n).toLowerCase())).sort();
   }
+  const whereOptions = () => `<option value="">Everywhere</option>${places().map(p => `<option ${p === st.where ? "selected" : ""}>${esc(p)}</option>`).join("")}`;
+  const sortOptions = () => SORTS.map(([k, n]) => `<option value="${k}" ${st.sort === k ? "selected" : ""}>${n}</option>`).join("");
+  const sortName = () => (SORTS.find(x => x[0] === st.sort) || SORTS[0])[1];
+
+  /* The shared sheet lives on <body>, outside the Registry's palette, so hand it the colors it needs. */
+  function sheetTheme(){
+    const cs = getComputedStyle(root.querySelector(".site-registry") || root), t = {};
+    ["--panel","--panel2","--ink","--muted","--faint","--rule","--rule2","--navy","--link","--stamp","--sans"].forEach(k => { t[k] = cs.getPropertyValue(k); });
+    return { ...t, "--ui-sheet-bg":t["--panel"], "--ui-sheet-fg":t["--ink"], "--ui-sheet-accent":t["--link"], "--ui-edge":"16px" };
+  }
+  /* Phone: Where and Sort live behind the Filters button. */
+  function openFilters(){
+    const sh = UI.sheet({ title:"Filters", left:"", right:"Done", theme:sheetTheme(),
+      body:`<div class="rg-sheetui"><label class="rg-flab" for="rg-fwhere">Where</label><select class="rg-input" id="rg-fwhere">${whereOptions()}</select>
+        <label class="rg-flab" for="rg-fsort">Sort</label><select class="rg-input" id="rg-fsort">${sortOptions()}</select></div>` });
+    const apply = () => { st.where = sh.el.querySelector("#rg-fwhere").value; st.sort = sh.el.querySelector("#rg-fsort").value; if (!curId) draw(); };
+    sh.el.querySelector("#rg-fwhere").addEventListener("change", apply);
+    sh.el.querySelector("#rg-fsort").addEventListener("change", apply);
+  }
+  /* New resident: the shared sheet, one full-width field and one filled button. */
+  function openNew(){
+    const sh = UI.sheet({ title:"New resident", left:"", right:"", theme:sheetTheme(),
+      body:`<form class="rg-newform rg-sheetui" autocomplete="off"><label class="rg-flab" for="rg-newname">Full name</label>
+        <input class="rg-input" id="rg-newname" name="name" placeholder="First and last name" required autocomplete="off" autocapitalize="words">
+        <button class="rg-b pri big">Create resident</button><button type="button" class="rg-b big quiet" data-cancel style="min-height:44px;border-color:transparent">Cancel</button></form>` });
+    const form = sh.el.querySelector("form");
+    form.addEventListener("submit", e => { e.preventDefault(); const n = form.elements.name.value.trim(); if (!n) return; sh.close(); createSim(n); });
+    form.querySelector("[data-cancel]").addEventListener("click", () => sh.close());
+    if (matchMedia("(pointer:coarse)").matches) setTimeout(() => form.elements.name.focus(), 50);
+  }
   function drawGallery(){
     const count = k => data.sims.filter(s => statusOf(s) === k).length;
-    const chip = (k, label, n) => `<button class="rg-fchip" data-filter="${k}" aria-pressed="${st.filter === k}">${label}${n != null ? ` <small>${n}</small>` : ""}</button>`;
+    const chip = (k, label, n) => `<button type="button" class="ui-chip ${st.filter === k ? "on" : ""}" data-filter="${k}" aria-pressed="${st.filter === k}"><span>${label}${n != null ? ` <small>${n}</small>` : ""}</span></button>`;
+    const chev = `<svg viewBox="0 0 10 6" width="10" height="6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`;
+    const filtered = !!st.where || st.sort !== "name";
     const pend = pendingNames();
     root.innerHTML = `<div class="site-registry">${header(false)}
       <div class="rg-page">${moveBanner()}
         <div class="rg-gtools">
-          <input class="rg-search" id="rg-q" type="search" placeholder="Search ${data.sims.length} residents" aria-label="Search residents" value="${esc(st.q)}">
-          <div class="rg-fchips">${chip("All","All")}${chip("Housed","Housed",count("Housed"))}${chip("Homeless","Homeless",count("Homeless"))}${chip("Townie","Townies",count("Townie"))}${chip("Incomplete","Incomplete")}
-            <label class="rg-fchip rg-sel ${st.where ? "on" : ""}"><span>${esc(st.where || "Where")}</span><svg viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg><select id="rg-where" aria-label="Where"><option value="">Everywhere</option>${places().map(p => `<option ${p === st.where ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></label>
-            <label class="rg-fchip rg-sel"><span>Sort: ${esc((SORTS.find(x => x[0] === st.sort) || SORTS[0])[1])}</span><select id="rg-sort" aria-label="Sort">${SORTS.map(([k, n]) => `<option value="${k}" ${st.sort === k ? "selected" : ""}>${n}</option>`).join("")}</select></label></div>
-          ${st.creating ? `<form class="rg-newform" data-sec="new"><input class="rg-input" name="name" placeholder="Full name" required autocomplete="off"><button type="button" class="rg-b quiet" data-act="cancel">Cancel</button><button class="rg-b pri">Create</button></form>` : `<button class="rg-b" data-act="new">+ New resident</button>`}
+          <div class="rg-gsearch"><input class="rg-search" id="rg-q" type="search" placeholder="${innerWidth >= 700 ? "Search" : `Search ${data.sims.length} residents`}" aria-label="Search residents" value="${esc(st.q)}">
+            <button type="button" class="rg-b rg-filterbtn" data-act="filters" aria-label="Filters" aria-pressed="${filtered}"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 7h16M7 12h10M10 17h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></div>
+          <div class="ui-chips" role="group" aria-label="Show">${chip("All","All")}${chip("Housed","Housed",count("Housed"))}${chip("Homeless","Homeless",count("Homeless"))}${chip("Townie","Townies",count("Townie"))}${chip("Incomplete","Incomplete")}</div>
+          <label class="rg-sel ${st.where ? "on" : ""}"><span>${esc(st.where || "Where")}</span>${chev}<select id="rg-where" aria-label="Where">${whereOptions()}</select></label>
+          <label class="rg-sel"><span>Sort: ${esc(sortName())}</span>${chev}<select id="rg-sort" aria-label="Sort">${sortOptions()}</select></label>
+          <button type="button" class="rg-b pri rg-newbtn" data-act="new">+ New resident</button>
         </div>
         ${st.batch ? `<div class="rg-batch">Showing the ${st.batch.ids.length} Sims from your last import. <button class="rg-link" data-act="clearbatch">Show everyone</button></div>` : ""}
         ${st.msg ? `<p class="rg-msg ${st.err ? "err" : ""}" role="status">${esc(st.msg)}</p>` : ""}
@@ -123,7 +156,8 @@ const Registry = (() => {
   function header(slim, s){
     const upd = data.updated ? new Date(data.updated + "T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "";
     return `<header class="rg-agency ${slim ? "slim" : ""}" id="rg-agency">${SEAL}<div><small>Simerican Office of Resident Affairs</small><b>Resident Registry</b></div>
-      <div class="rg-meta"><span class="full">${data.sims.length} residents on file${upd ? `<br>Records current to ${upd}` : ""}</span>${s ? `<span class="slimonly">GFB-${esc(s.file_no)} · ${esc(s.name)}</span>` : ""}</div></header>`;
+      <div class="rg-meta"><span class="full">${data.sims.length} residents on file${upd ? `<br>Records current to ${upd}` : ""}</span>${s ? `<span class="slimonly">GFB-${esc(s.file_no)} · ${esc(s.name)}</span>` : ""}</div>
+      ${s ? "" : `<button type="button" class="rg-hdrnew" data-act="new" aria-label="New resident"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>`}</header>`;
   }
   function moveBanner(){
     if (R().isMoved()) return st.move && st.move.done ? moveDone() : "";
@@ -191,8 +225,7 @@ const Registry = (() => {
     const hasSecret = linksFor(s.id).some(l => l.secret);
     return `<div class="rg-fbar"><a class="rg-back" href="#/registry">← All residents</a>
       <span class="rg-pn">${prev ? `<a href="#/registry/${prev}" aria-label="Previous resident">‹ Prev</a>` : `<span class="rg-dim">‹ Prev</span>`}<em>${at >= 0 ? `${at + 1} of ${order.length}` : ""}</em>${next ? `<a href="#/registry/${next}" aria-label="Next resident">Next ›</a>` : `<span class="rg-dim">Next ›</span>`}</span>
-      <span class="rg-fno">GFB-${esc(s.file_no)}</span>
-      ${(st.tab === "connections" || st.tab === "file") && hasSecret ? `<button class="rg-b quiet" data-act="hidesecrets" aria-pressed="${st.hideSecrets}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/>${st.hideSecrets ? `<path d="M4 4l16 16" stroke="currentColor" stroke-width="1.8"/>` : ""}</svg>${st.hideSecrets ? "Show secrets" : "Hide secrets"}</button>` : ""}
+      ${(st.tab === "connections" || st.tab === "file") && hasSecret ? `<button class="rg-b quiet rg-iconb" data-act="hidesecrets" title="${st.hideSecrets ? "Show secrets" : "Hide secrets"}" aria-label="${st.hideSecrets ? "Show secrets" : "Hide secrets"}" aria-pressed="${st.hideSecrets}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/>${st.hideSecrets ? `<path d="M4 4l16 16" stroke="currentColor" stroke-width="1.8"/>` : ""}</svg></button>` : ""}
       <button class="rg-b" data-act="edit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>Edit file</button></div>`;
   }
 
@@ -281,7 +314,7 @@ const Registry = (() => {
   function sheetHTML(s){
     const h = st.sheet, other = h.other ? simById(h.other) : null, oName = other ? other.name : (h.otherName || h.who || "them");
     const A = first(s.name), B = first(oName) || "Them";
-    const chips = (name, opts, val) => `<div class="rg-kinds">${opts.map(([v, label, color]) => `<button type="button" class="${v === val ? "on" : ""}" data-sk="${name}:${v}">${color ? `<i style="background:var(--${color})"></i>` : ""}${esc(label)}</button>`).join("")}</div>`;
+    const chips = (name, opts, val) => `<div class="ui-chips wrap" role="group">${opts.map(([v, label, color]) => `<button type="button" class="ui-chip ${v === val ? "on" : ""}" data-sk="${name}:${v}" aria-pressed="${v === val}"><span>${color ? `<i class="ui-dot" style="color:var(--${color})"></i>` : ""}${esc(label)}</span></button>`).join("")}</div>`;
     const dateFields = (prefix, d) => `<span class="rg-gd"><select data-se="${prefix}season" aria-label="Season">${cal().seasons.map(x => `<option ${d && x.name === d.season ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select><input type="number" min="1" max="21" inputmode="numeric" data-se="${prefix}day" value="${d ? d.day : 1}" aria-label="Day"><span>Y</span><input type="number" min="1" inputmode="numeric" data-se="${prefix}year" value="${d ? d.year : cal().year}" aria-label="Year"></span>`;
     const entries = h.history.map((e, i) => h.editEntry === i
       ? `<div class="rg-entry editing"><div class="rg-entryedit">${dateFields("e", e.game_date || UI.gameToday(cal()))}<label class="rg-check"><input type="checkbox" data-se="enodate" ${e.game_date ? "" : "checked"}> No date</label><input class="rg-input" data-se="elabel" value="${esc(e.label)}" list="rg-dl-hist" aria-label="What happened"><button type="button" class="rg-b sm pri" data-sa="entrydone">Done</button></div></div>`
@@ -401,7 +434,7 @@ const Registry = (() => {
     const e = st.tl.edit, today = UI.gameToday(cal());
     return `<div class="rg-ev nd editing"><span class="rg-evd"></span><span class="rg-dot ${it.tone}"></span><div><b>${esc(it.title)}</b>
       <div class="rg-gdrow">${tlDateFields(e.date, e.before, "e")}</div>
-      <div class="rg-gdq"><button type="button" class="rg-q ${e.before ? "on" : ""}" data-tl="q:before">Before the save started</button><button type="button" class="rg-q" data-tl="q:today">Today (${esc(today.season)}, day ${today.day})</button></div>
+      <div class="ui-chips wrap"><button type="button" class="ui-chip ${e.before ? "on" : ""}" data-tl="q:before" aria-pressed="${!!e.before}"><span>Before the save started</span></button><button type="button" class="ui-chip" data-tl="q:today"><span>Today (${esc(today.season)}, day ${today.day})</span></button></div>
       ${e.err ? `<p class="rg-msg err" style="margin:6px 0 0">${esc(e.err)}</p>` : ""}
       <div class="rg-gdact">${it.type === "home" && !it.virtual ? `<button type="button" class="rg-b del" data-tl="remove">Remove</button>` : ""}<button type="button" class="rg-b quiet sm" data-tl="cancel">Cancel</button><button type="button" class="rg-b pri sm" data-tl="savedate" ${st.busy ? "disabled" : ""}>Save date</button></div></div><span></span></div>`;
   }
@@ -410,11 +443,11 @@ const Registry = (() => {
     const opts = [`<option value="home" ${a.what === "home" ? "selected" : ""}>A home change</option>`, ...links.map(l => `<option value="${l.id}" ${a.what === l.id ? "selected" : ""}>${esc(otherName(R().side(l, s.id)))} (${esc(KIND_NAME[l.kind] || "")}${l.secret ? ", secret" : ""})</option>`)];
     return `<div class="rg-tladd"><div class="rg-flab">What happened</div>
       <select class="rg-input" data-tlf="what" aria-label="What happened with">${opts.join("")}</select>
-      ${a.what === "home" ? `<div class="rg-kinds" style="margin-top:8px">${[["housed","Housed"],["homeless","Homeless"],["townie","Townie"]].map(([k, n]) => `<button type="button" class="${a.hkind === k ? "on" : ""}" data-tl="hk:${k}">${n}</button>`).join("")}</div>`
+      ${a.what === "home" ? `<div class="ui-chips wrap" role="group" aria-label="Home change">${[["housed","Housed"],["homeless","Homeless"],["townie","Townie"]].map(([k, n]) => `<button type="button" class="ui-chip ${a.hkind === k ? "on" : ""}" data-tl="hk:${k}" aria-pressed="${a.hkind === k}"><span>${n}</span></button>`).join("")}</div>`
         : `<input class="rg-input" data-tlf="label" list="rg-dl-hist" value="${esc(a.label)}" placeholder="Married, Engaged, Split..." aria-label="What happened" style="margin-top:8px"><datalist id="rg-dl-hist">${HIST_SUGGEST.map(x => `<option value="${esc(x)}">`).join("")}</datalist>`}
       <div class="rg-flab" style="margin-top:10px">When</div>
       <div class="rg-gdrow">${tlDateFields(a.date, a.before, "n")}</div>
-      <div class="rg-gdq"><button type="button" class="rg-q ${a.before ? "on" : ""}" data-tl="aq:before">Before the save started</button><button type="button" class="rg-q" data-tl="aq:today">Today (${esc(today.season)}, day ${today.day})</button></div>
+      <div class="ui-chips wrap"><button type="button" class="ui-chip ${a.before ? "on" : ""}" data-tl="aq:before" aria-pressed="${!!a.before}"><span>Before the save started</span></button><button type="button" class="ui-chip" data-tl="aq:today"><span>Today (${esc(today.season)}, day ${today.day})</span></button></div>
       ${a.err ? `<p class="rg-msg err" style="margin:6px 0 0">${esc(a.err)}</p>` : ""}
       <div class="rg-gdact"><button type="button" class="rg-b quiet sm" data-tl="addcancel">Cancel</button><button type="button" class="rg-b pri sm" data-tl="addsave" ${st.busy ? "disabled" : ""}>Add to timeline</button></div></div>`;
   }
@@ -430,8 +463,9 @@ const Registry = (() => {
     if (undated.length) body += `<div class="rg-undated"><span>Date not set</span><small>${undated.length}${undated.some(x => x.type === "rel" && (x.hist.note || "").includes("old file")) ? " · moved over from Notion" : ""}</small></div>` + undated.map(x => tlRow(x, s)).join("");
     if (before.length) body += `<div class="rg-undated"><span>Before the save started</span><small>${before.length}</small></div>` + before.map(x => tlRow(x, s)).join("");
     if (!shown.length) body = `<p class="rg-none">Nothing on the timeline for this filter.</p>`;
-    const chip = (k, n, c) => `<button type="button" class="rg-tf ${f === k ? "on" : ""}" data-tl="f:${k}">${n} <small>${c}</small></button>`;
-    return `<section class="rg-sec rg-tl" id="rg-at-timeline"><div class="rg-tlhead"><h4>Timeline</h4>${chip("all", "All", out.length)}${chip("rel", "Relationships", rel.length)}${chip("home", "Home", home.length)}<button type="button" class="rg-link" style="margin-left:auto" data-tl="add">Add to timeline</button></div>
+    const chip = (k, n, c) => `<button type="button" class="ui-chip rg-tf ${f === k ? "on" : ""}" data-tl="f:${k}" aria-pressed="${f === k}"><span>${n} <small>${c}</small></span></button>`;
+    return `<section class="rg-sec rg-tl" id="rg-at-timeline"><div class="rg-tlhead"><h4>Timeline</h4><button type="button" class="rg-link" data-tl="add">Add to timeline</button></div>
+      <div class="ui-chips wrap" role="group" aria-label="Timeline filter">${chip("all", "All", out.length)}${chip("rel", "Relationships", rel.length)}${chip("home", "Home", home.length)}</div>
       ${st.tl.msg ? `<p class="rg-msg ${st.tl.err ? "err" : ""}" role="status">${esc(st.tl.msg)}</p>` : ""}
       ${st.tl.add ? tlAddForm(s) : ""}${body}${hidden ? `<p class="rg-hiddennote">${hidden} secret ${hidden === 1 ? "entry" : "entries"} hidden</p>` : ""}</section>`;
   }
@@ -590,16 +624,16 @@ const Registry = (() => {
       <div class="rg-page">${moveBanner()}
         <article class="rg-folder ${st.editing ? "editing" : ""}">
           ${fbar(s)}
+          <div class="rg-tabs" role="tablist">${TABS.map(([k, n]) => `<button role="tab" data-tab="${k}" aria-selected="${st.tab === k}">${n}${k === "connections" ? ` <em>${nConn}</em>` : ""}</button>`).join("")}</div>
           <div class="rg-fbody">
             <div class="rg-who">${portrait(s)}<div class="rg-whom">
               ${st.editing ? `<input class="rg-input rg-name" data-d="name" value="${esc(st.draft.name)}" aria-label="Full name">` : `<h2>${esc(s.name)}</h2><p class="rg-handle">${s.simsta ? esc(s.simsta) : "No Simsta handle"}</p>`}
+              <p class="rg-fileno">File GFB-${esc(s.file_no)}</p>
               ${facts(s)}</div></div>
             ${st.msg ? `<p class="rg-msg ${st.err ? "err" : ""}" role="status">${esc(st.msg)}</p>` : ""}
-            <div class="rg-tabs" role="tablist">${TABS.map(([k, n]) => `<button role="tab" data-tab="${k}" aria-selected="${st.tab === k}">${n}${k === "connections" ? ` <em>${nConn}</em>` : ""}</button>`).join("")}</div>
             <div class="rg-tabbody">${body}</div>
           </div>
         </article>
-        <p class="rg-foot">File GFB-${esc(s.file_no)}</p>
       </div>
       ${st.editing ? `<div class="rg-savebar"><span>Tabs work while editing: Connections and File are editable too.</span><button class="rg-b quiet" data-act="canceledit">Cancel</button><button class="rg-b pri" data-act="savefile" ${st.busy ? "disabled" : ""}>${st.busy ? "Saving..." : "Save file"}</button></div>` : ""}
       ${st.sheet ? sheetHTML(s) : ""}${st.lists ? listsSheet() : ""}
@@ -674,7 +708,7 @@ const Registry = (() => {
   async function createSim(name){
     name = String(name || "").trim(); if (!name) return;
     const existing = findSim(name);
-    if (existing) { st.creating = false; location.hash = "#/registry/" + existing.id; return; }
+    if (existing) { location.hash = "#/registry/" + existing.id; return; }
     const slug = t => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
     let id = slug(first(name)) || "resident";
     if (simById(id)) { id = slug(stripNick(name)); let n = 2; while (simById(id)) id = slug(stripNick(name)) + "-" + n++; }
@@ -683,7 +717,7 @@ const Registry = (() => {
       traits:[], aspiration:null, attachment:null, love_language:null, likes:[], dislikes:[], turn_ons:[], turn_offs:[], notes:[], secrets:[] });
     /* "file pending" links to this name now point at the new file, so nothing has to be relinked */
     if (R().canEdit()) for (const l of R().all().filter(l => !l.b_sim && l.b_name && l.b_name.toLowerCase() === name.toLowerCase())) { try { await R().saveLink({ ...l, b_sim:id, b_name:null }); } catch {} }
-    st.creating = false; st.tab = "profile";
+    st.tab = "profile";
     data = await GFB.getAll();
     st.nextEdit = true;
     location.hash = "#/registry/" + id;
@@ -743,8 +777,8 @@ const Registry = (() => {
       const pf = t.closest("[data-file]"); if (pf) { if (UI.confirmTap(pf, "Tap again to open a file")) createSim(pf.dataset.file); return; }
       const act = t.closest("[data-act]")?.dataset.act;
       if (!act) return;
-      if (act === "new") { st.creating = true; draw(); root.querySelector(".rg-newform input")?.focus(); }
-      if (act === "cancel") { st.creating = false; draw(); }
+      if (act === "new") openNew();
+      if (act === "filters") openFilters();
       if (act === "clearbatch") { st.batch = null; draw(); }
       if (act === "moveplan") { st.move = {}; draw(); }
       if (act === "movecancel") { st.move = null; draw(); }
@@ -797,7 +831,6 @@ const Registry = (() => {
       if (!mine(e.target)) return;
       e.preventDefault();
       const f = new FormData(e.target), key = e.target.dataset.sec;
-      if (key === "new") return createSim(String(f.get("name") || ""));
       if (key === "lists") {
         try { for (const [k] of LIST_KEYS) await GFB.saveOptions(k, [...new Set(String(f.get(k) || "").split("\n").map(x => x.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b))); st.msg = "Option lists saved."; }
         catch (err) { st.msg = err.message; st.err = true; }
@@ -816,7 +849,7 @@ const Registry = (() => {
   let scrollBound = null;
   function render(el, d, id, arg){
     root = el; data = d;
-    if (id !== curId) { st.editing = !!st.nextEdit && !!id; st.draft = null; st.sheet = null; st.openLink = null; st.oldOpen = false; st.lists = false; st.creating = false; }
+    if (id !== curId) { st.editing = !!st.nextEdit && !!id; st.draft = null; st.sheet = null; st.openLink = null; st.oldOpen = false; st.lists = false; }
     curId = id;
     if (!id && arg && String(arg).startsWith("batch:")) { const b = String(arg).slice(6), ids = GFB.registry.batchSims ? GFB.registry.batchSims(b) : []; st.batch = { id:b, ids:ids.length ? ids : ((window.SimDeskLastImport && window.SimDeskLastImport.batch === b) ? window.SimDeskLastImport.ids : []) }; }
     if (st.editing && !st.draft && id) { startEdit(simById(id)); }

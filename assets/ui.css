@@ -38,3 +38,35 @@
 .ui-pick-none{margin:6px 10px;color:#6b7280}
 .ui-pick.field .ui-pick-btn{width:100%;justify-content:space-between;border:1px solid currentColor;border-radius:8px;padding:10px 12px;font-weight:500;min-height:44px;box-sizing:border-box}
 .ui-pick.field{display:block}.ui-pick.field .ui-pick-cur{max-width:none}.ui-pick.field .ui-pick-pop{width:100%}
+
+/* ===== SimDesk shared kit (opt-in classes, so apps that don't use them are unchanged) ===== */
+:root{
+  --sd-1:4px;--sd-2:8px;--sd-3:12px;--sd-4:16px;--sd-5:20px;--sd-6:24px;--sd-8:32px;--sd-11:44px;
+  --sd-t11:11px;--sd-t12:12px;--sd-t13:13px;--sd-t15:15px;--sd-t16:16px;--sd-t17:17px;--sd-t20:20px;--sd-t22:22px;--sd-t28:28px;--sd-t34:34px;
+}
+/* 44px tap target */
+.ui-tap{min-height:44px;min-width:44px;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;cursor:pointer}
+/* One swipeable row of chips. The pill is 36px inside a 44px tap area. */
+.ui-chips{display:flex;gap:var(--sd-2);overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap;scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;margin-left:calc(var(--ui-edge,16px) * -1);margin-right:calc(var(--ui-edge,16px) * -1);padding:0 var(--ui-edge,16px)}
+.ui-chips::-webkit-scrollbar{display:none}
+.ui-chip{flex:none;min-height:44px;min-width:44px;padding:4px 0;border:0;background:none;color:inherit;font:inherit;cursor:pointer;display:inline-flex;align-items:center;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+.ui-chip>span{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:0 14px;border-radius:18px;border:1px solid color-mix(in srgb,currentColor 24%,transparent);font-size:13px;font-weight:600;white-space:nowrap;box-sizing:border-box}
+.ui-chip.on>span,.ui-chip[aria-pressed="true"]>span{background:var(--ui-accent,currentColor);border-color:transparent;color:var(--ui-on-accent,#fff)}
+.ui-chip .ui-dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}
+@media (min-width:700px){.ui-chips.wrap{flex-wrap:wrap;overflow:visible;margin:0;padding:0}}
+/* Segmented control */
+.ui-seg{display:flex;gap:var(--sd-1);padding:var(--sd-1);border-radius:12px;background:color-mix(in srgb,currentColor 9%,transparent)}
+.ui-seg button{flex:1;min-height:44px;border:0;border-radius:9px;background:none;color:inherit;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.ui-seg button.on,.ui-seg button[aria-pressed="true"]{background:var(--ui-seg-on,#fff);color:var(--ui-seg-on-ink,#1c1c1e);box-shadow:0 1px 3px rgba(0,0,0,.18)}
+/* Bottom sheet on phone, centered card on iPad (UI.sheet) */
+.ui-dim{position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;animation:ui-fade .16s ease-out}
+.ui-sheet{width:100%;max-width:560px;max-height:92vh;max-height:92dvh;display:flex;flex-direction:column;background:var(--ui-sheet-bg,Canvas);color:var(--ui-sheet-fg,CanvasText);border-radius:20px 20px 0 0;padding:var(--sd-2) var(--sd-4) calc(var(--sd-8) + env(safe-area-inset-bottom,0px));box-sizing:border-box;box-shadow:0 -10px 40px rgba(0,0,0,.28);animation:ui-up .22s ease-out}
+.ui-sheet .ui-grab{width:36px;height:4px;border-radius:2px;background:color-mix(in srgb,currentColor 28%,transparent);margin:0 auto var(--sd-2);flex:none}
+.ui-sheet-h{display:flex;align-items:center;justify-content:space-between;min-height:44px;flex:none}
+.ui-sheet-h b{font-size:17px;font-weight:600}
+.ui-sheet-h button{min-height:44px;min-width:44px;border:0;background:none;color:var(--ui-sheet-accent,inherit);font:inherit;font-size:15px;cursor:pointer;padding:0}
+.ui-sheet-h .l{text-align:left}.ui-sheet-h .r{text-align:right;font-weight:600}
+.ui-sheet-b{overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding-top:var(--sd-2)}
+@media (min-width:700px){.ui-dim{align-items:center}.ui-sheet{border-radius:20px;max-width:520px;padding-bottom:var(--sd-6);box-shadow:0 24px 70px rgba(0,0,0,.4);animation:ui-pop .18s ease-out}.ui-sheet .ui-grab{display:none}}
+@keyframes ui-fade{from{opacity:0}}@keyframes ui-up{from{transform:translateY(24px);opacity:.6}}@keyframes ui-pop{from{transform:scale(.97);opacity:0}}
+@media (prefers-reduced-motion:reduce){.ui-dim,.ui-sheet{animation:none}}

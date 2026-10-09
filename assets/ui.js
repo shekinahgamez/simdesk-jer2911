@@ -94,5 +94,33 @@ const UI = (() => {
     if (e.key === "Enter") { e.preventDefault(); const li = [...pop.querySelectorAll("li")].find(x => !x.hidden); if (li) choose(li); }
   });
 
-  return { confirmTap, simPicker, gameDate, readGameDate, gameOrd, gameLabel, gameToday, picker };
+  /* Shared bottom sheet (phone) / centered card (iPad). UI.sheet({title, body, left, right, onLeft, onRight, onClose})
+     body is an HTML string or a node. Returns { el, body, close }. Esc and a tap on the dim area close it. No browser pop-ups. */
+  function sheet({ title = "", body = "", left = "Cancel", right = "", onLeft, onRight, onClose, theme } = {}) {
+    const dim = document.createElement("div"); dim.className = "ui-dim";
+    dim.innerHTML = `<div class="ui-sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="ui-grab"></div><div class="ui-sheet-h"><button type="button" class="l" data-sl>${esc(left)}</button><b>${esc(title)}</b><button type="button" class="r" data-sr>${esc(right)}</button></div><div class="ui-sheet-b"></div></div>`;
+    const card = dim.firstElementChild, bd = card.querySelector(".ui-sheet-b");
+    if (theme) Object.entries(theme).forEach(([k, v]) => card.style.setProperty(k, v));
+    if (typeof body === "string") bd.innerHTML = body; else if (body) bd.appendChild(body);
+    if (!left) card.querySelector("[data-sl]").style.visibility = "hidden";
+    if (!right) card.querySelector("[data-sr]").style.visibility = "hidden";
+    const prev = document.activeElement;
+    let closed = false;
+    const close = (why) => { if (closed) return; closed = true; document.removeEventListener("keydown", key, true); dim.remove(); if (prev && prev.focus) try { prev.focus(); } catch (e) {} if (onClose) onClose(why); };
+    const key = e => { if (e.key === "Escape") { e.stopPropagation(); close("esc"); } };
+    document.addEventListener("keydown", key, true);
+    dim.addEventListener("click", e => { if (e.target === dim) close("dim"); });
+    card.querySelector("[data-sl]").addEventListener("click", () => { if (onLeft) onLeft(close); else close("left"); });
+    card.querySelector("[data-sr]").addEventListener("click", () => { if (onRight) onRight(close); else close("right"); });
+    document.body.appendChild(dim);
+    const f = bd.querySelector("input,select,textarea,button") || card.querySelector("[data-sl]"); if (f && matchMedia("(pointer:fine)").matches) f.focus();
+    return { el: card, body: bd, close };
+  }
+
+  /* One swipeable row of chips: UI.chips([{v,t,dot}], activeValue) returns HTML. Click handling stays with the app: buttons carry data-v. */
+  function chips(items, active, cls = "") {
+    return `<div class="ui-chips ${cls}" role="group">${items.map(i => `<button type="button" class="ui-chip ${String(i.v) === String(active) ? "on" : ""}" data-v="${esc(i.v)}" aria-pressed="${String(i.v) === String(active)}"><span>${i.dot ? `<i class="ui-dot" style="color:${esc(i.dot)}"></i>` : ""}${esc(i.t)}</span></button>`).join("")}</div>`;
+  }
+
+  return { confirmTap, simPicker, gameDate, readGameDate, gameOrd, gameLabel, gameToday, picker, sheet, chips };
 })();

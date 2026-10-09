@@ -15,7 +15,7 @@ const Messages = (() => {
   const FILTERS = ["all", "slide", "simsta", "in_game", "group"];
 
   let data = null, root = null;
-  const st = { mode:"all", sim:null, picking:false, q:"", origin:"all", open:null, phone:{}, sheet:null, err:null, loading:false, stick:true, synced:false };
+  const st = { mode:"all", sim:null, picking:false, q:"", origin:"all", open:null, phone:{}, err:null, cloudErr:false, loading:false, stick:true, synced:false };
 
   /* ---------- Sims ---------- */
   const simById = id => (data.sims || []).find(s => s.id === id);
@@ -25,9 +25,12 @@ const Messages = (() => {
   function av(id, cls = "", link = false) {
     const s = simById(id), p = pic(s), label = s ? s.name : id;
     const inner = p ? `<img src="${esc(p)}" alt="" loading="lazy" decoding="async">` : esc(initials(label) || "?");
-    return link ? `<button type="button" class="ms-av ${cls}" style="--h:${hue(id)}" data-ms="sim:${esc(id)}" aria-label="${esc(stripNick(label))} on Simsta">${inner}</button>`
+    const open = `data-ms="sim:${esc(id)}" aria-label="${esc(stripNick(label))} on Simsta"`;
+    if (link === "hit") return `<button type="button" class="ms-hit" ${open}><span class="ms-av ${cls}" style="--h:${hue(id)}">${inner}</span></button>`;
+    return link ? `<button type="button" class="ms-av ${cls}" style="--h:${hue(id)}" ${open}>${inner}</button>`
                 : `<span class="ms-av ${cls}" style="--h:${hue(id)}" aria-hidden="true">${inner}</span>`;
   }
+  /* up to three Sims in the cluster so nobody is hidden in a group */
   const stack = ids => ids.length === 1 ? av(ids[0]) : `<span class="ms-stack n${Math.min(ids.length, 3)}" aria-hidden="true">${ids.slice(0, 3).map(i => av(i)).join("")}</span>`;
   const joinNames = list => list.length <= 1 ? (list[0] || "") : list.length === 2 ? `${list[0]} & ${list[1]}` : `${list.slice(0, -1).join(", ")} & ${list[list.length - 1]}`;
 
@@ -90,10 +93,10 @@ const Messages = (() => {
   }
 
   async function load() {
-    if (!M().ready()) { st.err = "Messages needs the cloud connection. Sign in to SimDesk's cloud, then open Messages again."; draw(); return; }
+    if (!M().ready()) { st.err = "Messages needs the cloud connection. Sign in to SimDesk's cloud, then open Messages again."; st.cloudErr = true; draw(); return; }
     st.loading = !M().isLoaded(); if (st.loading) draw();
-    try { await M().refresh(); if (!st.synced) { st.synced = true; await syncSlide(); } st.err = null; }
-    catch (e) { st.err = e.message; }
+    try { await M().refresh(); if (!st.synced) { st.synced = true; await syncSlide(); } st.err = null; st.cloudErr = false; }
+    catch (e) { st.err = e.message; st.cloudErr = false; }
     st.loading = false;
     if (st.open && !threads().some(t => t.id === st.open)) st.open = null;
     draw();
@@ -136,17 +139,20 @@ const Messages = (() => {
       .sort((a, b) => b[1] - a[1] || nameOf(a[0]).localeCompare(nameOf(b[0])));
     if (!list.length) return `<p class="ms-none">${threads().length ? "No Sims match." : "No threads yet."}</p>`;
     return list.map(([id, n]) => { const fresh = threads().filter(t => t.sim_ids.includes(id) && isNew(t)).length;
-      return `<button type="button" class="ms-row" data-ms="pick:${esc(id)}">${av(id)}<span class="tx"><span class="top"><b class="nm">${esc(nameOf(id))}</b></span><span class="pv">${n} thread${n === 1 ? "" : "s"}${fresh ? ` · ${fresh} new` : ""}</span></span></button>`; }).join("");
+      return `<button type="button" class="ms-row simrow" data-ms="pick:${esc(id)}">${av(id)}<span class="tx"><span class="top"><b class="nm">${esc(nameOf(id))}</b></span><span class="pv">${n} thread${n === 1 ? "" : "s"}${fresh ? ` · ${fresh} new` : ""}</span></span></button>`; }).join("");
   }
   function listHTML() {
     const picking = st.mode === "sim" && (st.picking || !st.sim);
     const rows = picking ? simList() : (() => { const v = visible(); return v.length ? v.map(row).join("") : `<p class="ms-none">${threads().length ? "Nothing matches." : st.loading ? "Loading..." : "No threads yet. Claude adds them from what happens in your game."}</p>`; })();
     const newN = threads().filter(isNew).length;
+    const chipItems = FILTERS.map(f => ({ v:f, t:f === "all" ? "All" : ORIGIN[f] }));
+    const banner = st.err ? `<div class="ms-banner" role="alert">${esc(st.err)}${st.cloudErr ? '<br><button type="button" data-ms="settings">Open settings</button>' : ""}</div>` : "";
     return `<aside class="ms-list">
       <div class="ms-head"><div class="ms-logo">${MARK()}Messages</div>${newN ? `<span class="ms-newn">${newN} new</span>` : ""}</div>
       <label class="ms-search">${ic("search")}<input type="search" data-ms-q value="${esc(st.q)}" placeholder="${picking ? "Find a Sim" : "Search Sims or messages"}" aria-label="${picking ? "Find a Sim" : "Search Sims or messages"}" autocomplete="off"></label>
-      <div class="ms-seg" role="tablist"><button type="button" role="tab" aria-selected="${st.mode === "all"}" data-ms="mode:all">All threads</button><button type="button" role="tab" aria-selected="${st.mode === "sim"}" data-ms="mode:sim">By Sim</button></div>
-      ${picking ? "" : `<div class="ms-chips">${FILTERS.map(f => `<button type="button" class="ms-chip ${f}" aria-pressed="${st.origin === f}" data-ms="origin:${f}">${f === "all" ? "All" : ORIGIN[f]}</button>`).join("")}</div>`}
+      <div class="ms-listseg ui-seg" role="tablist"><button type="button" role="tab" class="${st.mode === "all" ? "on" : ""}" aria-selected="${st.mode === "all"}" data-ms="mode:all">All threads</button><button type="button" role="tab" class="${st.mode === "sim" ? "on" : ""}" aria-selected="${st.mode === "sim"}" data-ms="mode:sim">By Sim</button></div>
+      ${picking ? "" : `<div class="ms-chips">${UI.chips(chipItems, st.origin)}</div>`}
+      ${banner}
       ${st.mode === "sim" && st.sim && !st.picking ? `<div class="ms-simhead">${av(st.sim, "lg", true)}<span><b>${esc(nameOf(st.sim))}</b><small>${(n => `${n} thread${n === 1 ? "" : "s"}`)(threads().filter(t => t.sim_ids.includes(st.sim)).length)} · reading on their phone</small></span><button type="button" class="ms-link" data-ms="change">Change</button></div>` : ""}
       <div class="ms-rows">${rows}</div></aside>`;
   }
@@ -167,7 +173,7 @@ const Messages = (() => {
       const mine = m.sender_sim_id === me;
       const cls = ["ms-msg", mine ? "me" : "them", startRun ? "start" : "", endRun ? "end" : ""].join(" ");
       const name = group && !mine && startRun ? `<button type="button" class="ms-from" data-ms="sim:${esc(m.sender_sim_id)}">${esc(firstOf(m.sender_sim_id))}</button>` : "";
-      const face = group && !mine ? (endRun ? av(m.sender_sim_id, "sm", true) : `<span class="ms-av sm ghost" aria-hidden="true"></span>`) : "";
+      const face = group && !mine ? (endRun ? av(m.sender_sim_id, "sm", "hit") : `<span class="ms-av sm ghost" aria-hidden="true"></span>`) : "";
       out += `<div class="${cls}">${face}<div class="col">${name}<div class="ms-b"><span class="ms-sr">${esc(firstOf(m.sender_sim_id))}: </span>${esc(m.body)}</div></div></div>`;
     });
     return out;
@@ -176,8 +182,9 @@ const Messages = (() => {
     const t = st.open && threads().find(x => x.id === st.open);
     if (!t) return `<section class="ms-conv"><div class="ms-blank">${MARK()}<b>Pick a conversation</b><p>${threads().length ? "Newest activity is at the top of the list." : "Claude adds threads from what happens in your game."}</p></div></section>`;
     const me = phoneOf(t), them = others(t, me), group = isGroup(t);
-    const title = group ? esc(titleOf(t, null)) : `<button type="button" class="ms-tlink" data-ms="sim:${esc(them[0])}">${esc(nameOf(them[0]))}</button>`;
-    const sub = group ? t.sim_ids.map(id => `<button type="button" class="ms-nlink" data-ms="sim:${esc(id)}">${esc(firstOf(id))}</button>`).join(", ") : "";
+    /* names in the header are plain text (too small to tap); the picture and the names beside bubbles open profiles */
+    const title = esc(group ? titleOf(t, null) : nameOf(them[0]));
+    const sub = group ? esc(t.sim_ids.map(firstOf).join(", ")) : "";
     const hint = !(data.settings || {}).messages_hint ? `<div class="ms-hint"><span>Bubbles on the right are ${esc(firstOf(me))}'s. Tap <b>Reading as</b> to switch phones.</span><button type="button" data-ms="hint">Got it</button></div>` : "";
     return `<section class="ms-conv">
       <div class="ms-chead"><button type="button" class="ms-back" data-ms="back" aria-label="Back to threads">${ic("back", 2.6)}</button>
@@ -187,7 +194,6 @@ const Messages = (() => {
       ${hint}
       <div class="ms-body" id="ms-body" role="log" aria-label="Conversation">${bodyHTML(t, me)}</div>
       <button type="button" class="ms-jump" data-ms="jump" hidden>${ic("down", 2.4)}Latest</button>
-      ${st.sheet === "phone" ? `<div class="ms-modal" data-ms-scrim><div class="ms-sheet" role="dialog" aria-label="Read on whose phone"><h3>Read on whose phone</h3>${t.sim_ids.map(id => `<button type="button" class="ms-row ${id === me ? "on" : ""}" data-ms="as:${esc(id)}">${av(id)}<span class="tx"><span class="top"><b class="nm">${esc(nameOf(id))}</b></span></span></button>`).join("")}</div></div>` : ""}
     </section>`;
   }
 
@@ -196,9 +202,11 @@ const Messages = (() => {
     const prevBody = root.querySelector("#ms-body"), atBottom = !prevBody || prevBody.scrollHeight - prevBody.scrollTop - prevBody.clientHeight < 60;
     const keepTop = prevBody && !atBottom ? prevBody.scrollTop : null;
     const prevList = root.querySelector(".ms-rows"), listTop = prevList ? prevList.scrollTop : 0;
+    const prevChips = root.querySelector(".ms-chips .ui-chips"), chipsX = prevChips ? prevChips.scrollLeft : 0;
     const q = root.querySelector("[data-ms-q]"), hadFocus = q && document.activeElement === q, pos = hadFocus ? q.selectionStart : 0;
-    root.innerHTML = `<div class="site-ms ${st.open ? "has-open" : ""}">${st.err ? `<div class="ms-err">${esc(st.err)}</div>` : ""}${listHTML()}${convHTML()}</div>`;
+    root.innerHTML = `<div class="site-ms ${st.open ? "has-open" : ""}">${listHTML()}${convHTML()}</div>`;
     const list = root.querySelector(".ms-rows"); if (list) list.scrollTop = listTop;
+    const chipRow = root.querySelector(".ms-chips .ui-chips"); if (chipRow) chipRow.scrollLeft = chipsX;
     const body = root.querySelector("#ms-body");
     if (body) { if (st.stick || keepTop === null) body.scrollTop = body.scrollHeight; else body.scrollTop = keepTop; st.stick = false; jumpState(); }
     if (hadFocus) { const n = root.querySelector("[data-ms-q]"); n.focus(); n.setSelectionRange(pos, pos); }
@@ -217,17 +225,29 @@ const Messages = (() => {
   const syncAddress = () => { if (typeof setAddress === "function" && location.hash.split("/")[1] === "messages") setAddress("messages.app", address()); };
   async function act(cmd) {
     const i = cmd.indexOf(":"), k = i < 0 ? cmd : cmd.slice(0, i), v = i < 0 ? "" : cmd.slice(i + 1);
-    if (k === "open") { const t = threads().find(x => x.id === v); if (!t) return; st.open = v; st.sheet = null; st.stick = true; markRead(t); draw(); return syncAddress(); }
-    if (k === "back") { st.open = null; st.sheet = null; draw(); return syncAddress(); }
+    if (k === "open") { const t = threads().find(x => x.id === v); if (!t) return; st.open = v; st.stick = true; markRead(t); draw(); return syncAddress(); }
+    if (k === "back") { st.open = null; draw(); return syncAddress(); }
     if (k === "mode") { st.mode = v; st.q = ""; st.picking = v === "sim" && !st.sim; return draw(); }
     if (k === "pick") { st.sim = v; st.picking = false; st.q = ""; return draw(); }
     if (k === "change") { st.picking = true; st.q = ""; return draw(); }
     if (k === "origin") { st.origin = v; return draw(); }
-    if (k === "phone") { st.sheet = "phone"; return draw(); }
-    if (k === "as") { if (st.open) st.phone[st.open] = v; st.sheet = null; st.stick = true; return draw(); }
+    if (k === "phone") return pickPhone();
+    if (k === "settings") { location.hash = "#/settings"; return; }
     if (k === "hint") { await GFB.saveSetting("messages_hint", true); data = await GFB.getAll(); return draw(); }
     if (k === "jump") { const b = root.querySelector("#ms-body"); if (b) b.scrollTo({ top:b.scrollHeight, behavior:"smooth" }); return; }
     if (k === "sim") { location.hash = "#/simsta/u/" + encodeURIComponent(v); return; }
+  }
+
+  /* Whose phone: the shared bottom sheet (centered card on iPad). Tapping a Sim switches the phone you read on. */
+  function pickPhone() {
+    const t = st.open && threads().find(x => x.id === st.open); if (!t) return;
+    const me = phoneOf(t);
+    const sh = UI.sheet({ title:"Read on whose phone", left:"Cancel", theme:{ "--ui-sheet-bg":"#fff", "--ui-sheet-fg":"#12161C", "--ui-sheet-accent":"#1A63C2" },
+      body:`<div class="ms-picks">${t.sim_ids.map(id => `<button type="button" class="ms-pick ${id === me ? "on" : ""}" data-as="${esc(id)}" aria-pressed="${id === me}">${av(id)}<b>${esc(nameOf(id))}</b></button>`).join("")}</div>` });
+    sh.body.addEventListener("click", e => {
+      const b = e.target.closest("[data-as]"); if (!b) return;
+      st.phone[t.id] = b.dataset.as; st.stick = true; sh.close("pick"); draw();
+    });
   }
 
   /* ---------- events (bound once) ---------- */
@@ -237,15 +257,11 @@ const Messages = (() => {
     const mine = t => root && root.contains(t) && root.querySelector(".site-ms");
     document.addEventListener("click", e => {
       if (!mine(e.target)) return;
-      if (e.target.matches("[data-ms-scrim]")) { st.sheet = null; draw(); return; }
+      const chip = e.target.closest(".ms-chips .ui-chip[data-v]"); if (chip) { st.origin = chip.dataset.v; draw(); return; }
       const b = e.target.closest("[data-ms]"); if (b) act(b.dataset.ms);
     });
     document.addEventListener("input", e => { if (mine(e.target) && e.target.matches("[data-ms-q]")) { st.q = e.target.value; draw(); } });
     document.addEventListener("scroll", e => { if (e.target && e.target.id === "ms-body") jumpState(); }, true);
-    document.addEventListener("keydown", e => {
-      if (!root || !root.querySelector(".site-ms") || e.key !== "Escape") return;
-      if (st.sheet) { e.stopImmediatePropagation(); st.sheet = null; draw(); }
-    }, true);
     /* coming back to the app (switching tabs or apps on the iPad) picks up anything Claude added */
     const back = () => { if (document.visibilityState === "visible" && root && root.querySelector(".site-ms")) load(); };
     document.addEventListener("visibilitychange", back);
@@ -255,7 +271,7 @@ const Messages = (() => {
   /* parts: [] | ["t", threadId, phoneSimId?] | ["sim", simId] */
   async function render(el, d, parts = []) {
     root = el; data = d; bind();
-    if (parts[0] === "t" && parts[1]) { st.open = parts[1]; st.stick = true; if (parts[2]) st.phone[parts[1]] = parts[2]; st.sheet = null; }
+    if (parts[0] === "t" && parts[1]) { st.open = parts[1]; st.stick = true; if (parts[2]) st.phone[parts[1]] = parts[2]; }
     if (parts[0] === "sim" && parts[1]) { st.mode = "sim"; st.sim = parts[1]; st.picking = false; st.open = null; st.q = ""; }
     draw();
     await load();

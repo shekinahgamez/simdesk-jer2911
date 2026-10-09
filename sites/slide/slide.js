@@ -32,7 +32,7 @@ const Slide = (() => {
   let data = null, root = null, S = null;
   /* round: a second look at the Sims you passed on, { a: whose phone, seen: Set of ids already looked at again }. Only lives while Slide is open;
      the passes themselves stay in S.swipes as "p" the whole time. */
-  const st = { pin:null, editId:null, sheet:null, q:"", match:null, err:null, drag:null, flash:null, round:null };
+  const st = { tab:"discover", pin:null, editId:null, sheet:null, q:"", match:null, err:null, drag:null, flash:null, round:null };
   function state() {
     const saved = data.slide;
     S = saved && typeof saved === "object" ? saved : {};
@@ -98,10 +98,12 @@ const Slide = (() => {
   const orgs = () => data.organizations || [];
   const isClub = o => low(o.type) === "club";
   const memberOf = (o, s) => (o.members || []).some(m => m.sim === s.id && m.current !== false);
+  /* the career line reads "Role, place": a dash in the Registry text shows as a comma */
+  const commas = t => String(t || "").replace(/\s*[\u2014\u2013]\s*/g, ", ");
   function job(s) {
     const o = orgs().find(o => !isClub(o) && memberOf(o, s));
     if (o) { const m = o.members.find(m => m.sim === s.id); return m.role ? `${m.role}, ${o.name}` : o.name; }
-    return s.career || "";
+    return commas(s.career);
   }
 
   /* ---------- the profile a Sim shows on Slide ----------
@@ -259,6 +261,10 @@ const Slide = (() => {
     undo:'<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
     edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
     flame:'<path d="M12 21c-3.9 0-6.5-2.6-6.5-6.2 0-3.3 2.4-5.4 3.6-8.3.3 1.8 1.2 3 2.4 3.6.2-2.6 1.3-5 3.5-7.1-.2 3 1 4.6 2.3 6.2 1.1 1.4 1.7 3 1.7 5.1C19 18.4 15.9 21 12 21z"/>',
+    cards:'<rect x="6" y="3.5" width="12" height="17" rx="3"/>',
+    chat:'<path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/>',
+    user:'<circle cx="12" cy="8" r="4"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>',
+    chev:'<path d="M9 5l7 7-7 7"/>',
     heart:'<path d="M12 20s-7.5-4.6-7.5-10.2A4.2 4.2 0 0 1 12 7.3a4.2 4.2 0 0 1 7.5 2.5C19.5 15.4 12 20 12 20z"/>'
   };
   const ic = (k, w = 2.4) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
@@ -270,22 +276,38 @@ const Slide = (() => {
     if (!a) return "";
     const p = pref(a.id), sw = swipesOf(a.id), passed = Object.values(sw).filter(v => v === "p").length;
     const pct = p.range / 3 * 100, stops = STOPS.map((s, i) => `<b class="${i < p.range ? "on" : i === p.range ? "cur" : ""}" style="left:${i / 3 * 100}%"></b>`).join("");
-    return `<div class="sl-box"><h4>How far ${esc(first(a.name))} will go</h4>
+    return `<div class="sl-box sl-range"><h4>How far ${esc(first(a.name))} will go</h4>
         <div class="sl-track"><i style="width:${pct}%"></i>${stops}<input type="range" min="0" max="3" step="1" value="${p.range}" data-sl-range aria-label="Distance range" aria-valuetext="${STOPS[p.range]}"></div>
         <div class="sl-stops">${STOPS.map((s, i) => `<span class="${i === p.range ? "cur" : ""}">${s}</span>`).join("")}</div>
         ${!city(a) ? `<p class="sl-hint">No city on file, so only Anywhere finds anyone.</p>` : !district(a) && p.range === 0 ? `<p class="sl-hint">No lot on file, so there's no district to match.</p>` : ""}</div>
       <div class="sl-box"><button type="button" class="sl-tog" data-sl="burner" role="switch" aria-checked="${p.burner}"><span>Burner profile<small>${isTaken(a) ? "Swiping while taken, quietly" : "Swiping on the low"}</small></span><span class="sl-sw ${p.burner ? "on" : ""}"></span></button></div>
       <div class="sl-box"><button type="button" class="sl-btn" data-sl="edit:${a.id}">Edit ${esc(first(a.name))}'s profile</button><p class="sl-hint">Changes stay in Slide. The Registry doesn't change.</p></div>
-      <div class="sl-box"><div class="sl-stat"><span>Left to see</span><b>${deck(a).length}</b></div><div class="sl-stat"><span>Passed</span><b>${passed}</b></div><div class="sl-stat"><span>Matches</span><b>${S.matches.filter(m => m.a === a.id || m.b === a.id).length}</b></div></div>`;
+      <div class="sl-box"><div class="sl-stat"><span>Left to see</span><b>${deck(a).length}</b></div><div class="sl-stat"><span>Passed</span><b>${passed}</b></div><div class="sl-stat"><span>Matches</span><b>${myMatches(a).length}</b></div></div>`;
   }
+  /* A match opens its conversation in Messages (#/messages/t/thread/sim, the same route the match screen uses).
+     If the match has no thread yet, tapping it starts one first (chat action). */
+  const matchRow = (m, a) => {
+    const o = simById(m.a === a.id ? m.b : m.a); if (!o) return "";
+    const tags = [UI.gameLabel(m.date).replace(/, Year \d+$/, ""), m.how === "shot" ? "Shot their shot" : "", m.fun ? "Just fun" : "", m.far ? "Long distance" : ""].filter(Boolean).join(" \u00b7 ");
+    const body = `${av(o, "sm")}<span class="sl-mt">${esc(stripNick(o.name))}<small>${esc(tags)}</small></span><span class="sl-go" aria-hidden="true">${ic("chev", 2)}</span>`;
+    return m.thread ? `<a class="sl-mrow" href="#/messages/t/${esc(m.thread)}/${esc(a.id)}">${body}</a>` : `<button type="button" class="sl-mrow" data-sl="chat:${m.id}">${body}</button>`;
+  };
+  const newMatch = (m, a) => {
+    const o = simById(m.a === a.id ? m.b : m.a); if (!o) return "";
+    const body = `${av(o, "mid")}<span>${esc(first(o.name))}</span>`;
+    return m.thread ? `<a class="sl-nm" href="#/messages/t/${esc(m.thread)}/${esc(a.id)}">${body}</a>` : `<button type="button" class="sl-nm" data-sl="chat:${m.id}">${body}</button>`;
+  };
+  const myMatches = a => S.matches.filter(m => m.a === a.id || m.b === a.id);
+  const freshMatches = a => myMatches(a).filter(m => !m.texted);
   function matchesHTML(a) {
-    if (!a) return `<div class="sl-box"><h4>Matches</h4><p class="sl-hint">Pick whose phone you're on.</p></div>`;
-    const mine = S.matches.filter(m => m.a === a.id || m.b === a.id);
-    const rows = mine.map(m => { const o = simById(m.a === a.id ? m.b : m.a); if (!o) return ""; const tags = [UI.gameLabel(m.date).replace(/, Year \d+$/, ""), m.how === "shot" ? "Shot their shot" : "", m.fun ? "Just fun" : "", m.far ? "Long distance" : ""].filter(Boolean).join(" · ");
-      return `<button type="button" class="sl-mrow" data-sl="open:${m.id}">${av(o, "sm")}<span>${esc(stripNick(o.name))}<small>${esc(tags)}</small></span><span class="sl-tx ${m.texted ? "done" : ""}">${m.texted ? "Texted" : "Text"}</span></button>`; }).join("");
+    if (!a) return `<h2 class="sl-ptitle">Matches</h2><div class="sl-box"><p class="sl-hint">Pick whose phone you're on.</p></div>`;
+    const mine = myMatches(a), fresh = freshMatches(a);
     const waiting = Object.entries(swipesOf(a.id)).filter(([id, v]) => v === "l" && !mine.some(m => m.a === id || m.b === id)).map(([id]) => simById(id)).filter(Boolean);
-    return `<div class="sl-box"><h4>Matches</h4>${rows || `<p class="sl-hint">No matches yet.</p>`}</div>
-      ${waiting.length ? `<div class="sl-box"><h4>Waiting on them</h4>${waiting.map(o => `<div class="sl-mrow">${av(o, "sm")}<span>${esc(stripNick(o.name))}<small>Slid · no match yet</small></span></div>`).join("")}</div>` : ""}`;
+    return `<h2 class="sl-ptitle">Matches</h2>
+      ${fresh.length ? `<div class="sl-newm"><h4>New matches</h4><div class="sl-nmrow">${fresh.map(m => newMatch(m, a)).join("")}</div></div>` : ""}
+      <div class="sl-box sl-list"><h4>${fresh.length ? "Your matches" : "Matches"}</h4>${mine.map(m => matchRow(m, a)).join("") || `<p class="sl-hint">No matches yet.</p>`}</div>
+      ${mine.length ? `<p class="sl-hint">Tap a match to open the conversation in Messages.</p>` : ""}
+      ${waiting.length ? `<div class="sl-box sl-list"><h4>Waiting on them</h4>${waiting.map(o => `<div class="sl-mrow">${av(o, "sm")}<span class="sl-mt">${esc(stripNick(o.name))}<small>Slid \u00b7 no match yet</small></span></div>`).join("")}</div>` : ""}`;
   }
   /* The card is the photo first. Under it only what the two have in common: shared likes, and which of the phone owner's turn ons
      this Sim has. Traits, other likes and dislikes, and the small world line stay off the card (the data is untouched) so there's
@@ -326,22 +348,34 @@ const Slide = (() => {
     return `<div class="sl-deck">${list[1] ? card(a, list[1], true) : ""}${card(a, list[0])}</div>
       ${st.flash ? `<p class="sl-flash" role="status">${esc(st.flash)}</p>` : ""}
       <div class="sl-btns">
-        <button type="button" class="sl-bt undo" data-sl="undo" ${S.undo && S.undo.a === a.id ? "" : "disabled"}><span class="sl-circ undo">${ic("undo", 2.2)}</span>Undo</button>
-        <button type="button" class="sl-bt" data-sl="swipe:pass"><span class="sl-circ pass">${ic("pass", 2.6)}</span>Pass</button>
-        <button type="button" class="sl-bt" data-sl="swipe:like"><span class="sl-circ slide">${ic("slide")}</span>Slide</button>
-        <button type="button" class="sl-bt" data-sl="swipe:shot"><span class="sl-circ shot">${ic("shot")}</span>Shoot your shot</button>
+        <button type="button" class="sl-bt undo" data-sl="undo" ${S.undo && S.undo.a === a.id ? "" : "disabled"}><span class="sl-circ undo">${ic("undo", 2.2)}</span><span class="sl-lab">Undo</span></button>
+        <button type="button" class="sl-bt pass" data-sl="swipe:pass"><span class="sl-circ pass">${ic("pass", 2.6)}</span><span class="sl-lab">Pass</span></button>
+        <button type="button" class="sl-bt slide" data-sl="swipe:like"><span class="sl-circ slide">${ic("slide")}</span><span class="sl-lab">Slide</span></button>
+        <button type="button" class="sl-bt shot" data-sl="swipe:shot"><span class="sl-circ shot">${ic("shot")}</span><span class="sl-lab">Shoot your shot</span></button>
       </div>`;
   }
-  function pickerSheet() {
-    const q = low(st.q);
+  /* Whose phone? is the shared bottom sheet (UI.sheet). A grey note shows on a row only when that Sim is missing something. */
+  function pickerRows(q) {
     const list = data.sims.filter(lifeOk).sort((x, y) => stripNick(x.name).localeCompare(stripNick(y.name)))
       .filter(s => !q || low(stripNick(s.name) + " " + city(s) + " " + job(s)).includes(q));
-    return `<div class="sl-sheet" role="dialog" aria-label="Whose phone"><div class="sl-sheethead"><h3>Whose phone?</h3><button type="button" class="sl-x" data-sl="close" aria-label="Close">×</button></div>
-      <input class="sl-search" type="search" placeholder="Search Sims" value="${esc(st.q)}" data-sl-q aria-label="Search Sims" autocomplete="off">
-      <div class="sl-wholist">${list.map(s => {
-        const miss = !genderOf(s) ? "No gender on file<br>Add it in the Registry" : notRolled(s) ? "Attraction not rolled<br>Treated as straight" : "";
-        return `<button type="button" class="sl-who ${s.id === S.phone ? "sel" : ""}" data-sl="pick:${s.id}">${av(s, "sm")}<span>${esc(stripNick(s.name))}<small>${esc([city(s), job(s)].filter(Boolean).join(" · "))}</small></span>${miss ? `<span class="sl-miss">${miss}</span>` : ""}</button>`; }).join("") || `<p class="sl-hint">No Sims match.</p>`}</div>
-      <p class="sl-hint">Only young adults and older show up, on either side of the swipe.</p></div>`;
+    return list.map(s => {
+      const miss = !genderOf(s) ? "No gender on file<br>Add it in the Registry" : notRolled(s) ? "Attraction not rolled<br>Treated as straight" : "";
+      return `<button type="button" class="sl-who ${s.id === S.phone ? "sel" : ""}" data-pick="${esc(s.id)}">${av(s, "sm")}<span class="sl-mt">${esc(stripNick(s.name))}<small>${esc([city(s), job(s)].filter(Boolean).join(" \u00b7 "))}</small></span>${miss ? `<span class="sl-miss">${miss}</span>` : ""}</button>`;
+    }).join("") || `<p class="sl-hint">No Sims match.</p>`;
+  }
+  function openPicker() {
+    const sh = UI.sheet({ title: "Whose phone?", left: "Cancel", body: `<input class="sl-search" type="search" placeholder="Search Sims" data-sl-q aria-label="Search Sims" autocomplete="off"><div class="sl-wholist"></div><p class="sl-hint">Only young adults and older show up, on either side of the swipe.</p>`,
+      theme: { "--ui-sheet-bg":"#17121B", "--ui-sheet-fg":"#F6EFEA", "--ui-sheet-accent":"#FF5A36" } });
+    sh.el.classList.add("sl-ui");
+    const listEl = sh.body.querySelector(".sl-wholist"), q = sh.body.querySelector("[data-sl-q]");
+    const fill = () => { listEl.innerHTML = pickerRows(low(q.value)); };
+    fill(); q.addEventListener("input", fill);
+    listEl.addEventListener("click", async e => {
+      const b = e.target.closest("[data-pick]"); if (!b) return;
+      sh.close("pick"); st.pin = null; S.phone = b.dataset.pick; st.sheet = null; st.flash = null; st.round = null;
+      try { await persist(); } catch (err) { st.err = err.message; }
+      draw();
+    });
   }
   function editSheet() {
     const sim = simById(st.editId); if (!sim) return "";
@@ -372,18 +406,22 @@ const Slide = (() => {
       ${meBox(a)}${settingsHTML(a)}${matchesHTML(a)}</div>`;
   }
 
+  const TABS = [["discover", "Discover", "cards"], ["matches", "Matches", "chat"], ["you", "You", "user"]];
+  const tabBar = a => {
+    const n = a ? freshMatches(a).length : 0;
+    return `<nav class="sl-tabs" aria-label="Slide">${TABS.map(([k, t, i]) => `<button type="button" class="sl-tab ${st.tab === k ? "on" : ""}" data-sl="tab:${k}" ${st.tab === k ? 'aria-current="page"' : ""}>${ic(i, 1.8)}<span>${t}</span>${k === "matches" && n ? `<b class="sl-badge" aria-label="${n} new">${n}</b>` : ""}</button>`).join("")}</nav>`;
+  };
   function draw() {
     if (!root) return;
     const a = S.phone && simById(S.phone);
-    root.innerHTML = `<div class="site-sl">
-      <aside class="sl-side"><div class="sl-logo">${MARK()}slide</div><div class="sl-box"><h4>On whose phone</h4>${meBox(a)}</div>${settingsHTML(a)}</aside>
+    root.innerHTML = `<div class="site-sl" data-view="${st.tab}">
+      <aside class="sl-side"><div class="sl-logo">${MARK()}slide</div><h2 class="sl-ptitle">You</h2><div class="sl-box"><h4>On whose phone</h4>${meBox(a)}</div>${settingsHTML(a)}</aside>
       <main class="sl-center">
-        <div class="sl-pbar"><div class="sl-logo">${MARK()}slide</div><button type="button" class="sl-mebtn" data-sl="menu" aria-label="Phone settings and matches">${a ? av(a, "sm") : `<span class="sl-av sm">?</span>`}<span aria-hidden="true">▾</span></button></div>
+        <div class="sl-pbar"><div class="sl-logo">${MARK()}slide</div><button type="button" class="sl-mebtn" data-sl="menu" aria-label="Phone settings and matches">${a ? av(a, "sm") : `<span class="sl-av sm">?</span>`}<span aria-hidden="true">\u25be</span></button></div>
         ${centerHTML(a)}</main>
       <aside class="sl-right">${matchesHTML(a)}</aside>
-      ${st.match ? `<div class="sl-modal">${matchScreen()}</div>` : st.sheet ? `<div class="sl-modal" data-sl-scrim>${st.sheet === "phone" ? pickerSheet() : st.sheet === "edit" ? editSheet() : menuSheet(a)}</div>` : ""}</div>`;
-    if (st.sheet === "phone" && st.focusQ) { const q = root.querySelector("[data-sl-q]"); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }
-    st.focusQ = false;
+      ${tabBar(a)}
+      ${st.match ? `<div class="sl-modal">${matchScreen()}</div>` : st.sheet ? `<div class="sl-modal" data-sl-scrim>${st.sheet === "edit" ? editSheet() : menuSheet(a)}</div>` : ""}</div>`;
   }
 
   /* ---------- drag to swipe ---------- */
@@ -408,14 +446,15 @@ const Slide = (() => {
   async function act(cmd) {
     const [k, v] = cmd.split(":");
     try {
-      if (k === "phone") { st.sheet = "phone"; st.q = ""; st.focusQ = true; return draw(); }
+      if (k === "phone") return openPicker();
+      if (k === "tab") { st.tab = v; return draw(); }
+      if (k === "chat") { const m = S.matches.find(x => x.id === v); if (!m) return; if (!m.thread) { m.texted = true; m.texted_on = m.texted_on || today(); await persist(); await textThread(m); } if (m.thread) location.hash = `#/messages/t/${m.thread}/${S.phone || m.a}`; return; }
       if (k === "undo") { const u = S.undo; if (!u || u.a !== S.phone) return; if (u.prev) swipesOf(u.a)[u.b] = u.prev; else delete swipesOf(u.a)[u.b]; if (st.round && st.round.a === u.a) st.round.seen.delete(u.b); S.undo = null; st.pin = u.b; st.flash = null; await persist(); return draw(); }
       if (k === "again") { st.round = { a:S.phone, seen:new Set() }; st.flash = null; st.pin = null; return draw(); }
       if (k === "edit") { st.sheet = "edit"; st.editId = v; return draw(); }
       if (k === "reset") { delete S.profiles[v]; st.sheet = null; await persist(); return draw(); }
       if (k === "menu") { st.sheet = "menu"; return draw(); }
       if (k === "close") { st.sheet = null; return draw(); }
-      if (k === "pick") { st.pin = null; S.phone = v; st.sheet = null; st.flash = null; st.round = null; await persist(); return draw(); }
       if (k === "burner") { const p = pref(S.phone); S.prefs[S.phone] = { ...p, burner:!p.burner }; await persist(); return draw(); }
       if (k === "swipe") { st.flash = null; return swipe(v); }
       if (k === "text") { const m = S.matches.find(x => x.id === v); if (m) { m.texted = true; m.texted_on = m.texted_on || today(); } st.match = null; await persist(); draw(); if (m) textThread(m); return; }
@@ -446,10 +485,6 @@ const Slide = (() => {
       if (Object.keys(out).length) S.profiles[sim.id] = out; else delete S.profiles[sim.id];
       st.sheet = null; await persist(); draw();
     });
-    document.addEventListener("input", e => {
-      if (!mine(e.target)) return;
-      if (e.target.matches("[data-sl-q]")) { st.q = e.target.value; st.focusQ = true; draw(); }
-    });
     document.addEventListener("change", async e => {
       if (!mine(e.target) || !e.target.matches("[data-sl-range]")) return;
       S.prefs[S.phone] = { ...pref(S.phone), range:Number(e.target.value) }; st.flash = null; await persist(); draw();
@@ -467,7 +502,7 @@ const Slide = (() => {
     document.addEventListener("pointercancel", endDrag);
   }
 
-  function render(el, d) { root = el; data = d; state(); st.sheet = null; st.match = null; st.err = null; st.flash = null; bind(); draw(); }
+  function render(el, d) { root = el; data = d; state(); st.tab = "discover"; st.sheet = null; st.match = null; st.err = null; st.flash = null; bind(); draw(); }
   const address = () => { const a = S && S.phone && data && simById(S.phone); return a ? "/" + low(first(a.name)).replace(/[^a-z0-9]+/g, "") : "/"; };
   return { render, address };
 })();
