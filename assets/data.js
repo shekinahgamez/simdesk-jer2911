@@ -574,7 +574,7 @@ const GFB = (() => {
   }
 
   const registry = (() => {
-    const LINK_COLS = ["id","a_sim","b_sim","b_name","kind","family","a_label","b_label","biological","adoptive","raised","secret","legacy_ids","batch"];
+    const LINK_COLS = ["id","a_sim","b_sim","b_name","kind","family","a_label","b_label","biological","adoptive","raised","secret","unconfirmed","legacy_ids","batch"];
     const HIST_COLS = ["id","link_id","label","game_date","note","sort"];
     let links = [], homeEv = [], simx = new Map(), moved = null, loaded = false, busy = null, problem = null, view = { src:null, out:[] };
     const sb = () => cloudClient();

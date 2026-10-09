@@ -221,6 +221,21 @@ select.rg-input{padding-right:8px}
 .rg-secretrow .rg-check{font-weight:600;color:var(--secret)}
 .rg-secretrow input{accent-color:var(--secret)}
 .rg-sfoot{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--rule)}
+/* link sheet: footer stays put, the middle scrolls */
+.rg-sheet.cs{display:flex;flex-direction:column;max-height:calc(100vh - 160px);max-height:calc(100dvh - 160px)}
+.rg-sheet.cs .rg-sb{flex:1 1 auto;min-height:0;overflow:auto;align-content:start}
+.rg-sheet.cs .rg-sh,.rg-sheet.cs .rg-sfoot{flex:none}
+.rg-sheet.cs .rg-sfoot{flex-wrap:nowrap;align-items:center;background:var(--panel)}
+.rg-sheet.cs .rg-b.del{margin-right:auto;padding:0 4px}
+.rg-mk{font-style:normal;display:inline-block;width:14px;text-align:center;opacity:.55}
+.ui-chip.on .rg-mk{opacity:1}
+.ui-chip.sec>span{color:var(--secret);border-color:var(--secret)}
+.ui-chip.sec.on>span{background:var(--secret);color:#fff;border-color:var(--secret)}
+.rg-mark{min-height:34px;margin:8px 0 0}
+.rg-mark.warn{color:var(--warn,#8A5A00);font-weight:600}
+.rg-calls{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;border-top:1px solid var(--rule2);border-bottom:1px solid var(--rule2);font-size:15px;color:var(--muted)}
+.rg-calls b{color:var(--ink);font-weight:600}
+.rg-newentry .rg-x{flex:none}
 .rg-listbox{min-height:150px;font-size:13px;line-height:1.5}
 
 /* All residents */
@@ -298,6 +313,7 @@ select.rg-input{padding-right:8px}
   .rg-savebar .rg-b{flex:1}
   .rg-sheetwrap{padding:0;align-items:flex-end}
   .rg-sheet{margin:0;max-height:92vh;overflow:auto;width:100%}
+  .rg-sheet.cs{max-height:92vh;max-height:92dvh;overflow:hidden}
   .rg-gtools{flex-wrap:wrap;background:none;border:0;padding:0;margin-bottom:8px;gap:8px}
   .rg-gsearch{width:100%}
   .rg-filterbtn{display:inline-flex}

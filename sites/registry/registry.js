@@ -271,7 +271,7 @@ const Registry = (() => {
     const l = sd.link, h = (l.history || []).slice(-1)[0], lab = sd.label || "";
     let tail = "";
     if (h) { if (h.label === lab) tail = h.game_date ? gLabel(h.game_date) : ""; else tail = h.label + ", " + (h.game_date ? gLabel(h.game_date) : "date not set"); }
-    if (l.family === "parent") { const rel = [l.biological && "Biological", l.adoptive && "Adoptive", l.raised && "Raised them"].filter(Boolean).join(", "); if (rel && !(l.biological && l.raised && !l.adoptive)) tail = rel; }
+    if (l.family === "parent") { const rel = [l.biological && "Biological", l.adoptive && "Adoptive", l.raised && "Raised them"].filter(Boolean).join(", "); if (rel && !(l.biological && l.raised && !l.adoptive)) tail = rel; if (l.unconfirmed) tail = (tail ? tail + ", " : "") + "Unconfirmed"; }
     return [lab, tail].filter(Boolean).join(" · ") + (sd.other ? "" : (lab || tail ? ", " : "") + "file pending");
   }
   function connectionsTab(s){
@@ -307,9 +307,9 @@ const Registry = (() => {
       const sd = R().side(link, s.id);
       st.sheet = { id:link.id, me:s.id, other:sd.other, otherName:sd.otherName, who:"", kind:link.kind,
         fam: link.family === "parent" ? (sd.isParent ? "me" : "them") : (link.family || "sibling"),
-        myLabel:sd.label || "", theirLabel:sd.theirLabel || "", biological:!!link.biological, adoptive:!!link.adoptive, raised:!!link.raised, secret:!!link.secret,
+        myLabel:sd.label || "", theirLabel:sd.theirLabel || "", biological:!!link.biological, adoptive:!!link.adoptive, raised:!!link.raised, secret:!!link.secret, unconfirmed:!!link.unconfirmed, editCalls:false, adding:focus === "hist",
         history:(link.history || []).map(h => ({ ...h })), entry:{ date:UI.gameToday(cal()), nodate:false, label:"" }, editEntry:null, focus };
-    } else st.sheet = { id:null, me:s.id, other:null, otherName:null, who:"", kind:"friend", fam:"sibling", myLabel:"", theirLabel:"", biological:true, adoptive:false, raised:true, secret:false, history:[], entry:{ date:UI.gameToday(cal()), nodate:false, label:"" }, editEntry:null, focus };
+    } else st.sheet = { id:null, me:s.id, other:null, otherName:null, who:"", kind:"friend", fam:"sibling", myLabel:"", theirLabel:"", biological:true, adoptive:false, raised:true, secret:false, unconfirmed:false, editCalls:false, adding:focus === "hist", history:[], entry:{ date:UI.gameToday(cal()), nodate:false, label:"" }, editEntry:null, focus };
   }
   function sheetHTML(s){
     const h = st.sheet, other = h.other ? simById(h.other) : null, oName = other ? other.name : (h.otherName || h.who || "them");
@@ -319,24 +319,33 @@ const Registry = (() => {
     const entries = h.history.map((e, i) => h.editEntry === i
       ? `<div class="rg-entry editing"><div class="rg-entryedit">${dateFields("e", e.game_date || UI.gameToday(cal()))}<label class="rg-check"><input type="checkbox" data-se="enodate" ${e.game_date ? "" : "checked"}> No date</label><input class="rg-input" data-se="elabel" value="${esc(e.label)}" list="rg-dl-hist" aria-label="What happened"><button type="button" class="rg-b sm pri" data-sa="entrydone">Done</button></div></div>`
       : `<div class="rg-entry"><button type="button" class="rg-entrydate" data-sa="entryedit:${i}" aria-label="Change this entry">${esc(gShort(e.game_date))}</button><span>${esc(e.label)}${e.note ? `<small>${esc(e.note)}</small>` : ""}</span><button type="button" class="rg-x" data-sa="entrydel:${i}" aria-label="Remove this entry">×</button></div>`).join("");
+    const isParent = h.kind === "fam" && (h.fam === "me" || h.fam === "them");
+    const noRel = isParent && !h.biological && !h.adoptive && !h.raised;
+    const markHelp = noRel ? "Pick at least one: Biological, Adoptive or Raised them."
+      : [isParent && h.unconfirmed ? "Unconfirmed: Heirloom shows it dashed with a ? until a DNA kit confirms it." : "", h.secret ? (h.kind === "fam" ? "Secret: Heirloom hides it behind the eye button, and Spill keeps it out of the public layer." : "Secret: shows with a red dashed border, and Spill keeps it out of the public layer.") : ""].filter(Boolean).join(" ")
+      || (isParent ? "Tap any that fit. Most parents are Biological and Raised them." : "");
+    const pills = list => `<div class="ui-chips wrap" role="group">${list.map(([k, label, cls]) => `<button type="button" class="ui-chip ${cls || ""} ${h[k] ? "on" : ""}" data-sp="${k}" aria-pressed="${!!h[k]}"><span><i class="rg-mk" aria-hidden="true">${h[k] ? "\u2713" : "+"}</i>${esc(label)}</span></button>`).join("")}</div>`;
+    const dl = DEFAULT_LABEL[h.fam] || [], ml = h.myLabel || dl[0] || "", tl = h.theirLabel || dl[1] || "";
+    const callsText = ml && tl && ml !== tl ? `${esc(A)} is <b>${esc(ml)}</b>, ${esc(B)} is <b>${esc(tl)}</b>` : ml || tl ? `They call it <b>${esc(ml || tl)}</b>` : "No label yet";
+    const calls = h.editCalls || (!ml && !tl && h.kind !== "fam" && !h.id)
+      ? `<div class="rg-two"><div><div class="rg-flab">${esc(A)} calls it</div><input class="rg-input" data-se="myLabel" value="${esc(h.myLabel)}" aria-label="${esc(A)} calls it"></div><div><div class="rg-flab">${esc(B)} calls it</div><input class="rg-input" data-se="theirLabel" value="${esc(h.theirLabel)}" aria-label="${esc(B)} calls it"></div></div>`
+      : `<div class="rg-calls"><span>${callsText}</span><button type="button" class="rg-link" data-sa="calls">${ml || tl ? "Change" : "Add"}</button></div>`;
     const title = h.id ? `${A} and ${B}` : `New connection for ${A}`;
-    return `<div class="rg-sheetwrap" data-sheetbg><div class="rg-sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+    return `<div class="rg-sheetwrap" data-sheetbg><div class="rg-sheet cs" role="dialog" aria-modal="true" aria-label="${esc(title)}">
       <div class="rg-sh"><b>${esc(title)}</b><button type="button" class="rg-x" data-sa="close" aria-label="Close">×</button></div>
       <div class="rg-sb">
         ${h.id ? "" : `<div><div class="rg-flab">Who</div><input class="rg-input" data-se="who" list="rg-dl-sims" value="${esc(h.who)}" placeholder="Start typing a name" autocomplete="off" aria-label="Who"><datalist id="rg-dl-sims">${data.sims.filter(x => x.id !== s.id).map(x => `<option value="${esc(x.name)}">`).join("")}</datalist><div class="rg-help">Pick a resident on file, or type a new name to mark them file pending.</div></div>`}
         <div><div class="rg-flab">Kind</div>${chips("kind", KINDS.map(([k, n]) => [k, n, k]), h.kind)}</div>
-        ${h.kind === "fam" ? `<div><div class="rg-flab">Family link</div>${chips("fam", [["them", `${B} is ${A}'s parent`], ["me", `${A} is ${B}'s parent`], ["sibling", "Siblings"], ["other", "Other family"]], h.fam)}</div>
-          ${h.fam === "me" || h.fam === "them" ? `<div class="rg-checks"><label class="rg-check"><input type="checkbox" data-se="biological" ${h.biological ? "checked" : ""}> Biological</label><label class="rg-check"><input type="checkbox" data-se="adoptive" ${h.adoptive ? "checked" : ""}> Adoptive</label><label class="rg-check"><input type="checkbox" data-se="raised" ${h.raised ? "checked" : ""}> Raised them</label></div>` : ""}` : ""}
-        <div class="rg-two"><div><div class="rg-flab">${esc(A)} calls it</div><input class="rg-input" data-se="myLabel" value="${esc(h.myLabel)}" aria-label="${esc(A)} calls it"></div><div><div class="rg-flab">${esc(B)} calls it</div><input class="rg-input" data-se="theirLabel" value="${esc(h.theirLabel)}" aria-label="${esc(B)} calls it"></div></div>
-        <div id="rg-sheet-hist"><div class="rg-flab">History</div>${entries || `<p class="rg-help" style="margin:0 0 4px">Nothing yet.</p>`}
-          <div class="rg-newentry">${dateFields("n", h.entry.date)}<input class="rg-input" data-se="nlabel" list="rg-dl-hist" value="${esc(h.entry.label)}" placeholder="Dating" aria-label="What happened"><button type="button" class="rg-b sm" data-sa="entryadd">Add</button></div>
-          <datalist id="rg-dl-hist">${HIST_SUGGEST.map(x => `<option value="${esc(x)}">`).join("")}</datalist>
-          <div class="rg-help">Pick met, dating, engaged, married, split, or type your own. The date starts on today's game date; change it if it happened earlier. Tap a date to change it.</div></div>
-        <label class="rg-secretrow"><span class="rg-check"><input type="checkbox" data-se="secret" ${h.secret ? "checked" : ""}> Secret</span><span class="rg-help">${h.kind === "fam" && (h.fam === "me" || h.fam === "them") ? "For a secret father, a secret adoption, and so on. Heirloom hides it behind the eye button." : "Shows with a red dashed border. Spill keeps it out of the public layer."}</span></label>
-        ${h.kind === "fam" && (h.fam === "me" || h.fam === "them") ? `<p class="rg-help" style="margin:0">Examples: a husband raising a child who isn't his: Raised them yes, Biological no, Secret yes. The real father: Biological yes, Raised them no, Secret yes.</p>` : ""}
+        ${h.kind === "fam" ? `<div><div class="rg-flab">Family link</div>${chips("fam", [["them", `${B} is ${A}'s parent`], ["me", `${A} is ${B}'s parent`], ["sibling", "Siblings"], ["other", "Other family"]], h.fam)}</div>` : ""}
+        ${isParent ? `<div><div class="rg-flab">This link is</div>${pills([["biological", "Biological"], ["adoptive", "Adoptive"], ["raised", "Raised them"]])}</div>` : ""}
+        <div><div class="rg-flab">Mark as</div>${pills([...(isParent ? [["unconfirmed", "Unconfirmed"]] : []), ["secret", "Secret", "sec"]])}<p class="rg-help rg-mark ${noRel ? "warn" : ""}">${esc(markHelp)}</p></div>
+        ${calls}
+        <div id="rg-sheet-hist"><div class="rg-flab">History</div>${entries || (h.adding ? "" : `<p class="rg-help" style="margin:0 0 4px">Nothing yet.</p>`)}
+          ${h.adding ? `<div class="rg-newentry">${dateFields("n", h.entry.date)}<input class="rg-input" data-se="nlabel" list="rg-dl-hist" value="${esc(h.entry.label)}" placeholder="Dating" aria-label="What happened"><button type="button" class="rg-x" data-sa="entrycancel" aria-label="Cancel this entry">×</button></div><datalist id="rg-dl-hist">${HIST_SUGGEST.map(x => `<option value="${esc(x)}">`).join("")}</datalist>` : ""}
+          <button type="button" class="rg-link" data-sa="newentry">+ Add to history</button></div>
         ${h.err ? `<p class="rg-msg err" style="margin:0">${esc(h.err)}</p>` : ""}
       </div>
-      <div class="rg-sfoot">${h.id ? `<button type="button" class="rg-b del" data-sa="delete">Delete connection</button>` : ""}<button type="button" class="rg-b quiet" data-sa="close">Cancel</button><button type="button" class="rg-b pri" data-sa="save" ${st.busy ? "disabled" : ""}>${st.busy ? "Saving..." : "Save"}</button></div>
+      <div class="rg-sfoot">${h.id ? `<button type="button" class="rg-b del" data-sa="delete">Delete connection</button>` : ""}<button type="button" class="rg-b quiet" data-sa="close">Cancel</button><button type="button" class="rg-b pri" data-sa="save" ${st.busy || noRel ? "disabled" : ""}>${st.busy ? "Saving..." : "Save"}</button></div>
     </div></div>`;
   }
   function readSheetFields(){
@@ -344,7 +353,6 @@ const Registry = (() => {
     const g = k => root.querySelector(`[data-se="${k}"]`);
     if (g("who")) h.who = g("who").value;
     ["myLabel","theirLabel"].forEach(k => { if (g(k)) h[k] = g(k).value; });
-    ["biological","adoptive","raised","secret"].forEach(k => { if (g(k)) h[k] = g(k).checked; });
     if (g("nseason")) h.entry = { ...h.entry, date:{ season:g("nseason").value, day:clampDay(g("nday").value), year:Math.max(1, parseInt(g("nyear").value, 10) || cal().year) }, label:g("nlabel").value };
     if (h.editEntry != null && g("eseason")) { const e = h.history[h.editEntry]; e.label = g("elabel").value.trim() || e.label; e.game_date = g("enodate").checked ? null : { season:g("eseason").value, day:clampDay(g("eday").value), year:Math.max(1, parseInt(g("eyear").value, 10) || cal().year) }; }
   }
@@ -372,7 +380,7 @@ const Registry = (() => {
     if (!other && !meIsA) meIsA = true;   /* a file-pending Sim can't be a_sim */
     const link = { id:h.id || R().newId(), a_sim:meIsA ? s.id : other, b_sim:meIsA ? other : s.id, b_name:meIsA && !other ? otherName : null, kind:h.kind,
       family:h.kind === "fam" ? (parent ? "parent" : h.fam === "sibling" ? "sibling" : "other") : null,
-      a_label:meIsA ? myL : thL, b_label:meIsA ? thL : myL, biological:parent ? h.biological : null, adoptive:parent ? h.adoptive : null, raised:parent ? h.raised : null, secret:h.secret };
+      a_label:meIsA ? myL : thL, b_label:meIsA ? thL : myL, biological:parent ? h.biological : null, adoptive:parent ? h.adoptive : null, raised:parent ? h.raised : null, secret:h.secret, unconfirmed:parent ? !!h.unconfirmed : false };
     if (!parent && h.kind === "fam" && !other && h.fam !== "sibling") link.family = "other";
     st.busy = true; draw();
     try { await R().saveLink(link, h.history.map(e => ({ id:e.id || undefined, label:e.label, game_date:e.game_date || null, note:e.note || null })));
@@ -753,6 +761,9 @@ const Registry = (() => {
       if (sa && st.sheet) {
         readSheetFields(); const h = st.sheet;
         if (sa === "close") { st.sheet = null; return draw(); }
+        if (sa === "calls") { h.editCalls = true; return draw(); }
+        if (sa === "newentry") { if (h.adding && h.entry.label.trim()) { h.history.push({ id:null, label:h.entry.label.trim(), game_date:h.entry.nodate ? null : h.entry.date, note:null }); } h.adding = true; h.entry = { ...h.entry, label:"" }; h.err = null; h.focus = "hist"; return draw(); }
+        if (sa === "entrycancel") { h.adding = false; h.entry = { ...h.entry, label:"" }; return draw(); }
         if (sa === "entryadd") { if (!h.entry.label.trim()) { h.err = "Type what happened, then Add."; return draw(); } h.history.push({ id:null, label:h.entry.label.trim(), game_date:h.entry.date, note:null }); h.entry = { ...h.entry, label:"" }; h.err = null; return draw(); }
         if (sa.startsWith("entryedit:")) { h.editEntry = Number(sa.split(":")[1]); return draw(); }
         if (sa === "entrydone") { h.editEntry = null; return draw(); }
@@ -761,6 +772,8 @@ const Registry = (() => {
         if (sa === "save") return saveSheet(s);
         return;
       }
+      const sp = t.closest("[data-sp]")?.dataset.sp;
+      if (sp && st.sheet) { readSheetFields(); const h = st.sheet; h[sp] = !h[sp]; return draw(); }
       const sk = t.closest("[data-sk]")?.dataset.sk;
       if (sk && st.sheet) { readSheetFields(); const [k, v] = sk.split(":"); const h = st.sheet;
         if (k === "kind") { h.kind = v; }

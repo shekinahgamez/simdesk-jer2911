@@ -1,6 +1,6 @@
 /* Heirloom: in-world it's a family history and DNA kit app; underneath it's the family tree built from the Registry's parent links.
    Opens on one Sim as "You". It reads GFB.registry (parent links: Biological, Adoptive, Raised them, Secret; sibling and spouse links) and writes only
-   settings.heirloom ({ unconfirmed:[link ids], dna:{ link id: { result, date } } }) plus one timeline entry on the link when a DNA kit runs.
+   settings.heirloom ({ dna:{ link id: { result, date } } }) plus one timeline entry on the link when a DNA kit runs.
    Half and step siblings are worked out from the parents, never picked. No "who knows" tracking. Opens with secrets shown; the eye hides them. */
 const Heirloom = (() => {
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -27,7 +27,6 @@ const Heirloom = (() => {
 
   const simOf = id => data.sims.find(s => s.id === id) || null;
   const settings = () => (data.settings || {}).heirloom || {};
-  const unconfirmed = () => new Set(settings().unconfirmed || []);
   const dnaOf = id => (settings().dna || {})[id] || null;
   const R = () => GFB.registry;
   const gdate = () => UI.gameToday(data.calendar);
@@ -40,7 +39,7 @@ const Heirloom = (() => {
   const pick = (g, f, m, n) => g === "f" ? f : g === "m" ? m : n;
 
   /* a link's state: ok (solid), unc (dashed, waiting), dna (confirmed with the kit) */
-  function stateOf(l) { const d = dnaOf(l.id); if (d && d.result === true) return "dna"; return unconfirmed().has(l.id) ? "unc" : "ok"; }
+  function stateOf(l) { const d = dnaOf(l.id); if (d && d.result === true) return "dna"; return l.unconfirmed ? "unc" : "ok"; }
 
   /* ---------- the model: who is on this Sim's tree and how they connect ---------- */
   function build(you, hideSecrets) {
@@ -48,7 +47,10 @@ const Heirloom = (() => {
     const L = R().all().filter(l => l.a_sim && l.b_sim && l.a_sim !== l.b_sim && ids.has(l.a_sim) && ids.has(l.b_sim));
     const vis = L.filter(l => !(hideSecrets && l.secret));
     const par = vis.filter(l => l.kind === "fam" && l.family === "parent");           /* a_sim is the parent, b_sim the child */
-    const sibL = vis.filter(l => l.kind === "fam" && l.family === "sibling");
+    /* a sibling link that only exists because of a secret parent link is secret too: hiding secrets hides it */
+    const parAll = L.filter(l => l.kind === "fam" && l.family === "parent");
+    const viaSecret = l => parAll.some(x => x.secret && (x.b_sim === l.a_sim || x.b_sim === l.b_sim) && parAll.some(y => y.a_sim === x.a_sim && (y.b_sim === l.a_sim || y.b_sim === l.b_sim) && y !== x));
+    const sibL = vis.filter(l => l.kind === "fam" && l.family === "sibling" && !(hideSecrets && viaSecret(l)));
     const spouseL = vis.filter(l => l.kind === "rom" && /spouse|husband|wife|married/i.test((l.a_label || "") + " " + (l.b_label || "")));
     const parentsOf = id => par.filter(l => l.b_sim === id), childrenOf = id => par.filter(l => l.a_sim === id);
     const nodes = new Map(), edges = [], seenEdge = new Set();
@@ -263,8 +265,7 @@ const Heirloom = (() => {
       <div class="hl-row s"><span class="rt"><b>Raised them</b></span>${tick(l.raised === true)}</div>
       ${l.secret ? `<div class="hl-row s"><span class="rt"><b>Secret</b></span><span class="hl-tick on red" role="img" aria-label="Yes">&#10003;</span></div>` : ""}
       <div class="hl-row s"><span class="rt"><b>Status</b></span>${pill}</div>${dnaLine}
-      ${s !== "dna" ? `<div class="hl-row s"><span class="rt"><b>Not sure yet</b></span><button type="button" class="hl-sw ${s === "unc" ? "on" : ""}" role="switch" aria-checked="${s === "unc"}" aria-label="Not sure yet" data-notsure="${l.id}"><i></i></button></div>` : ""}
-    </div><div class="hl-foot">${s === "unc" ? "A dashed link means you haven't confirmed it yet. " : ""}The boxes come from the Registry; change them there.</div>`;
+    </div><div class="hl-foot">${s === "unc" ? "A dashed link means it's marked Unconfirmed. " : ""}The boxes come from the Registry; change them there.</div>`;
   }
   function openCard(id) {
     const M = st.M, n = M && M.nodes.get(id); if (!n) return;
@@ -277,14 +278,12 @@ const Heirloom = (() => {
       <a class="hl-btn plain wide" href="#/registry/${id}">Open file in Registry</a></div>`;
     const sh = UI.sheet({ title:"", left:"", right:"Done", body, theme:{ "--ui-sheet-bg":"#F5F0E6", "--ui-sheet-fg":"#26231D", "--ui-sheet-accent":"#2F6B47" } });
     st.sel = id; const clear = () => { st.sel = null; };
-    sh.el.addEventListener("click", async e => {
-      const k = e.target.closest("[data-kit]"), t = e.target.closest("[data-tree]"), ns = e.target.closest("[data-notsure]"), a = e.target.closest("a.hl-btn");
+    sh.el.addEventListener("click", e => {
+      const k = e.target.closest("[data-kit]"), t = e.target.closest("[data-tree]"), a = e.target.closest("a.hl-btn");
       if (k) { sh.close(); startKit(R().linkById(k.dataset.kit)); }
       else if (t) { sh.close(); location.hash = "#/heirloom/" + t.dataset.tree; }
       else if (a) sh.close();
-      else if (ns) { const on = ns.getAttribute("aria-checked") !== "true", cur = settings(), set = new Set(cur.unconfirmed || []); on ? set.add(ns.dataset.notsure) : set.delete(ns.dataset.notsure);
-        try { await GFB.saveSetting("heirloom", { ...cur, unconfirmed:[...set] }); } catch (err) { toast(err.message); return; }
-        sh.close(); draw(); openCard(id); }
+
     });
     const prevClose = sh.close; sh.close = (w) => { clear(); prevClose(w); };
   }
@@ -380,12 +379,11 @@ const Heirloom = (() => {
     if (phone) el.classList.add("phone");
   }
   async function commit(L, match) {
-    const cur = settings(), unc = (cur.unconfirmed || []).filter(x => x !== L.id);
-    const dna = { ...(cur.dna || {}), [L.id]: { result:match, date:gdate() } };
-    await GFB.saveSetting("heirloom", { ...cur, unconfirmed:unc, dna });
+    const cur = settings(), dna = { ...(cur.dna || {}), [L.id]: { result:match, date:gdate() } };
+    await GFB.saveSetting("heirloom", { ...cur, dna });
     if (!R().canEdit()) return "skipped";
     const hist = (L.history || []).map(h => ({ ...h })); hist.push({ label:match ? "Confirmed with DNA kit" : "DNA kit: not a match", game_date:gdate(), note:null, sort:hist.length });
-    try { await R().saveLink(L, hist); return "saved"; } catch (e) { return "error:" + e.message; }
+    try { await R().saveLink({ ...L, unconfirmed:false }, hist); return "saved"; } catch (e) { return "error:" + e.message; }
   }
   /* the results card as a picture, for screenshots and videos */
   function saveCard(K) {
