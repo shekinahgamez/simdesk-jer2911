@@ -30,7 +30,9 @@ const Slide = (() => {
 
   /* ---------- saved state ---------- */
   let data = null, root = null, S = null;
-  const st = { pin:null, editId:null, more:null, sheet:null, q:"", filter:"all", match:null, err:null, drag:null, flash:null };
+  /* round: a second look at the Sims you passed on, { a: whose phone, seen: Set of ids already looked at again }. Only lives while Slide is open;
+     the passes themselves stay in S.swipes as "p" the whole time. */
+  const st = { pin:null, editId:null, sheet:null, q:"", match:null, err:null, drag:null, flash:null, round:null };
   function state() {
     const saved = data.slide;
     S = saved && typeof saved === "object" ? saved : {};
@@ -120,12 +122,13 @@ const Slide = (() => {
 
   /* ---------- the compatibility read: only what SimDesk can actually check ---------- */
   const words = s => { const p = shown(s); return [...p.traits, ...p.likes, p.job].filter(Boolean).map(low); };
-  /* does Sim b have this turn on/off? Matches traits, likes, and job by name; Wealthy/Broke from bank balances; Taken from the Registry. Anything else is left out. */
+  /* does Sim b have this turn on/off? Matches traits, likes, and job by name; Wealthy/Broke from bank balances. Taken never counts. Anything else is left out. */
   function check(item, b) {
     const t = low(item);
     if (/wealth|rich|money/.test(t)) { const w = wealth(b); return w == null ? null : w === "wealthy"; }
     if (/broke|poor/.test(t)) { const w = wealth(b); return w == null ? null : w === "broke"; }
-    if (/^(taken|attached|in a relationship|married)$/.test(t)) return isTaken(b);
+    /* Taken is for the player only (a Sim wouldn't put it on a dating profile), so it never counts as a turn on or off */
+    if (/^(taken|attached|in a relationship|married)$/.test(t)) return null;
     const has = words(b).some(w => w === t || w.split(/[^a-z0-9']+/).includes(t) || (t.length > 3 && w.includes(t)));
     return has ? true : null;
   }
@@ -163,12 +166,19 @@ const Slide = (() => {
     if (d > range) return null;
     return { b, d, justFun: sx && !ro, far: d >= 2 && d === range, read: read(a, b) };
   }
+  const matchedWith = a => new Set(S.matches.filter(m => m.a === a.id || m.b === a.id).map(m => m.a === a.id ? m.b : m.a));
+  const byRead = (x, y) => y.read.score - x.read.score || x.d - y.d || stripNick(x.b.name).localeCompare(stripNick(y.b.name));
+  /* everyone a has passed on who still fits (still in range, not matched since) */
+  function passedFits(a) {
+    const seen = swipesOf(a.id), matched = matchedWith(a);
+    return data.sims.map(b => seen[b.id] === "p" && !matched.has(b.id) ? fit(a, b) : null).filter(Boolean).sort(byRead);
+  }
+  /* new faces first; during a second look, the passes nobody has looked at again yet come after them, tagged "second" */
   function deck(a) {
-    const seen = swipesOf(a.id), matched = new Set(S.matches.filter(m => m.a === a.id || m.b === a.id).map(m => m.a === a.id ? m.b : m.a));
-    return data.sims.map(b => !seen[b.id] && !matched.has(b.id) ? fit(a, b) : null).filter(Boolean)
-      .filter(c => st.filter !== "fun" || c.justFun)
-      .sort((x, y) => y.read.score - x.read.score || x.d - y.d || stripNick(x.b.name).localeCompare(stripNick(y.b.name)))
-      .sort((x, y) => (y.b.id === st.pin) - (x.b.id === st.pin));
+    const seen = swipesOf(a.id), matched = matchedWith(a);
+    const fresh = data.sims.map(b => !seen[b.id] && !matched.has(b.id) ? fit(a, b) : null).filter(Boolean).sort(byRead);
+    const again = st.round && st.round.a === a.id ? passedFits(a).filter(c => !st.round.seen.has(c.b.id)).map(c => ({ ...c, second:true })) : [];
+    return [...fresh, ...again].sort((x, y) => (y.b.id === st.pin) - (x.b.id === st.pin));
   }
   /* would b slide back? Same attraction both ways (already true), a has to be in b's range, b can't have passed on a,
      and a can't trip more of b's turn offs than they hit turn ons. */
@@ -185,11 +195,12 @@ const Slide = (() => {
   /* ---------- swiping ---------- */
   const today = () => UI.gameToday(data.calendar);
   async function swipe(kind) {
-    st.more = null; st.pin = null;
+    st.pin = null;
     const a = simById(S.phone), c = a && deck(a)[0]; if (!c) return;
-    const b = c.b;
+    const b = c.b, prev = swipesOf(a.id)[b.id];
     swipesOf(a.id)[b.id] = kind === "pass" ? "p" : kind === "shot" ? "s" : "l";
-    S.undo = { a:a.id, b:b.id };
+    if (c.second) st.round.seen.add(b.id);
+    S.undo = prev ? { a:a.id, b:b.id, prev } : { a:a.id, b:b.id };   /* prev: a second-look swipe undoes back to the pass */
     if (kind === "pass") { await persist(); draw(); return; }
     const w = kind === "shot" ? { yes:true } : wouldMatch(a, b);
     if (!w.yes) { st.flash = `Slid on ${first(b.name)}. No match yet.`; await persist(); draw(); return; }
@@ -203,10 +214,15 @@ const Slide = (() => {
     try {
       /* the Registry log: one Romance row in each file, pointing at each other. Skipped if they already have a Romance row. */
       if (!between(a, b).some(r => r.kind === "rom")) {
+        if (GFB.registry.isMoved()) {     /* the new Registry: one link, with a dated history entry */
+          const l = await GFB.registry.saveLink({ a_sim:a.id, b_sim:b.id, kind:"rom", family:null, a_label:"Matched on Slide", b_label:"Matched on Slide", secret:false, legacy_ids:[] }, [{ label:"Matched on Slide", game_date:date, note:null }]);
+          m.rel = [l.id];
+        } else {
         const r1 = await GFB.saveRel({ from_sim:a.id, to_sim:b.id, to_name:null, kind:"rom", label, secret:null, hidden:false });
         const r2 = await GFB.saveRel({ from_sim:b.id, to_sim:a.id, to_name:null, kind:"rom", label, secret:null, hidden:false, pair:r1.id });
         await GFB.saveRel({ id:r1.id, pair:r2.id });
         m.rel = [r1.id, r2.id];
+        }
       }
       await persist(); st.err = null;
     } catch (e) { st.err = e.message; }
@@ -242,6 +258,7 @@ const Slide = (() => {
     world:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/>',
     undo:'<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
     edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
+    flame:'<path d="M12 21c-3.9 0-6.5-2.6-6.5-6.2 0-3.3 2.4-5.4 3.6-8.3.3 1.8 1.2 3 2.4 3.6.2-2.6 1.3-5 3.5-7.1-.2 3 1 4.6 2.3 6.2 1.1 1.4 1.7 3 1.7 5.1C19 18.4 15.9 21 12 21z"/>',
     heart:'<path d="M12 20s-7.5-4.6-7.5-10.2A4.2 4.2 0 0 1 12 7.3a4.2 4.2 0 0 1 7.5 2.5C19.5 15.4 12 20 12 20z"/>'
   };
   const ic = (k, w = 2.4) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
@@ -270,37 +287,43 @@ const Slide = (() => {
     return `<div class="sl-box"><h4>Matches</h4>${rows || `<p class="sl-hint">No matches yet.</p>`}</div>
       ${waiting.length ? `<div class="sl-box"><h4>Waiting on them</h4>${waiting.map(o => `<div class="sl-mrow">${av(o, "sm")}<span>${esc(stripNick(o.name))}<small>Slid · no match yet</small></span></div>`).join("")}</div>` : ""}`;
   }
+  /* The card is the photo first. Under it only what the two have in common: shared likes, and which of the phone owner's turn ons
+     this Sim has. Traits, other likes and dislikes, and the small world line stay off the card (the data is untouched) so there's
+     something left to find out when they meet. A row with nothing in it doesn't show, and the photo takes the room. */
   function card(a, c, ghost) {
-    const b = c.b, r = c.read, sw = smallWorld(a, b), p = pref(b.id), sh = shown(b);
-    const badges = [c.justFun ? `<span class="sl-tag fun">Just fun</span>` : "", c.far ? `<span class="sl-tag far">Long distance</span>` : "",
+    const b = c.b, r = c.read, p = pref(b.id), sh = shown(b);
+    const badges = [c.second ? `<span class="sl-tag second">Second look</span>` : "", c.justFun ? `<span class="sl-tag fun">Just fun</span>` : "", c.far ? `<span class="sl-tag far">Long distance</span>` : "",
       p.burner ? `<span class="sl-tag far">Burner</span>` : "", editedFields(b).length ? `<span class="sl-tag far icon" role="img" aria-label="Edited profile" title="Edited profile">${ic("hush", 1.8)}</span>` : "", isTaken(b) ? `<span class="sl-tag taken">Taken · only you see this</span>` : ""].join("");
     const ok = [b.age, b.life_stage && !b.age ? b.life_stage : ""].filter(Boolean).join("");
-    const likes = sh.likes, dislikes = sh.dislikes;
-    const shared = new Set(r.shared.map(low));
-    const line = (k, cls, icon, list) => list.length ? `<div><b>${k}</b><span class="sl-cc ${cls}">${list.map(x => `<span class="sl-cchip">${ic(icon, 3)}${esc(x)}</span>`).join("")}</span></div>` : "";
+    const row = (label, cls, icon, list) => list.length ? `<div class="sl-row ${cls}"><b>${esc(label)}</b><span class="sl-cc">${list.map(x => `<span class="sl-cchip">${ic(icon, 2.2)}${esc(x)}</span>`).join("")}</span></div>` : "";
+    const rows = row("In common", "like", "heart", r.shared) + row(`Turns ${first(a.name)} on`, "hot", "flame", r.hits);
     return `<article class="sl-card ${ghost ? "ghost" : ""}" ${ghost ? 'aria-hidden="true"' : `id="sl-card" aria-label="${esc(stripNick(b.name))}"`}>
       <div class="sl-photo">${b.portrait ? `<img src="${esc(b.portrait)}" alt="" draggable="false">` : `<span class="sl-ph">${esc(initials(b.name))}</span>`}
         <span class="sl-stamp like">Slide</span><span class="sl-stamp nope">Pass</span>
         <div class="sl-badges">${badges}</div>
         <button type="button" class="sl-edit" data-sl="edit:${b.id}" aria-label="Edit ${esc(first(b.name))}'s profile">${ic("edit", 2)}</button>
         <div class="sl-namebar"><h3>${esc(stripNick(b.name))}${ok ? ` <span>${esc(ok)}</span>` : ""}</h3><p><span>${esc([sh.job, place(b) || "No city on file"].filter(Boolean).join(" · "))}</span></p></div></div>
-      <div class="sl-body">
-        ${sw.length ? `<p class="sl-world">${ic("world", 2)}<span>${esc(sw.join("; ").replace(/^./, x => x.toUpperCase()))}</span></p>` : ""}
-        ${sh.traits.length ? `<div class="sl-chips">${sh.traits.map(t => `<span class="sl-chip">${esc(t)}</span>`).join("")}</div>` : ""}
-        ${r.hits.length || r.trips.length || r.shared.length ? `<div class="sl-compat">${line("Hits", "good", "check", r.hits)}${line("Trips", "bad", "pass", r.trips)}${line("Shared", "like", "heart", r.shared)}</div>` : `<p class="sl-hint">Nothing on file to compare yet.</p>`}
-        ${likes.length || dislikes.length ? `<div class="sl-more" data-name="${esc(first(b.name))}"><div class="sl-morebody">
-          ${likes.length ? `<div class="sl-likes"><b>Likes</b> ${likes.map(l => `<span class="${shared.has(low(l)) ? "sh" : ""}">${esc(l)}</span>`).join("")}</div>` : ""}
-          ${dislikes.length ? `<div class="sl-likes dis"><b>Dislikes</b> ${dislikes.map(l => `<span>${esc(l)}</span>`).join("")}</div>` : ""}</div>
-          <button type="button" class="sl-showmore" data-sl="more" hidden></button></div>` : ""}
-      </div></article>`;
+      ${rows ? `<div class="sl-body">${rows}</div>` : ""}</article>`;
+  }
+  /* out of new faces: offer a second look at the passes */
+  function endPanel(a) {
+    const passed = passedFits(a), n = passed.length, nm = esc(first(a.name));
+    const faces = (n ? passed.map(c => c.b) : S.matches.filter(m => m.a === a.id || m.b === a.id).map(m => simById(m.a === a.id ? m.b : m.a)).filter(Boolean)).slice(0, 4);
+    return `<div class="sl-end" role="status">
+      ${faces.length ? `<div class="sl-stack" aria-hidden="true">${faces.map(s => av(s, "stack")).join("")}</div>` : MARK()}
+      <h2>That's everyone for now</h2>
+      ${n ? `<p>You passed on ${n} ${n === 1 ? "person" : "people"}. Want to take another look?</p>
+      <button type="button" class="sl-btn main" data-sl="again">Take another look</button>
+      <a class="sl-notnow" href="#/">Not now</a>`
+      : `<p>${nm} has seen everyone in range. To meet more people, widen how far ${nm} will go.</p>`}
+    </div>`;
   }
   function centerHTML(a) {
     if (!a) return `<div class="sl-empty">${MARK()}<h2>Whose phone?</h2><p>Pick any young adult or older. Slide shows everyone who fits them, and they fit back.</p><button type="button" class="sl-btn main" data-sl="phone">Pick a Sim</button></div>`;
     if (!canSwipe(a)) return `<div class="sl-empty"><h2>${esc(first(a.name))} can't swipe yet</h2><p>${!lifeOk(a) ? "Slide is for young adults and older." : "There's no gender on file. Add it in the Registry and Slide can work out who fits."}</p>${lifeOk(a) ? `<a class="sl-btn" href="#/registry/${esc(a.id)}">Open the Registry file</a>` : ""}</div>`;
     const list = deck(a);
-    const top = `<div class="sl-topbar"><button type="button" class="sl-pill ${st.filter === "all" ? "hot" : ""}" data-sl="filter:all">For you</button><button type="button" class="sl-pill ${st.filter === "fun" ? "hot" : ""}" data-sl="filter:fun">Just fun</button><span class="sl-pill quiet">Swiping as ${esc(first(a.name))}</span></div>`;
-    if (!list.length) return `${top}<div class="sl-empty"><h2>That's everybody</h2><p>${esc(first(a.name))} has seen everyone in range${st.filter === "fun" ? " for just fun" : ""}. Widen how far they'll go to see more.</p></div>`;
-    return `${top}<div class="sl-deck">${list[1] ? card(a, list[1], true) : ""}${card(a, list[0])}</div>
+    if (!list.length) { if (st.round && st.round.a === a.id) st.round = null; return `${st.flash ? `<p class="sl-flash" role="status">${esc(st.flash)}</p>` : ""}${endPanel(a)}`; }
+    return `<div class="sl-deck">${list[1] ? card(a, list[1], true) : ""}${card(a, list[0])}</div>
       ${st.flash ? `<p class="sl-flash" role="status">${esc(st.flash)}</p>` : ""}
       <div class="sl-btns">
         <button type="button" class="sl-bt undo" data-sl="undo" ${S.undo && S.undo.a === a.id ? "" : "disabled"}><span class="sl-circ undo">${ic("undo", 2.2)}</span>Undo</button>
@@ -361,17 +384,6 @@ const Slide = (() => {
       ${st.match ? `<div class="sl-modal">${matchScreen()}</div>` : st.sheet ? `<div class="sl-modal" data-sl-scrim>${st.sheet === "phone" ? pickerSheet() : st.sheet === "edit" ? editSheet() : menuSheet(a)}</div>` : ""}</div>`;
     if (st.sheet === "phone" && st.focusQ) { const q = root.querySelector("[data-sl-q]"); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }
     st.focusQ = false;
-    fitMore();
-  }
-
-  /* Likes and dislikes show in full when the card has room. Only when it doesn't do they fold behind "More about [name]". */
-  function fitMore() {
-    const m = root.querySelector("#sl-card .sl-more"); if (!m) return;
-    const btn = m.querySelector(".sl-showmore"), body = root.querySelector("#sl-card .sl-body"), fold = () => { m.classList.add("collapsed"); btn.hidden = false; btn.textContent = "More about " + m.dataset.name + " \u25BE"; };
-    m.classList.remove("collapsed"); btn.hidden = true;
-    if (st.more === true) { btn.hidden = false; btn.textContent = "Less \u25B4"; return; }
-    if (st.more === false) return fold();
-    if (body.scrollHeight > body.clientHeight + 1) fold();
   }
 
   /* ---------- drag to swipe ---------- */
@@ -397,14 +409,13 @@ const Slide = (() => {
     const [k, v] = cmd.split(":");
     try {
       if (k === "phone") { st.sheet = "phone"; st.q = ""; st.focusQ = true; return draw(); }
-      if (k === "more") { const m = root.querySelector("#sl-card .sl-more"); st.more = !!(m && m.classList.contains("collapsed")); return draw(); }
-      if (k === "undo") { const u = S.undo; if (!u || u.a !== S.phone) return; delete swipesOf(u.a)[u.b]; S.undo = null; st.pin = u.b; st.flash = null; st.more = null; await persist(); return draw(); }
+      if (k === "undo") { const u = S.undo; if (!u || u.a !== S.phone) return; if (u.prev) swipesOf(u.a)[u.b] = u.prev; else delete swipesOf(u.a)[u.b]; if (st.round && st.round.a === u.a) st.round.seen.delete(u.b); S.undo = null; st.pin = u.b; st.flash = null; await persist(); return draw(); }
+      if (k === "again") { st.round = { a:S.phone, seen:new Set() }; st.flash = null; st.pin = null; return draw(); }
       if (k === "edit") { st.sheet = "edit"; st.editId = v; return draw(); }
       if (k === "reset") { delete S.profiles[v]; st.sheet = null; await persist(); return draw(); }
       if (k === "menu") { st.sheet = "menu"; return draw(); }
       if (k === "close") { st.sheet = null; return draw(); }
-      if (k === "pick") { st.more = null; st.pin = null; S.phone = v; st.sheet = null; st.flash = null; st.filter = "all"; await persist(); return draw(); }
-      if (k === "filter") { st.filter = v; st.flash = null; return draw(); }
+      if (k === "pick") { st.pin = null; S.phone = v; st.sheet = null; st.flash = null; st.round = null; await persist(); return draw(); }
       if (k === "burner") { const p = pref(S.phone); S.prefs[S.phone] = { ...p, burner:!p.burner }; await persist(); return draw(); }
       if (k === "swipe") { st.flash = null; return swipe(v); }
       if (k === "text") { const m = S.matches.find(x => x.id === v); if (m) { m.texted = true; m.texted_on = m.texted_on || today(); } st.match = null; await persist(); draw(); if (m) textThread(m); return; }

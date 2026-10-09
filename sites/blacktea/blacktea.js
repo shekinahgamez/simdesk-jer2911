@@ -140,8 +140,8 @@ const BlackTea = (() => {
       </div>
       <label>Headline<input name="headline" value="${esc(s.headline)}"></label>
       <div class="bt-upload"><span class="lbl">Photo</span>
-        ${s.photo ? `<img loading="lazy" decoding="async" src="${esc(s.photo)}" alt="Story photo preview"><div class="ups"><label class="bt-btn ghost">REPLACE<input type="file" accept="image/*" id="bt-file" hidden></label><button type="button" class="bt-del" data-bt="rmphoto">Remove photo</button></div>`
-                  : `<label class="bt-drop">Add a screenshot<input type="file" accept="image/*" id="bt-file" hidden></label>`}
+        ${s.photo ? `<img loading="lazy" decoding="async" src="${esc(s.photo)}" alt="Story photo preview"><div class="ups"><label class="bt-btn ghost">REPLACE<input type="file" accept="image/*" id="bt-file" hidden${PhotoSlot.attr({ title:"Black Tea story photo", shape:"wide", aspect:16 / 9, outW:2048, sims:s.sims || [], current:s.photo || "" })}></label><button type="button" class="bt-del" data-bt="rmphoto">Remove photo</button></div>`
+                  : `<label class="bt-drop">Add a screenshot<input type="file" accept="image/*" id="bt-file" hidden${PhotoSlot.attr({ title:"Black Tea story photo", shape:"wide", aspect:16 / 9, outW:2048, sims:s.sims || [], current:"" })}></label>`}
         ${st.uploading ? `<p class="bt-note">Adding photo…</p>` : ""}${st.err ? `<p class="bt-err">${esc(st.err)}</p>` : ""}
       </div>
       <label>Tip text (tip line posts only)<textarea name="tip">${esc(s.tip)}</textarea></label>

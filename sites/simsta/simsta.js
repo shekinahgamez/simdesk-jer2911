@@ -185,9 +185,9 @@ const Simsta = (() => {
     if (st.modal.kind === "post"){
       const d = st.draft, editing = !!d.id;
       if (!d.photo) return `<div class="sm-modal" data-closebg><div class="sm-form"><header><button type="button" data-close>Cancel</button><span>New post</span><span></span></header>
-        <div class="sm-fbody"><label class="sm-drop big">${ICON.camera}<b>Add a screenshot</b><small>Step 1 of 2</small><input type="file" accept="image/*" id="sm-file"></label>${up}${err}</div></div></div>`;
+        <div class="sm-fbody"><label class="sm-drop big">${ICON.camera}<b>Add a screenshot</b><small>Step 1 of 2</small><input type="file" accept="image/*" id="sm-file"${PhotoSlot.attr({ title:"Simsta post", shape:"portrait", aspect:.8, outW:1080, sims:d.author ? [String(d.author).split("~")[0]] : [], current:"" })}></label>${up}${err}</div></div></div>`;
       return `<div class="sm-modal" data-closebg><form class="sm-form wide" id="sm-post"><header><button type="button" data-close>Cancel</button><span>${editing ? "Edit post" : "New post"}</span><button class="go" type="submit">${editing ? "Save" : "Share"}</button></header>
-        <div class="sm-compose"><div class="sm-prev"><img loading="lazy" decoding="async" src="${esc(d.photo)}" alt="Preview"><label>Change photo<input type="file" accept="image/*" id="sm-file"></label></div>
+        <div class="sm-compose"><div class="sm-prev"><img loading="lazy" decoding="async" src="${esc(d.photo)}" alt="Preview"><label>Change photo<input type="file" accept="image/*" id="sm-file"${PhotoSlot.attr({ title:"Simsta post", shape:"portrait", aspect:.8, outW:1080, sims:d.author ? [String(d.author).split("~")[0]] : [], current:d.photo || "" })}></label></div>
         <div class="sm-fbody">${up}
           <label>Posted by</label>${UI.simPicker("author", d.author ? [d.author] : [], acctOpts(), "Search accounts")}
           <label>Caption<textarea name="caption" placeholder="Write it like they would. Use @handles and #tags.">${esc(d.caption)}</textarea></label>
@@ -203,7 +203,7 @@ const Simsta = (() => {
       const v = a || { handle:"", name: m.alt ? "" : clean(s.name), bio:"", followers:0, following:0 };
       return `<div class="sm-modal" data-closebg><form class="sm-form" id="sm-prof"><header><button type="button" data-close>Cancel</button><span>${a ? "Edit profile" : m.alt ? "New alt account" : "Create account"}</span><button class="go" type="submit">Done</button></header>
         <div class="sm-fbody">
-          <div style="display:flex;align-items:center;gap:14px">${av({ key: m.key || s.id, handle: v.handle || s.name, avatar: st.draft.avatar }, 40)}<label style="margin:0;color:var(--hot);cursor:pointer;font-weight:700">Change profile photo<input type="file" accept="image/*" id="sm-avfile"></label>${st.draft.avatar ? `<button type="button" class="sm-del" style="padding:0" data-rmav>Remove</button>` : ""}</div>${up}
+          <div style="display:flex;align-items:center;gap:14px">${av({ key: m.key || s.id, handle: v.handle || s.name, avatar: st.draft.avatar }, 40)}<label style="margin:0;color:var(--hot);cursor:pointer;font-weight:700">Change profile photo<input type="file" accept="image/*" id="sm-avfile"${PhotoSlot.attr({ title:"Profile pic · " + (v.handle || clean(s.name)), shape:"circle", aspect:1, outW:640, sims:[s.id], current:st.draft.avatar || "", removable:!!st.draft.avatar, removeLabel:"Remove from profile", previews:[{ label:"Profile", size:44 }, { label:"Comments", size:28 }] })}></label>${st.draft.avatar ? `<button type="button" class="sm-del" style="padding:0" data-rmav>Remove</button>` : ""}</div>${up}
           <label>Handle<input type="text" name="handle" value="${esc(v.handle)}" placeholder="@handle" required autocapitalize="none" autocorrect="off" spellcheck="false"></label><p class="sm-note">Handles always start with @ and save in lowercase.</p>
           <label>Display name<input type="text" name="name" value="${esc(v.name)}"></label>
           <label>Bio<textarea name="bio">${esc(v.bio)}</textarea></label>
@@ -309,6 +309,7 @@ const Simsta = (() => {
       if (e.target.id === "sm-dq") { st.dq = e.target.value; root.querySelector("#sm-dir").innerHTML = dirRows(); }
       if (e.target.id === "sm-sq") { st.sq = e.target.value; const pos = e.target.selectionStart; draw(); const i = root.querySelector("#sm-sq"); i.focus(); i.setSelectionRange(pos, pos); }
     });
+    document.addEventListener("pslot-remove", e => { if (mine(e.target) && e.target.id === "sm-avfile") { st.draft.avatar = null; draw(); } });
     document.addEventListener("change", async e => {
       if (!mine(e.target)) return;
       if (e.target.id === "sm-file" && e.target.files[0]) {

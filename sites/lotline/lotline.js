@@ -236,8 +236,8 @@ const Lotline = (() => {
     const owners = [...new Set([...data.sims.map(s => stripNick(s.name)), ...households, ...data.lots.map(x => x.owner)].filter(Boolean))].sort();
     return `<div class="ll-modal" data-act="closebg"><form class="ll-form" id="ll-form" role="dialog" aria-label="Edit lot">
       <h2>${l.id ? "Edit lot" : "New lot"}</h2>
-      <div class="ll-up">${l.photo ? `<img loading="lazy" decoding="async" src="${esc(l.photo)}" alt="Lot photo"><div class="ll-upacts"><label class="ll-btn ghost">Replace photo<input type="file" accept="image/*" id="ll-file"></label><button type="button" class="ll-del" data-act="rmphoto">Remove photo</button></div>`
-        : `<label class="ll-drop">Add a screenshot of this lot<input type="file" accept="image/*" id="ll-file"></label>`}
+      <div class="ll-up">${l.photo ? `<img loading="lazy" decoding="async" src="${esc(l.photo)}" alt="Lot photo"><div class="ll-upacts"><label class="ll-btn ghost">Replace photo<input type="file" accept="image/*" id="ll-file"${PhotoSlot.attr({ title:"Lotline listing · " + (l.address || "new lot"), shape:"wide", aspect:16 / 9, outW:1800, lots:l.id ? [l.id] : [], current:l.photo || "" })}></label><button type="button" class="ll-del" data-act="rmphoto">Remove photo</button></div>`
+        : `<label class="ll-drop">Add a screenshot of this lot<input type="file" accept="image/*" id="ll-file"${PhotoSlot.attr({ title:"Lotline listing · " + (l.address || "new lot"), shape:"wide", aspect:16 / 9, outW:1800, lots:l.id ? [l.id] : [], current:"" })}></label>`}
         ${st.uploading ? `<p class="ll-note">Adding photo…</p>` : ""}${st.err ? `<p class="ll-err">${esc(st.err)}</p>` : ""}</div>
       <label>Address or lot name<input name="address" required value="${esc(l.address)}"></label>
       <div class="row">

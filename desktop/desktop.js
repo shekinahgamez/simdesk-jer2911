@@ -30,6 +30,8 @@ const APPS = [
     icon:`<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#EE5A24"/><path fill="#fff" fill-rule="evenodd" transform="translate(13.8 9.4) scale(0.0911)" d="M125 35H300L350 95V265L205 452L50 265V95ZM140 125H285V215H215V305L140 215Z"/></svg>` },
   { key:"simsta", name:"Simsta", host:"simsta.com", built:true,
     icon:`<svg viewBox="0 0 64 64"><defs><linearGradient id="smg" x1="0" y1=".2" x2="1" y2=".8"><stop offset="0" stop-color="#DB1265"/><stop offset="1" stop-color="#F95A54"/></linearGradient></defs><rect width="64" height="64" fill="url(#smg)"/><path d="M32 11C33.6 25.2 38.8 30.4 53 32C38.8 33.6 33.6 38.8 32 53C30.4 38.8 25.2 33.6 11 32C25.2 30.4 30.4 25.2 32 11Z" fill="#fff"/></svg>` },
+  { key:"photos", name:"Photos", host:"Photos", built:true, system:true,
+    icon:`<svg viewBox="0 0 64 64"><defs><linearGradient id="phg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#B4527A"/><stop offset="1" stop-color="#5B2138"/></linearGradient></defs><rect width="64" height="64" fill="url(#phg)"/><g fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><rect x="13" y="16" width="38" height="32" rx="7"/><circle cx="25" cy="27" r="4"/><path d="M51 40 41 30 22 48"/></g></svg>` },
   { key:"settings", name:"Settings", host:"Settings", built:true, system:true,
     icon:`<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#8E8E93"/><g fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"><circle cx="32" cy="32" r="8"/><path d="M32 13v6M32 45v6M13 32h6M45 32h6M18.6 18.6l4.2 4.2M41.2 41.2l4.2 4.2M18.6 45.4l4.2-4.2M41.2 22.8l4.2-4.2"/></g><circle cx="32" cy="32" r="15" fill="none" stroke="#fff" stroke-width="3" opacity=".55"/></svg>` },
 ];
@@ -39,20 +41,24 @@ const site = document.getElementById("site");
 let lastIcon = null;
 
 /* the dock holds the save tools; the desktop holds the in-world sites */
-const DOCK = ["calendar","plumb","permits","registry","slide","messages","settings"];
+const DOCK = ["calendar","plumb","permits","registry","slide","messages","photos","settings"];
 /* the order you pick in Settings (settings.app_layout); new apps land at the end of the desktop; Settings can never disappear */
-let SAVED_LAYOUT = null;
-function layout(){
+let SAVED_LAYOUT = null, SAVED_HIDDEN = [];
+/* layout(true) is every app in order (Settings lists them all); layout() leaves out the apps you've hidden. Settings can't be hidden. */
+function layout(all){
   const keys = APPS.map(a => a.key), saved = SAVED_LAYOUT || {};
   const dock = (saved.dock || DOCK).filter(k => keys.includes(k));
   const desktop = (saved.desktop || keys.filter(k => !DOCK.includes(k))).filter(k => keys.includes(k) && !dock.includes(k));
   /* an app added after the layout was saved goes where it starts by default: the dock if it's a dock app (before Settings), else the end of the desktop */
   keys.forEach(k => { if (dock.includes(k) || desktop.includes(k)) return; if (saved.dock && DOCK.includes(k)) { const i = dock.indexOf("settings"); dock.splice(i < 0 ? dock.length : i, 0, k); } else desktop.push(k); });
-  return { dock, desktop };
+  if (all) return { dock, desktop };
+  const show = k => k === "settings" || !SAVED_HIDDEN.includes(k);
+  return { dock:dock.filter(show), desktop:desktop.filter(show) };
 }
+function loadSaved(d){ const s = (d && d.settings) || {}; SAVED_LAYOUT = s.app_layout || null; SAVED_HIDDEN = Array.isArray(s.hidden_apps) ? s.hidden_apps : []; }
 /* setSaved: Settings hands over a just-saved layout so the next read is current right away (the gfb:layout event reloads it a moment later) */
-window.SimDeskLayout = { layout, setSaved: s => { SAVED_LAYOUT = s || null; drawIcons(); }, apps: () => APPS.map(a => ({ key:a.key, name:a.name, icon:typeof a.icon === "function" ? a.icon() : a.icon })) };
-window.addEventListener("gfb:layout", () => GFB.getAll().then(d => { SAVED_LAYOUT = (d.settings || {}).app_layout || null; drawIcons(); }));
+window.SimDeskLayout = { layout, setSaved: s => { SAVED_LAYOUT = s || null; drawIcons(); }, setHidden: h => { SAVED_HIDDEN = h || []; drawIcons(); }, hidden: () => SAVED_HIDDEN.slice(), apps: () => APPS.map(a => ({ key:a.key, name:a.name, icon:typeof a.icon === "function" ? a.icon() : a.icon })) };
+window.addEventListener("gfb:layout", () => GFB.getAll().then(d => { loadSaved(d); drawIcons(); }));
 const iconHTML = a => typeof a.icon === "function" ? a.icon() : a.icon;
 const HOME_MARK = `<svg viewBox="0 0 100 100" aria-hidden="true"><g transform="translate(50 50) rotate(45) scale(0.13) translate(-166 -166)" fill="currentColor"><rect x="83" y="0" width="166" height="38"/><rect x="83" y="0" width="38" height="201"/><rect x="211" y="0" width="38" height="73"/><rect x="294" y="83" width="38" height="166"/><rect x="131" y="83" width="201" height="38"/><rect x="259" y="211" width="73" height="38"/><rect x="83" y="294" width="166" height="38"/><rect x="211" y="131" width="38" height="201"/><rect x="83" y="259" width="38" height="73"/><rect x="0" y="83" width="38" height="166"/><rect x="0" y="211" width="201" height="38"/><rect x="0" y="83" width="73" height="38"/></g></svg>`;
 function drawDock(){
@@ -66,6 +72,8 @@ function applyWallpaper(){
   GFB.getAll().then(d => {
     const w = (d.settings || {}).wallpaper, desk = document.getElementById("desk");
     desk.style.backgroundImage = w ? `url("${w}")` : ""; desk.classList.toggle("has-wall", !!w);
+    /* the page behind the desk wears the wallpaper too, so no dark band can show at the bottom edge of an iPhone */
+    document.documentElement.style.background = w ? `#141218 url("${w}") center / cover no-repeat fixed` : "";
   });
 }
 window.addEventListener("gfb:wallpaper", applyWallpaper);
@@ -87,7 +95,8 @@ function placeholder(a){
 async function route(){
   const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean);
   const a = APPS.find(x => x.key === parts[0]);
-  if (!a){ GFB.getAll().then(d => { GFB._cal = d.calendar; SAVED_LAYOUT = (d.settings || {}).app_layout || null; drawIcons(); tick(); }); win.hidden = true; site.innerHTML = ""; document.title = "SimDesk"; lastIcon?.focus(); return; }
+  setInApp(!!a);
+  if (!a){ GFB.getAll().then(d => { GFB._cal = d.calendar; loadSaved(d); drawIcons(); tick(); }); win.hidden = true; site.innerHTML = ""; document.title = "SimDesk"; lastIcon?.focus(); return; }
   const wasHidden = win.hidden;
   win.hidden = false;
   if (wasHidden){ win.classList.remove("opening"); void win.offsetWidth; win.classList.add("opening"); }
@@ -100,7 +109,7 @@ async function route(){
     const id = parts[1] && data.sims.some(s => s.id === parts[1]) ? parts[1] : null;   /* no id: the resident gallery */
     const sim = id && data.sims.find(s => s.id === id);
     setAddress(a.host, sim ? `/records/gfb-${sim.file_no}` : "/residents");
-    Registry.render(site, data, id);
+    Registry.render(site, data, id, parts[1]);
   } else if (a.key === "calendar"){
     const data = await GFB.getAll();
     GFB._cal = data.calendar;
@@ -111,6 +120,10 @@ async function route(){
     const data = await GFB.getAll();
     Simsta.render(site, data, parts.slice(1));
     setAddress(a.host, Simsta.address(parts.slice(1)));
+  } else if (a.key === "photos"){
+    const data = await GFB.getAll();
+    await Photos.render(site, data, parts.slice(1));
+    setAddress("Photos", ", " + Photos.label(), true);
   } else if (a.key === "notes"){
     const data = await GFB.getAll();
     Notes.render(site, data, parts.slice(1));
@@ -169,6 +182,12 @@ async function route(){
   } else {
     placeholder(a);
   }
+  matchAppBg();
+}
+/* on phones the window keeps a little room at the bottom for the dock handle; paint it in the app's own color so it never shows as a band */
+function matchAppBg(){
+  const el = site.firstElementChild, c = el ? getComputedStyle(el).backgroundColor : "";
+  site.style.backgroundColor = c && c !== "transparent" && !/rgba\(.*,\s*0\)$/.test(c) ? c : "";
 }
 
 document.addEventListener("click", e => {
@@ -184,7 +203,46 @@ function tick(){
   const d = new Date();
   document.getElementById("clock").textContent = d.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}) + "  " + d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});
 }
-GFB.getAll().then(d => { GFB._cal = d.calendar; SAVED_LAYOUT = (d.settings || {}).app_layout || null; drawIcons(); tick(); });
+/* ---------- dock auto-hide on phones ----------
+   Home screen: the dock floats at the bottom like the iPhone dock. Inside an app (phone widths only, the same 720px line the dock
+   layout uses) it slides away and leaves a thin handle. Swipe up on the handle, or tap it, to bring the dock back over the app;
+   swipe down on the dock or tap the dimmed app to hide it again. iPad and desktop widths keep the dock showing all the time. */
+const deskEl = document.getElementById("desk"), dockEl = document.getElementById("dock");
+const dockHandle = document.createElement("button");
+dockHandle.type = "button"; dockHandle.className = "dock-handle"; dockHandle.setAttribute("aria-label", "Show dock");
+const dockScrim = document.createElement("div");
+dockScrim.className = "dock-scrim"; dockScrim.setAttribute("aria-hidden", "true");
+deskEl.append(dockScrim, dockHandle);
+const phoneDock = window.matchMedia("(max-width:720px)");
+function setInApp(on){ deskEl.classList.toggle("in-app", on); peekDock(false); }
+function peekDock(on){
+  deskEl.classList.toggle("dock-peek", !!on);
+  dockHandle.setAttribute("aria-expanded", on ? "true" : "false");
+  /* while hidden, the dock's links shouldn't be reachable by tab or screen reader */
+  const hidden = deskEl.classList.contains("in-app") && !on && phoneDock.matches;
+  dockEl.toggleAttribute("inert", hidden); dockEl.setAttribute("aria-hidden", hidden ? "true" : "false");
+}
+phoneDock.addEventListener?.("change", () => peekDock(deskEl.classList.contains("dock-peek")));
+/* a vertical swipe of 24px or more counts; anything less on the handle is a tap */
+function swipeWatch(el, onSwipe){
+  let y0 = null, id = null, moved = false;
+  el.addEventListener("pointerdown", e => { y0 = e.clientY; id = e.pointerId; moved = false; });
+  el.addEventListener("pointermove", e => { if (y0 == null || e.pointerId !== id) return; const dy = e.clientY - y0; if (Math.abs(dy) >= 24 && !moved){ moved = true; onSwipe(dy < 0 ? "up" : "down"); } });
+  const end = () => { y0 = null; id = null; setTimeout(() => { moved = false; }, 0); };
+  el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
+  return () => moved;   /* lets a click handler skip the click that ends a swipe */
+}
+swipeWatch(dockHandle, dir => { if (dir === "up") peekDock(true); });
+dockHandle.addEventListener("click", () => peekDock(true));
+const dockSwiped = swipeWatch(dockEl, dir => { if (dir === "down" && deskEl.classList.contains("in-app")) peekDock(false); });
+dockEl.addEventListener("click", e => { if (dockSwiped()) { e.preventDefault(); e.stopPropagation(); } }, true);
+dockScrim.addEventListener("click", () => peekDock(false));
+window.addEventListener("hashchange", () => peekDock(false));
+document.addEventListener("keydown", e => { if (e.key === "Escape" && deskEl.classList.contains("dock-peek")) { e.stopImmediatePropagation(); peekDock(false); } }, true);
+/* home screen web app: flag it so the CSS can run the wallpaper under the home indicator */
+if (window.navigator.standalone || window.matchMedia("(display-mode: standalone)").matches) document.documentElement.classList.add("standalone");
+
+GFB.getAll().then(d => { GFB._cal = d.calendar; loadSaved(d); drawIcons(); tick(); });
 drawIcons(); tick(); setInterval(tick, 30000);
 window.addEventListener("hashchange", route);
 window.addEventListener("hashchange", drawDock);
@@ -193,3 +251,4 @@ route();
 
 /* menu bar pencil: quick note from anywhere */
 document.getElementById("mbQuick")?.addEventListener("click", () => Notes.openQuick());
+

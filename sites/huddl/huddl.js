@@ -134,8 +134,8 @@ const Huddl = (() => {
         ${field("Tagline", `<input name="tagline" value="${esc(o.tagline)}">`)}${field("About", `<textarea name="about">${esc(o.about)}</textarea>`)}
         <div class="hd-f2">${field("Founded", `<input name="founded_text" value="${esc(o.founded_text)}" placeholder="Year or in-game date">`)}${field("District", `<input name="district" value="${esc(o.district)}">`)}</div>
         <div class="hd-f2">${field("Led by", `<input name="leader" list="hd-sims" value="${esc(o.leader)}" autocomplete="off">`)}${field("Based at", `<select name="lot"><option value="">No lot yet</option>${data.lots.filter(l => !l.parent_id || l.id === o.lot).map(l => `<option value="${l.id}" ${o.lot === l.id ? "selected" : ""}>${esc(l.address)}</option>`).join("")}</select>`)}</div>
-        <div class="hd-f2"><div class="hd-f"><span>Logo</span>${logoOf(o) ? `<span class="hd-thumb sq" style="background-image:url('${logoOf(o)}')"></span><label class="hd-ck"><input type="checkbox" name="rm_logo"> Remove it (go back to initials)</label>` : ""}<input type="file" name="logo" accept="image/*"></div>
-        <div class="hd-f"><span>Header image</span>${o.banner ? `<span class="hd-thumb wide" style="background-image:url('${o.banner}')"></span><label class="hd-ck"><input type="checkbox" name="rm_banner"> Remove it (go back to the pattern)</label>` : ""}<input type="file" name="banner" accept="image/*"></div></div>
+        <div class="hd-f2"><div class="hd-f"><span>Logo</span>${logoOf(o) ? `<span class="hd-thumb sq" style="background-image:url('${logoOf(o)}')"></span><label class="hd-ck"><input type="checkbox" name="rm_logo"> Remove it (go back to initials)</label>` : ""}<input type="file" name="logo" accept="image/*"${PhotoSlot.attr({ title:"Huddl logo", shape:"square", aspect:1, outW:400, lots:o.lot ? [o.lot] : [], current:logoOf(o) || "" }, "data-pslot-mark")}></div>
+        <div class="hd-f"><span>Header image</span>${o.banner ? `<span class="hd-thumb wide" style="background-image:url('${o.banner}')"></span><label class="hd-ck"><input type="checkbox" name="rm_banner"> Remove it (go back to the pattern)</label>` : ""}<input type="file" name="banner" accept="image/*"${PhotoSlot.attr({ title:"Huddl header", shape:"wide", aspect:2.4, outW:1800, lots:o.lot ? [o.lot] : [], current:o.banner || "" }, "data-pslot-mark")}></div></div>
         ${field("Staff notes (private)", `<textarea name="notes">${esc(o.notes)}</textarea>`)}${simList()}${err}
         ${acts(a === "new" ? "" : `<button type="button" class="hd-btn danger" data-hd="del:${o.id}">Delete</button><span class="hd-grow"></span>`)}</form>`;
     }
@@ -182,10 +182,10 @@ const Huddl = (() => {
         const old = a === "new" ? null : byId(a);
         const row = { ...(old || { type:"Institution", members:[], positions:[], related:[], tagline:"", app:"" }), name:v("name"), category:v("category"), status:v("status"), tagline:v("tagline"), about:v("about"), founded_text:v("founded_text"), district:v("district"), leader:v("leader"), lot:v("lot") || null, notes:v("notes") };
         if (!old) row.id = "org-" + slug(row.name) + "-" + Math.random().toString(36).slice(2, 5);
-        const lf = f.get("logo"), bf = f.get("banner"), btn = form.querySelector("[type=submit]");
+        const lf = f.get("logo"), bf = f.get("banner"), btn = form.querySelector("[type=submit]"), lu = form.querySelector('[name="logo"]')?.dataset.pslotUrl, bu = form.querySelector('[name="banner"]')?.dataset.pslotUrl;
         if ((lf && lf.size) || (bf && bf.size)) { btn.disabled = true; btn.textContent = "Uploading..."; }
-        if (lf && lf.size) { row.logo = (await GFB.uploadImage(lf, 400)).url; row.emblem_img = null; } else if (f.get("rm_logo")) { row.logo = null; row.emblem_img = null; }
-        if (bf && bf.size) row.banner = (await GFB.uploadImage(bf, 1800)).url; else if (f.get("rm_banner")) row.banner = null;
+        if (lu) { row.logo = lu; row.emblem_img = null; } else if (lf && lf.size) { row.logo = (await GFB.uploadImage(lf, 400)).url; row.emblem_img = null; } else if (f.get("rm_logo")) { row.logo = null; row.emblem_img = null; }
+        if (bu) row.banner = bu; else if (bf && bf.size) row.banner = (await GFB.uploadImage(bf, 1800)).url; else if (f.get("rm_banner")) row.banner = null;
         if (row.leader && !(row.members || []).some(m => norm(m.name) === norm(row.leader))) row.members = [...(row.members || []), { name:row.leader, sim:null, role:"Leader", dept:"", since:"", current:true }];
         const saved = await GFB.saveOrg(row); st.modal = null; await refresh(); if (!old) go("org/" + saved.id); return;
       }

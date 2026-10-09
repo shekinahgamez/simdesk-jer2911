@@ -10,12 +10,12 @@ const Settings = (() => {
       <h1>Settings</h1>
       <section class="st-card"><h2>Desktop background</h2>
         <div class="st-preview" style="background:${w ? `url('${w}') center / cover no-repeat` : DEFAULT_BG}"><span class="st-dock"></span></div>
-        <label class="st-drop" id="st-drop">${st.busy ? "Saving..." : `<b>Drop an image here</b><span>or tap to choose one from your photos</span>`}<input type="file" accept="image/*" id="st-file"></label>
+        <label class="st-drop" id="st-drop">${st.busy ? "Saving..." : `<b>Drop an image here</b><span>or tap to choose one from your photos</span>`}<input type="file" accept="image/*" id="st-file"${PhotoSlot.attr({ title:"Desktop background", shape:"wide", aspect:16 / 10, outW:2400, current:w || "" })}></label>
         ${st.err ? `<p class="st-err">${st.err}</p>` : ""}${st.msg ? `<p class="st-ok">${st.msg}</p>` : ""}
         ${w ? `<button class="st-btn" data-st="default">Use the default background</button>` : ""}
         <p class="st-note">Big photos are shrunk to fit. Saved to this browser.</p>
       </section>
-      <section class="st-card" style="margin-top:16px"><h2>Desktop and dock</h2><p class="st-note" style="margin:0 0 10px">Drag the handle to change the order, or drag an app between the dock and the desktop. "To dock" and "To desktop" still work too.</p><div id="st-lay">${layoutHTML()}</div></section>
+      <section class="st-card" style="margin-top:16px"><h2>Desktop and dock</h2><p class="st-note" style="margin:0 0 10px">Use the switch to hide an app. Drag the handle to change the order, or drag an app between the dock and the desktop. "To dock" and "To desktop" still work too.</p><div id="st-lay">${layoutHTML()}</div></section>
       <section class="st-card" style="margin-top:16px">${photosHTML()}</section>
       <section class="st-card" id="st-import" style="margin-top:16px"></section>
       <p class="st-note" style="text-align:center;margin:18px 0 6px">SimDesk build <b>${window.SIMDESK_BUILD || "dev"}</b></p></div></div>`;
@@ -26,10 +26,10 @@ const Settings = (() => {
   /* app order: saved as settings.app_layout = { dock:[keys], desktop:[keys] } and read by desktop/desktop.js */
   function layoutHTML(){
     if (!window.SimDeskLayout) return "";
-    const L = SimDeskLayout.layout(), apps = Object.fromEntries(SimDeskLayout.apps().map(a => [a.key, a]));
+    const hid = SimDeskLayout.hidden(), L = SimDeskLayout.layout(true), apps = Object.fromEntries(SimDeskLayout.apps().map(a => [a.key, a]));
     const GRIP = `<svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><g fill="currentColor"><circle cx="7" cy="5" r="1.6"/><circle cx="13" cy="5" r="1.6"/><circle cx="7" cy="10" r="1.6"/><circle cx="13" cy="10" r="1.6"/><circle cx="7" cy="15" r="1.6"/><circle cx="13" cy="15" r="1.6"/></g></svg>`;
-    const row = (k, where) => `<li class="st-app" data-key="${k}"><button type="button" class="st-grip" data-grip="${where}:${k}" aria-label="Reorder ${apps[k].name}. Drag, or use the up and down arrow keys.">${GRIP}</button><span class="st-ic">${apps[k].icon}</span><b>${apps[k].name}</b>
-      <span class="st-appbtns">${k === "settings" && where === "dock" ? "" : `<button class="st-sm wide" data-lay="move:${where}:${k}">${where === "dock" ? "To desktop" : "To dock"}</button>`}</span></li>`;
+    const row = (k, where) => `<li class="st-app${hid.includes(k) ? " off" : ""}" data-key="${k}"><button type="button" class="st-grip" data-grip="${where}:${k}" aria-label="Reorder ${apps[k].name}. Drag, or use the up and down arrow keys.">${GRIP}</button><span class="st-ic">${apps[k].icon}</span><b>${apps[k].name}</b>
+      <span class="st-appbtns">${k === "settings" ? "" : `<button type="button" class="st-sw ${hid.includes(k) ? "" : "on"}" role="switch" aria-checked="${!hid.includes(k)}" aria-label="Show ${apps[k].name}" data-hide="${k}"><i></i></button>`}${k === "settings" && where === "dock" ? "" : `<button class="st-sm wide" data-lay="move:${where}:${k}">${where === "dock" ? "To desktop" : "To dock"}</button>`}</span></li>`;
     const list = (where, title) => `<h3 class="st-h3">${title}</h3><ol class="st-apps" data-where="${where}">${L[where].map(k => row(k, where)).join("") || '<li class="st-note st-empty">Empty</li>'}</ol>`;
     return list("dock", "Dock") + list("desktop", "Desktop") + `<button class="st-btn" data-lay="reset">Back to the original order</button>`;
   }
@@ -37,7 +37,7 @@ const Settings = (() => {
     const [act, where, k] = cmd.split(":");
     if (act === "reset") { await GFB.saveSetting("app_layout", null); }
     else {
-      const L = SimDeskLayout.layout(), list = L[where], i = list.indexOf(k);
+      const L = SimDeskLayout.layout(true), list = L[where], i = list.indexOf(k);
       if (act === "up" && i > 0) [list[i - 1], list[i]] = [list[i], list[i - 1]];
       if (act === "down" && i < list.length - 1) [list[i + 1], list[i]] = [list[i], list[i + 1]];
       if (act === "move") { list.splice(i, 1); L[where === "dock" ? "desktop" : "dock"].push(k); }
@@ -96,13 +96,13 @@ const Settings = (() => {
     const L = { dock:[], desktop:[] };
     root.querySelectorAll(".st-apps").forEach(l => l.querySelectorAll(".st-app").forEach(x => L[l.dataset.where].push(x.dataset.key)));
     if (!L.dock.includes("settings")) return layoutSaved();
-    const before = JSON.stringify(SimDeskLayout.layout());
+    const before = JSON.stringify(SimDeskLayout.layout(true));
     if (JSON.stringify(L) !== before) await GFB.saveSetting("app_layout", L);
     await layoutSaved();
   }
   /* keyboard: arrow keys on a handle move the app one spot */
   async function keyMove(grip, dir){
-    const [where, k] = grip.dataset.grip.split(":"), L = SimDeskLayout.layout(), list = L[where], i = list.indexOf(k), j = i + dir;
+    const [where, k] = grip.dataset.grip.split(":"), L = SimDeskLayout.layout(true), list = L[where], i = list.indexOf(k), j = i + dir;
     if (j < 0 || j >= list.length) return;
     [list[i], list[j]] = [list[j], list[i]];
     await GFB.saveSetting("app_layout", L); await layoutSaved(k);
@@ -146,6 +146,11 @@ const Settings = (() => {
         photoMsg = `Done. ${r.moved} photo${r.moved === 1 ? "" : "s"} moved to the cloud${r.failed ? `, ${r.failed} couldn't upload (they stay on this device; try again later)` : ""}.`; }
       catch (err) { photoMsg = "Couldn't move the photos: " + err.message; }
       data = await GFB.getAll(); draw();
+    });
+    document.addEventListener("click", async e => {
+      const h = mine(e.target) && e.target.closest("[data-hide]");
+      if (h) { const k = h.dataset.hide, cur = SimDeskLayout.hidden(), next = cur.includes(k) ? cur.filter(x => x !== k) : [...cur, k];
+        await GFB.saveSetting("hidden_apps", next.length ? next : null); SimDeskLayout.setHidden(next); data = await GFB.getAll(); return layoutSaved(); }
     });
     document.addEventListener("click", e => { const b = mine(e.target) && e.target.closest("[data-lay]"); if (b && !b.disabled) moveApp(b.dataset.lay); });
     document.addEventListener("pointerdown", e => { const g = mine(e.target) && e.target.closest("[data-grip]"); if (g && !drag && e.button <= 0) dragStart(e, g); });
