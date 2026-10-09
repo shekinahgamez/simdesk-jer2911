@@ -18,7 +18,7 @@ const Spill = (() => {
 
   let data = null, root = null, M = null, serial = 0;
   /* mode and filters live only while Spill is open; every fresh open starts on Public */
-  const st = { mode:"public", off:new Set(), focus:null, card:null, q:"", sug:false, pay:null, menu:false, keep:true, session:false, remember:true, err:"", msg:"" };
+  const st = { mode:"public", off:new Set(), deg:2, focus:null, card:null, q:"", sug:false, pay:null, menu:false, keep:true, session:false, remember:true, err:"", msg:"" };
 
   const simById = id => data.sims.find(s => s.id === id);
   const settings = () => (data.settings || {}).spill || {};
@@ -106,10 +106,48 @@ const Spill = (() => {
     return { title, sub:[slide ? "" : same, histText(l)].filter(Boolean).join(" · ") };
   }
 
+
+  /* ---------- degrees of separation ----------
+     From one Sim, walk outward over the lines that are showing (Public or Real, and only the types switched on). Ring 1 is who they're linked to,
+     ring 2 is those people's links, up to 6. Turned-off types and secrets hidden in Public don't count as steps. */
+  function scopeOf(center) {
+    const adj = new Map(); shown().forEach(l => { [[l.a, l.b], [l.b, l.a]].forEach(([x, y]) => { if (!adj.has(x)) adj.set(x, []); adj.get(x).push(y); }); });
+    const deg = new Map([[center, 0]]), q = [center];
+    while (q.length) { const x = q.shift(); (adj.get(x) || []).forEach(y => { if (!deg.has(y)) { deg.set(y, deg.get(x) + 1); q.push(y); } }); }
+    return { deg, adj, reach:Math.min(6, Math.max(0, ...deg.values())) };
+  }
+  const withinOf = (sc, D) => [...sc.deg].filter(([, d]) => d <= D).map(([i]) => i);
+  const ordinal = n => ["", "1st", "2nd", "3rd", "4th", "5th", "6th"][n];
+  /* rings: the Sim in the middle, each degree on its own ellipse, people placed near their parents so lines stay short */
+  function radial(center, sc, D, W, H) {
+    const ids = withinOf(sc, D), maxD = Math.max(1, ...ids.map(i => sc.deg.get(i))), cx = W / 2, cy = H / 2 - 6;
+    const rx = Math.min(W < 700 ? 140 : 190, (W / 2 - 70) / maxD), ry = Math.min(W < 700 ? 150 : 135, (H / 2 - 60) / maxD), pos = new Map([[center, { x:cx, y:cy, ang:0 }]]);
+    for (let d = 1; d <= maxD; d++) {
+      const nodes = ids.filter(i => sc.deg.get(i) === d);
+      nodes.forEach(i => { let a = 0; if (d > 1) { let sx = 0, sy = 0; (sc.adj.get(i) || []).filter(q => sc.deg.get(q) === d - 1 && pos.has(q)).forEach(q => { sx += Math.cos(pos.get(q).ang); sy += Math.sin(pos.get(q).ang); }); a = Math.atan2(sy, sx); } pos.set(i, { ang:a }); });
+      if (d === 1) { nodes.sort((a, b) => stripNick(simById(a).name).localeCompare(stripNick(simById(b).name))); nodes.forEach((i, k) => { pos.get(i).ang = -Math.PI / 2 + k * 2 * Math.PI / nodes.length; }); }
+      else { nodes.sort((a, b) => pos.get(a).ang - pos.get(b).ang); const n = nodes.length, want = 0.9 * 2 * Math.PI / Math.max(n, 1);
+        for (let it = 0; it < 40; it++) for (let k = 0; k < n; k++) { const a = nodes[k], b = nodes[(k + 1) % n]; let gap = pos.get(b).ang - pos.get(a).ang; if (k === n - 1) gap += 2 * Math.PI; if (gap < want) { const push = (want - gap) / 2; pos.get(a).ang -= push; pos.get(b).ang += push; } } }
+      nodes.forEach(i => { const p = pos.get(i); p.x = Math.round(cx + Math.cos(p.ang) * rx * d); p.y = Math.round(cy + Math.sin(p.ang) * ry * d); });
+    }
+    return { pos, rx, ry, cx, cy, maxD, ids };
+  }
+  function sliderHTML(center, sc) {
+    const D = st.deg, per = []; for (let d = 1; d <= Math.min(D, sc.reach); d++) per.push([...sc.deg.values()].filter(x => x === d).length);
+    const n = withinOf(sc, D).length - 1, name = first(simById(center).name);
+    const ticks = [1, 2, 3, 4, 5, 6].map(k => `<button type="button" data-deg="${k}" class="${k === D ? "on" : k < D ? "in" : ""} ${k > sc.reach ? "far" : ""}" aria-label="${k} degree${k === 1 ? "" : "s"}">${k}</button>`).join("");
+    return `<div class="sp-sep"><div class="sephd"><b>Degrees of separation</b><small>from ${esc(name)}</small></div>
+      <div class="septrack"><input type="range" id="sp-deg" min="1" max="6" step="1" value="${D}" style="--p:${(D - 1) / 5 * 100}%" aria-label="Degrees of separation from ${esc(name)}"><div class="septicks">${ticks}</div></div>
+      <div class="sepnote"><b>${n}</b> ${n === 1 ? "Sim" : "Sims"} within ${D} ${D === 1 ? "degree" : "degrees"}${per.length > 1 ? ` <small>(${per.map((c, k) => `${c} at ${ordinal(k + 1)}`).join(", ")})</small>` : ""}${sc.reach < D ? `<small>Nobody is connected further out than ${sc.reach}.</small>` : ""}</div></div>`;
+  }
+
   /* ---------- the map ---------- */
   function mapSVG(W, H, focus) {
-    const vis = shown(), ids = new Set(vis.flatMap(l => [l.a, l.b]));
-    const pos = place(M.ids, M.lines, W, H), id = "sp" + (++serial), nb = focus ? nbrs(focus) : null;
+    const sc = focus ? scopeOf(focus) : null, within = sc ? new Set(withinOf(sc, st.deg)) : null;
+    const vis = shown().filter(l => !within || (within.has(l.a) && within.has(l.b))), ids = new Set(within ? [...within] : vis.flatMap(l => [l.a, l.b]));
+    const rad = sc ? radial(focus, sc, st.deg, W, H) : null;
+    const pos = rad ? rad.pos : place(M.ids, M.lines, W, H), id = "sp" + (++serial), nb = null;
+    const rings = rad ? Array.from({ length:Math.min(rad.maxD, st.deg) }, (_, k) => `<ellipse cx="${rad.cx}" cy="${rad.cy}" rx="${rad.rx * (k + 1)}" ry="${rad.ry * (k + 1)}" fill="none" stroke="#5a4e61" stroke-dasharray="3 7" opacity=".9"/><text x="${Math.min(W - 24, rad.cx + rad.rx * (k + 1) + 6)}" y="${rad.cy - 4}" class="ringlbl">${ordinal(k + 1)}</text>`).join("") : "";
     const per = new Map();
     const defs = [...ids].map(i => { const p = pos.get(i), s = simById(i); return pic(s) ? `<clipPath id="${id}-${esc(i)}"><circle cx="${p.x}" cy="${p.y}" r="24"/></clipPath>` : ""; }).join("");
     const paths = vis.map(l => {
@@ -119,7 +157,7 @@ const Spill = (() => {
       let off = total > 1 ? (n - (total - 1) / 2) * 30 : 0; if (l.secret) off = Math.max(off, 0) + d * 0.2;
       const cx = (A.x + B.x) / 2 + nx * off, cy = (A.y + B.y) / 2 + ny * off, mx = (A.x + B.x) / 4 + cx / 2, my = (A.y + B.y) / 4 + cy / 2;
       const [, col, dash] = TYPES[l.type], w = l.type === "rom" ? 3 : l.type === "text" ? 2 : 2.4;
-      const dim = focus && !(l.a === focus || l.b === focus), op = dim ? 0.18 : (focus ? 0.9 : 0.55);
+      const near = focus && (l.a === focus || l.b === focus), op = focus ? (near ? 0.9 : 0.5) : 0.55;
       const dd = `M${A.x} ${A.y} Q${cx} ${cy} ${B.x} ${B.y}`;
       const dashA = l.type === "work" ? `stroke-dasharray="1 6" stroke-linecap="round"` : l.secret ? `stroke-dasharray="9 7"` : "";
       return `${l.secret ? `<path d="${dd}" fill="none" stroke="var(--s-sec)" stroke-width="14" opacity=".18" stroke-linecap="round"/>` : ""}<path d="${dd}" fill="none" stroke="${col}" stroke-width="${w}" ${dashA} opacity="${l.secret ? 1 : op}"/>
@@ -128,14 +166,14 @@ const Spill = (() => {
     }).join("");
     const nodes = [...ids].map(i => {
       const s = simById(i), p = pos.get(i), touchSec = real() && shown().some(l => l.secret && (l.a === i || l.b === i));
-      const dim = focus && i !== focus && !nb.has(i);
+      const dim = false;
       return `<g class="sp-node" data-node="${esc(i)}" opacity="${dim ? 0.45 : 1}" tabindex="0" role="button" aria-label="${esc(stripNick(s.name))}">
-        <circle cx="${p.x}" cy="${p.y}" r="26" fill="var(--node)" stroke="${touchSec ? "var(--s-sec)" : i === focus ? "var(--spill)" : "var(--ring)"}" stroke-width="2.5"/>
+        <circle cx="${p.x}" cy="${p.y}" r="26" fill="var(--node)" stroke="${touchSec ? "var(--s-sec)" : i === focus ? "var(--spill)" : "var(--ring)"}" stroke-width="${i === focus ? 3.5 : 2.5}"/>
         <text x="${p.x}" y="${p.y + 5}" text-anchor="middle" class="ini">${esc(initials(s.name))}</text>
         ${pic(s) ? `<image href="${esc(pic(s))}" x="${p.x - 24}" y="${p.y - 24}" width="48" height="48" preserveAspectRatio="xMidYMin slice" clip-path="url(#${id}-${esc(i)})"/>` : ""}
         <text x="${p.x}" y="${p.y + 44}" text-anchor="middle" class="nm">${esc(first(s.name))}</text></g>`;
     }).join("");
-    return `<svg class="sp-web" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Relationship map"><defs>${defs}</defs>${paths}${nodes}</svg>`;
+    return `<svg class="sp-web" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Relationship map"><defs>${defs}</defs>${rings}${paths}${nodes}</svg>`;
   }
   const dims = () => { const w = (root && root.clientWidth) || 1000; return w < 700 ? [640, 760] : [1200, 620]; };
 
@@ -145,7 +183,8 @@ const Spill = (() => {
     return order.filter(t => t !== "friend" || present.has("friend")).map(t => { const [n, col, dash] = TYPES[t]; return `<button type="button" class="sp-chip ${st.off.has(t) ? "off" : ""}" data-chip="${t}" aria-pressed="${!st.off.has(t)}"><i style="border-color:${col};${t === "work" ? "border-top-style:dotted" : t === "sec" ? "border-top-style:dashed" : ""}"></i>${n}</button>`; }).join("");
   }
   function counts() {
-    const vis = shown(), ids = new Set(vis.flatMap(l => [l.a, l.b])), sec = vis.filter(l => l.secret).length;
+    const within = st.focus ? new Set(withinOf(scopeOf(st.focus), st.deg)) : null;
+    const vis = shown().filter(l => !within || (within.has(l.a) && within.has(l.b))), ids = new Set(within ? [...within] : vis.flatMap(l => [l.a, l.b])), sec = vis.filter(l => l.secret).length;
     return `<span class="sp-count"><b>${ids.size}</b> Sims · <b>${vis.length}</b> links${real() ? ` · <span class="red">${sec} secret${sec === 1 ? "" : "s"}</span>` : ""}</span>`;
   }
   function toggle() {
@@ -258,6 +297,8 @@ const Spill = (() => {
     const sec = vis.filter(l => l.secret), pub = vis.filter(l => !l.secret);
     const side = `<div class="side"><div class="who"><span class="ph">${pic(s) ? `<img src="${esc(pic(s))}" alt="">` : `<b>${esc(initials(s.name))}</b>`}</span><div><b>${esc(stripNick(s.name))}</b><small>${esc([s.age, areaOf(s), jobOf(s)].filter(x => x != null && x !== "").join(" · "))}</small></div></div>
       <div class="stampr">FULL REPORT · UNLOCKED ${esc(sayDate(un ? un.date : UI.gameToday(data.calendar)).toUpperCase())}</div>
+      ${sliderHTML(s.id, scopeOf(s.id))}
+      <div class="sp-sep"><div class="sephd"><b>Show</b><small>tap to turn a type on or off</small></div><div class="sp-chips">${chips()}</div></div>
       ${grp("Relationships", pub.filter(l => !l.slide && ["rom","ex","fam","friend"].includes(l.type)))}${grp("Dating apps", pub.filter(l => l.slide))}${grp("Coworkers", pub.filter(l => l.type === "work"))}${grp("Texting", pub.filter(l => l.type === "text"))}${real() ? grp("Hidden connections", sec) : ""}
       ${vis.length ? "" : `<p class="sp-dim">Nothing on file for ${esc(first(s.name))}.</p>`}</div>`;
     const [W, H] = dims();
@@ -269,6 +310,7 @@ const Spill = (() => {
     const regions = Object.entries(tally).sort((a, b) => b[1] - a[1]).slice(0, 2).map(x => x[0]);
     return `${topbar(toggle())}<div class="sp-sub2"><small>who's with who${regions.length ? " in " + regions.map(esc).join(" and ") : ""}</small></div>
       <div class="sp-filters">${chips()}${counts()}</div>
+      ${st.focus ? `<div class="sp-sepbar">${sliderHTML(st.focus, scopeOf(st.focus))}<button type="button" class="sp-pill" data-clearfocus="1">Show everyone</button></div>` : `<p class="sp-hint">Tap a Sim to see just their circle, with a slider for how many steps out.</p>`}
       ${real() ? `<div class="sp-banner"><b>Real</b> · secret links are showing. Flip back to Public before you share a screen.</div>` : ""}
       <div class="sp-stage" id="sp-stage">${mapSVG(W, H, st.focus)}${st.card ? cardHTML() : ""}</div>`;
   }
@@ -287,6 +329,7 @@ const Spill = (() => {
     root.innerHTML = `<div class="site-spill ${real() && signed() && ["map","report"].includes(page.kind) ? "real" : ""}">${inner}${st.pay ? payOverlay() : ""}</div>`;
     const el = root.querySelector(".site-spill"); if (el) el.scrollTop = keep;
     const q = root.querySelector("#sp-q"); if (q && st.refocus) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } st.refocus = false;
+    if (st.keepDeg) { st.keepDeg = false; const r = root.querySelector("#sp-deg"); r && r.focus({ preventScroll:true }); }
   }
   async function unlockNow(simId) {
     const cur = settings(), date = UI.gameToday(data.calendar), list = reports().filter(r => r.sim !== simId).concat([{ sim:simId, date }]);
@@ -308,6 +351,8 @@ const Spill = (() => {
       const sk = t.closest("[data-skip]"); if (sk && st.pay) { st.pay.finish && st.pay.finish(); return; }
       const f = t.closest("[data-focus]"); if (f) { const el = root.querySelector("#sp-signin"); el && el.scrollIntoView({ block:"center" }); el && el.querySelector(".sp-go").focus(); return; }
       const mo = t.closest("[data-mode]"); if (mo) { st.mode = mo.dataset.mode; if (st.mode === "public") { st.off.delete("sec"); if (st.card && (M.lines.find(l => l.id === st.card) || {}).secret) st.card = null; } return draw(); }
+      const dg = t.closest("[data-deg]"); if (dg) { st.deg = Number(dg.dataset.deg); return draw(); }
+      if (t.closest("[data-clearfocus]")) { st.focus = null; st.card = null; return draw(); }
       const ch = t.closest("[data-chip]"); if (ch) { const k = ch.dataset.chip; st.off.has(k) ? st.off.delete(k) : st.off.add(k); return draw(); }
       const ln = t.closest("[data-line]"); if (ln) { st.card = ln.dataset.line; return draw(); }
       const nd = t.closest("[data-node]"); if (nd) { st.focus = st.focus === nd.dataset.node ? null : nd.dataset.node; st.card = null; return draw(); }
@@ -319,7 +364,7 @@ const Spill = (() => {
       if (st.sug && !t.closest(".sp-sin")) { st.sug = false; draw(); }
       if (st.card && !t.closest(".sp-card") && !t.closest("[data-line]") && t.closest(".sp-stage")) { st.card = null; draw(); }
     });
-    document.addEventListener("input", e => { if (!mine(e) || e.target.id !== "sp-q") return; st.q = e.target.value; st.sug = true; st.refocus = true; draw(); });
+    document.addEventListener("input", e => { if (mine(e) && e.target.id === "sp-deg") { st.deg = Math.min(6, Math.max(1, Number(e.target.value) || 1)); st.keepDeg = true; return draw(); } if (!mine(e) || e.target.id !== "sp-q") return; st.q = e.target.value; st.sug = true; st.refocus = true; draw(); });
     document.addEventListener("change", e => { if (mine(e) && e.target.id === "sp-keep") st.keep = e.target.checked; });
     document.addEventListener("submit", async e => {
       if (!mine(e)) return; const f = e.target;
@@ -338,11 +383,11 @@ const Spill = (() => {
   function render(el, d, parts) {
     const fresh = !el.querySelector(".site-spill");
     root = el; data = d; wire(); M = null;
-    if (fresh) { st.mode = "public"; st.off = new Set(); st.focus = null; st.card = null; st.menu = false; st.sug = false; st.pay = null; st.session = false; st.q = ""; }
+    if (fresh) { st.mode = "public"; st.off = new Set(); st.deg = 2; st.focus = null; st.card = null; st.menu = false; st.sug = false; st.pay = null; st.session = false; st.q = ""; }
     const [a, b] = parts || [];
     page = a === "report" ? { kind:"report", arg:decodeURIComponent(b || "") } : a === "map" ? { kind:"map" } : a === "search" ? { kind:"search", arg:decodeURIComponent(b || "") } : { kind:"search", arg:"" };
     st.q = page.kind === "search" ? page.arg : "";
-    const pk = page.kind + ":" + (page.arg || ""); if (render.last !== pk) { st.card = null; st.focus = null; } render.last = pk;
+    const pk = page.kind + ":" + (page.arg || ""); if (render.last !== pk) { st.card = null; st.focus = null; if (page.kind === "report") st.deg = 2; } render.last = pk;
     draw();
     const msg = GFB.messages;
     if (msg && msg.ready() && !msg.isLoaded()) msg.refresh().then(() => { if (root && root.querySelector(".site-spill") && location.hash.startsWith("#/spill")) { M = null; draw(); } }).catch(() => {});
