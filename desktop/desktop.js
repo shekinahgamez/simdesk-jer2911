@@ -261,6 +261,15 @@ window.addEventListener("hashchange", () => peekDock(false));
 document.addEventListener("keydown", e => { if (e.key === "Escape" && deskEl.classList.contains("dock-peek")) { e.stopImmediatePropagation(); peekDock(false); } }, true);
 /* home screen web app: flag it so the CSS can run the wallpaper under the home indicator */
 if (window.navigator.standalone || window.matchMedia("(display-mode: standalone)").matches) document.documentElement.classList.add("standalone");
+/* home screen app: iOS reports a page shorter than the screen, so measure the real height. If the app fills the screen's width,
+   its height is the screen's other side; in a smaller window (iPad split view) trust the window. */
+function fitApp(){
+  const R = document.documentElement; if (!R.classList.contains("standalone")) return;
+  const long = Math.max(screen.width, screen.height), short = Math.min(screen.width, screen.height), w = innerWidth, h = innerHeight;
+  const full = w === long ? short : w === short ? long : h;
+  R.style.setProperty("--app-h", Math.max(full, h) + "px"); R.style.setProperty("--app-gap", Math.max(0, full - h) + "px");
+}
+fitApp(); ["resize","orientationchange"].forEach(e => window.addEventListener(e, () => { fitApp(); setTimeout(fitApp, 300); }));
 
 GFB.getAll().then(d => { GFB._cal = d.calendar; loadSaved(d); drawIcons(); tick(); });
 /* first paint: use the remembered look. With nothing remembered yet (first visit on this device) the icons wait for your saved layout rather than flashing the default. */
@@ -271,20 +280,6 @@ window.addEventListener("hashchange", route);
 window.addEventListener("hashchange", drawDock);
 applyWallpaper();
 route();
-
-/* TEMPORARY (Oct 9): screen size readout for the iPhone bottom band. Remove once fixed. */
-(function(){ const box = document.createElement("div"), probe = document.createElement("div");
-  probe.style.cssText = "position:fixed;left:0;top:0;width:1px;visibility:hidden;pointer-events:none;padding-bottom:env(safe-area-inset-bottom,0px)";
-  box.style.cssText = "position:fixed;left:8px;right:8px;top:calc(env(safe-area-inset-top,0px) + 36px);z-index:99999;font:600 11px/1.4 ui-monospace,monospace;color:#fff;background:rgba(0,0,0,.75);padding:6px 8px;border-radius:8px;pointer-events:none;white-space:pre-wrap";
-  document.body.append(probe, box);
-  const h = v => { probe.style.height = v; const n = probe.getBoundingClientRect().height; probe.style.height = ""; return Math.round(n); };
-  const show = () => { const vv = window.visualViewport, d = document.getElementById("desk").getBoundingClientRect();
-    box.textContent = `build ${window.SIMDESK_BUILD}  app ${document.documentElement.classList.contains("standalone") ? "yes" : "no"}\n` +
-      `screen ${screen.width}x${screen.height}  inner ${innerWidth}x${innerHeight}  outer ${outerHeight}\n` +
-      `vv ${vv ? Math.round(vv.height) + " top " + Math.round(vv.offsetTop) + " zoom " + vv.scale.toFixed(2) : "none"}  html ${document.documentElement.clientHeight}  desk ${Math.round(d.height)}\n` +
-      `lvh ${h("100lvh")}  dvh ${h("100dvh")}  svh ${h("100svh")}  safe bottom ${Math.round(probe.getBoundingClientRect().height)}`; };
-  show(); ["resize","orientationchange"].forEach(e => window.addEventListener(e, () => setTimeout(show, 200))); window.visualViewport?.addEventListener("resize", show); setInterval(show, 2000);
-})();
 
 /* menu bar pencil: quick note from anywhere */
 document.getElementById("mbQuick")?.addEventListener("click", () => Notes.openQuick());

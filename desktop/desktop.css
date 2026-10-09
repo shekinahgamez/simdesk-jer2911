@@ -143,3 +143,14 @@ body{background:transparent}
 
 /* Home screen grid, Across: fill each row first (iPad and computer only; the phone's 4 across is untouched) */
 @media (min-width:721px){ .icons.across{grid-auto-flow:row;grid-template-rows:none;grid-template-columns:repeat(var(--g-cols,4),96px);grid-auto-rows:108px} }
+
+/* ---------- Oct 9: home screen app bottom edge (iPhone and iPad) ----------
+   The home screen app reports a page shorter than the screen (iPhone 797 of 844, iPad 992 of 1024), and that bottom strip
+   behaves differently from open to open. desktop.js measures the real screen height (--app-h) and the strip (--app-gap);
+   the desk and wallpaper run the full height and the dock sits clear of the strip. */
+html.standalone, html.standalone body{height:var(--app-h,100lvh)}
+html.standalone{background-attachment:scroll !important;background-position:center top !important;min-height:var(--app-h,100lvh)}
+html.standalone .desk{bottom:auto;height:var(--app-h,100lvh)}
+html.standalone .dock{bottom:max(calc(env(safe-area-inset-bottom,0px) + 23px), calc(var(--app-gap,0px) + 10px))}
+html.standalone .window{bottom:max(calc(92px + env(safe-area-inset-bottom,0px)), calc(var(--app-gap,0px) + 82px))}
+@media (max-width:720px){ html.standalone .window{bottom:max(calc(74px + env(safe-area-inset-bottom,0px)), calc(var(--app-gap,0px) + 64px))} html.standalone .desk.in-app .window{bottom:0} }
