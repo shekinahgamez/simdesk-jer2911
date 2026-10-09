@@ -32,6 +32,8 @@ const APPS = [
     icon:`<svg viewBox="0 0 64 64"><defs><linearGradient id="smg" x1="0" y1=".2" x2="1" y2=".8"><stop offset="0" stop-color="#DB1265"/><stop offset="1" stop-color="#F95A54"/></linearGradient></defs><rect width="64" height="64" fill="url(#smg)"/><path d="M32 11C33.6 25.2 38.8 30.4 53 32C38.8 33.6 33.6 38.8 32 53C30.4 38.8 25.2 33.6 11 32C25.2 30.4 30.4 25.2 32 11Z" fill="#fff"/></svg>` },
   { key:"spill", name:"Spill", host:"spill.app", built:true,
     icon:`<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#17131A"/><path d="M32 11C25 22 17 30 17 39a15 15 0 0 0 30 0c0-9-8-17-15-28z" fill="#E8743B"/><circle cx="48.5" cy="50" r="4" fill="#E8743B"/></svg>` },
+  { key:"heirloom", name:"Heirloom", host:"heirloom.family", built:true,
+    icon:`<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#2F6B47"/><path d="M14 50c0-18 10-30 36-32 0 22-12 32-28 32" fill="#F5F0E6"/><path d="M14 50c6-12 14-18 24-22" stroke="#2F6B47" stroke-width="3" fill="none" stroke-linecap="round"/></svg>` },
   { key:"photos", name:"Photos", host:"Photos", built:true, system:true,
     icon:`<svg viewBox="0 0 64 64"><defs><linearGradient id="phg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#B4527A"/><stop offset="1" stop-color="#5B2138"/></linearGradient></defs><rect width="64" height="64" fill="url(#phg)"/><g fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><rect x="13" y="16" width="38" height="32" rx="7"/><circle cx="25" cy="27" r="4"/><path d="M51 40 41 30 22 48"/></g></svg>` },
   { key:"settings", name:"Settings", host:"Settings", built:true, system:true,
@@ -140,6 +142,10 @@ async function route(){
     const data = await GFB.getAll();
     Spill.render(site, data, parts.slice(1));
     setAddress(a.host, Spill.address(parts.slice(1)));
+  } else if (a.key === "heirloom"){
+    const data = await GFB.getAll();
+    Heirloom.render(site, data, parts.slice(1));
+    setAddress(a.host, Heirloom.address(parts.slice(1)));
   } else if (a.key === "photos"){
     const data = await GFB.getAll();
     await Photos.render(site, data, parts.slice(1));

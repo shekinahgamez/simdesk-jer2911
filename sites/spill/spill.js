@@ -212,15 +212,16 @@ const Spill = (() => {
   const acct = () => `<span class="sp-acct"><button type="button" class="sp-acctb" data-menu="1" aria-haspopup="true" aria-expanded="${st.menu}"><i>S</i><span class="sp-acctn">Member · ${PHONE}</span></button>${st.menu ? `<span class="sp-menu"><button type="button" data-signout="1">Sign out</button></span>` : ""}</span>`;
   function matches(q) {
     const t = low(q); if (!t) return [];
-    return data.sims.filter(s => low(stripNick(s.name)).includes(t) || low(s.simsta || "").includes(t)).sort((a, b) => (low(stripNick(a.name)).startsWith(t) ? 0 : 1) - (low(stripNick(b.name)).startsWith(t) ? 0 : 1) || stripNick(a.name).localeCompare(stripNick(b.name)));
+    return data.sims.filter(s => low(stripNick(s.name)).includes(t) || low(s.simsta || "").includes(t) || low(areaOf(s)) === t).sort((a, b) => (low(stripNick(a.name)).startsWith(t) ? 0 : 1) - (low(stripNick(b.name)).startsWith(t) ? 0 : 1) || stripNick(a.name).localeCompare(stripNick(b.name)));
   }
   function searchBar(big) {
     const sug = st.sug && st.q.trim() ? matches(st.q).slice(0, 6) : [];
     const every = st.sug && /^e(v(e(r(y(o(n(e)?)?)?)?)?)?)?$/i.test(st.q.trim());
-    return `<form class="sp-sbar ${big ? "big" : ""}" data-search="1" role="search"><div class="sp-sin"><input type="search" id="sp-q" value="${esc(st.q)}" placeholder="${big ? "Search a name, or type everyone" : "Search a name"}" autocomplete="off" aria-label="Search a name" ${big ? "" : ""}>
+    return `<form class="sp-sbar ${big ? "big" : ""}" data-search="1" role="search"><div class="sp-sin"><input type="search" id="sp-q" value="${esc(st.q)}" placeholder="Search a name" autocomplete="off" aria-label="Search a name" ${big ? "" : ""}>
       ${(sug.length || every) ? `<ul class="sp-sug" role="listbox">${every ? `<li role="option"><a href="#/spill/map"><b>everyone</b><small>The whole map</small></a></li>` : ""}${sug.map(s => `<li role="option"><a href="#/spill/search/${encodeURIComponent(stripNick(s.name))}"><b>${esc(stripNick(s.name))}</b><small>${esc([s.age, areaOf(s)].filter(Boolean).join(" · "))}</small></a></li>`).join("")}</ul>` : ""}</div>${big ? `<button class="sp-btn" type="submit">Search</button>` : ""}</form>`;
   }
-  const topbar = (extra) => `<div class="sp-top"><a class="sp-logo" href="#/spill">${MARK}spill</a>${searchBar(false)}${extra || ""}${acct()}</div>`;
+  /* bare: the page already shows the big search bar, so the top bar leaves its own out (one search bar, one #sp-q). */
+  const topbar = (extra, bare, land) => `<div class="sp-top${land ? " land" : ""}"><a class="sp-logo" href="#/spill">${MARK}spill</a>${bare ? "" : searchBar(false)}${extra || ""}${acct()}</div>`;
 
   function homePage() {
     return `<div class="sp-home"><div class="sp-nav"><span class="sp-logo">${MARK}spill</span><a>How it works</a><a>Safety</a><a>Press</a><div class="r"><button type="button" class="sp-pill" data-focus="signin">Sign in</button><span class="sp-pill solid">Get the app</span></div></div>
@@ -265,11 +266,7 @@ const Spill = (() => {
     const list = matches(q), s0 = list[0];
     const mine = reports().map(r => ({ r, s:simById(r.sim) })).filter(x => x.s);
     const myBox = `<div class="mine"><h4>Your reports</h4>${mine.length ? mine.map(({ r, s }) => `<a href="#/spill/report/${slug(s.name)}"><span>${esc(stripNick(s.name))}</span><small>Unlocked ${esc(sayDate(r.date))}</small></a>`).join("") : `<div><span>None yet</span><small>Unlocked reports show here</small></div>`}</div>`;
-    if (!q.trim()) {
-      const shownN = new Set(M.lines.filter(l => !l.secret).flatMap(l => [l.a, l.b])).size;
-      return `${topbar()}<div class="sp-body one"><div><h2 class="sp-h">Search anyone in Lennox Park and Fenmore</h2>${searchBar(true)}
-        <div class="sp-stats"><div><b>${data.sims.length}</b>people on file</div><div><b>${shownN}</b>with something to find</div></div></div><div>${myBox}</div></div>`;
-    }
+    if (!q.trim()) return landing();
     if (!list.length) return `${topbar()}<div class="sp-body one"><div><p class="sp-none">No one matching "${esc(q)}". Try a first name, or type everyone for the whole map.</p></div><div>${myBox}</div></div>`;
     if (list.length === 1) {
       const { card, un } = preview(s0, `<div class="other">Also matching "${esc(q)}": <b>none</b> · Try "everyone" for the whole map</div>`);
@@ -280,6 +277,43 @@ const Spill = (() => {
     }
     const cards = list.slice(0, 12).map(s => { const p = profile(s); return `<a class="rcard res" href="#/spill/search/${encodeURIComponent(stripNick(s.name))}"><div class="rhead"><span class="ph">${pic(s) ? `<img src="${esc(pic(s))}" alt="">` : `<b>${esc(initials(s.name))}</b>`}</span><div><h2>${esc(stripNick(s.name))}</h2><p>${esc([s.age, areaOf(s), jobOf(s)].filter(x => x != null && x !== "").join(" · "))}</p></div><span class="match">View</span></div></a>`; }).join("");
     return `${topbar()}<div class="sp-body"><div><p class="sp-sub">${list.length} people match "${esc(q)}"</p>${cards}</div><div>${myBox}</div></div>`;
+  }
+  /* The signed-in search page with nothing typed: one search bar, area chips, your reports, the most looked-up adults, fresh tea.
+     Public lines only, so nothing on this page hints at a secret. "Simerica" (the area fallback) never shows here. */
+  function landing() {
+    const pub = M.lines.filter(l => !l.secret), cnt = new Map();
+    pub.forEach(l => [l.a, l.b].forEach(i => cnt.set(i, (cnt.get(i) || 0) + 1)));
+    const place = s => { const a = areaOf(s); return a === "Simerica" ? "" : a; };
+    const areas = new Map(); data.sims.forEach(s => { const a = place(s); if (a) areas.set(a, (areas.get(a) || 0) + 1); });
+    const chip = (href, label, n) => `<a class="ui-chip" href="${href}"><span>${esc(label)}<small>${esc(n)}</small></span></a>`;
+    const chips = [...areas].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 4).map(([a, n]) => chip("#/spill/search/" + encodeURIComponent(a), a, n)).join("") + chip("#/spill/map", "Everyone", "map");
+    const adult = s => { const n = parseInt(s.age, 10); if (Number.isFinite(n)) return n >= 18; return !/baby|infant|toddler|child|kid|teen/i.test(String(s.age || s.life_stage || "")); };
+    const top = [...cnt].map(([id, n]) => ({ s:simById(id), n })).filter(x => x.s && adult(x.s)).sort((a, b) => b.n - a.n || stripNick(a.s.name).localeCompare(stripNick(b.s.name))).slice(0, 3);
+    const people = top.map(({ s, n }) => `<a class="sp-lrow" href="#/spill/search/${encodeURIComponent(stripNick(s.name))}"><span class="av">${pic(s) ? `<img src="${esc(pic(s))}" alt="">` : esc(initials(s.name))}</span><span class="tx"><b>${esc(stripNick(s.name))}</b><small>${esc([s.age, place(s), `${n} connection${n === 1 ? "" : "s"}`].filter(x => x != null && x !== "").join(" · "))}</small></span><span class="go" aria-hidden="true">›</span></a>`).join("");
+    /* fresh tea: newest dated public history first (Slide matches on one game day collapse into one row), then texting; names stay blurred */
+    const tea = [];
+    pub.forEach(l => (l.link && l.link.history || []).forEach(h => { if (h.game_date && !h.game_date.before && h.label) tea.push({ l, h }); }));
+    const gd = d => (d.year || 0) * 1000 + (["Spring", "Summer", "Fall", "Winter"].indexOf(d.season) + 1) * 100 + (d.day || 0);
+    tea.sort((a, b) => gd(b.h.game_date) - gd(a.h.game_date));
+    const bar = w => `<span class="bl" style="width:${w}px"></span>`, per = new Map(), items = [];
+    const push = (k, html) => { if ((per.get(k) || 0) >= 2 || items.length >= 4) return; per.set(k, (per.get(k) || 0) + 1); items.push(html); };
+    const who = l => `${bar(50 + hash(l.a) % 40)} and ${bar(50 + hash(l.b) % 40)}`, near = l => { const A = simById(l.a), p = A ? place(A) : ""; return p ? ` · ${esc(p)}` : ""; };
+    const row = (main, sub) => `<div class="sp-lrow"><span class="av">?</span><span class="tx"><span class="m">${main}</span><small>${sub}</small></span></div>`;
+    const isSlide = h => /^matched on slide/i.test(h.label), slideDay = new Map();
+    tea.forEach(({ l, h }) => { if (isSlide(h)) { const k = sayDate(h.game_date), g = slideDay.get(k) || { n:0, l }; g.n++; slideDay.set(k, g); } });
+    const doneSlide = new Set();
+    tea.forEach(({ l, h }) => { if (!isSlide(h)) return; const k = sayDate(h.game_date); if (doneSlide.has(k)) return; doneSlide.add(k); const g = slideDay.get(k);
+      push("slide", row(`${g.n > 1 ? `${g.n} new matches on Slide` : `${who(l)} matched on Slide`}${near(l)}`, esc(k))); });
+    tea.filter(({ h }) => !isSlide(h)).forEach(({ l, h }) => push(h.label, row(`${who(l)} · ${esc(h.label.charAt(0).toLowerCase() + h.label.slice(1))}${near(l)}`, esc(sayDate(h.game_date)))));
+    pub.filter(l => l.type === "text").forEach(l => push("text", row(`${who(l)} have been texting${near(l)}`, "Messages")));
+    const mine = reports().map(r => ({ r, s:simById(r.sim) })).filter(x => x.s);
+    const rep = cls => `<div class="mine ${cls}"><h4>Your reports</h4>${mine.length ? mine.map(({ r, s }) => `<a href="#/spill/report/${slug(s.name)}"><span>${esc(stripNick(s.name))}</span><small>Unlocked ${esc(sayDate(r.date))}</small></a>`).join("") : `<div><span>None yet</span><small>Unlocked reports show here</small></div>`}</div>`;
+    return `${topbar("", true, true)}<div class="sp-land">
+        <div class="sp-lhead"><h2 class="sp-h">Search Lennox Park and Fenmore</h2>${searchBar(true)}<div class="ui-chips">${chips}</div></div>
+        ${mine.length ? rep("narrow") : ""}
+        <div class="sp-lmain">${people ? `<h4 class="sp-sec">Most looked up</h4><div class="sp-lgrp">${people}</div>` : ""}${items.length ? `<h4 class="sp-sec">Fresh tea</h4><div class="sp-lgrp">${items.join("")}</div><p class="sp-fine">Names show in full reports.</p>` : ""}</div>
+        <div class="sp-lside">${rep("")}</div>
+      </div>`;
   }
   function payOverlay() {
     const s = simById(st.pay.sim), steps = ["payment approved", `pulling records on ${stripNick(s.name)}`, "checking for hidden connections..."], n = st.pay.step;

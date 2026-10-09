@@ -233,3 +233,50 @@
 .site-spill .sp-hint{margin:0;padding:0 22px 8px;color:var(--faint);font-size:13px}
 .site-spill .sp-rep .side{max-height:none}
 @media (max-width:900px){.site-spill .sp-sepbar,.site-spill .sp-hint{padding-left:14px;padding-right:14px}}
+
+/* ===== search landing (signed in, nothing typed): grouped lists, one search bar, one swipe row of area chips ===== */
+.site-spill{--ui-accent:var(--spill);--ui-on-accent:#1A0E08}
+.site-spill .sp-top.land .sp-acctn{display:inline}
+.site-spill .sp-acctb{min-height:44px;font-size:13px}
+.site-spill .sp-land{display:grid;grid-template-columns:minmax(0,1fr) 320px;grid-template-areas:"head side" "main side";column-gap:var(--sd-6);row-gap:var(--sd-2);padding:var(--sd-6);max-width:1100px}
+.site-spill .sp-lhead{grid-area:head;min-width:0}
+.site-spill .sp-lmain{grid-area:main;min-width:0}
+.site-spill .sp-lside{grid-area:side;align-self:start}
+.site-spill .sp-lside .mine{margin-top:var(--sd-2)}
+.site-spill .mine.narrow{display:none}
+.site-spill .sp-land .sp-h{font-size:var(--sd-t28);margin:var(--sd-2) 0 var(--sd-3)}
+.site-spill .sp-land .sp-sbar.big{max-width:640px;margin:0 0 var(--sd-2);flex:none}
+.site-spill .sp-land .ui-chips{--ui-edge:0px;--ui-sheet-accent:var(--spill)}
+.site-spill .sp-land .ui-chip{color:var(--ink)}
+.site-spill .sp-land .ui-chip>span{background:var(--panel);border-color:var(--line);font-size:var(--sd-t13)}
+.site-spill .sp-land .ui-chip small{color:var(--muted);font-weight:500;font-size:var(--sd-t12)}
+.site-spill .sp-land .ui-chip:focus-visible>span{outline:2px solid var(--spill);outline-offset:2px}
+.site-spill .sp-sec{margin:var(--sd-5) 0 var(--sd-2) var(--sd-1);font-size:var(--sd-t12);text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600}
+.site-spill .sp-lgrp{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.site-spill .sp-lrow{display:flex;align-items:center;gap:var(--sd-3);min-height:60px;padding:var(--sd-2) var(--sd-4);color:var(--ink);box-sizing:border-box}
+.site-spill .sp-lrow + .sp-lrow{border-top:1px solid var(--line)}
+.site-spill a.sp-lrow:hover{background:var(--panel2)}
+.site-spill .sp-lrow .av{flex:none;width:40px;height:40px;border-radius:50%;background:var(--node);border:1px solid var(--ring);display:grid;place-items:center;overflow:hidden;color:var(--muted);font-weight:700;font-size:var(--sd-t12)}
+.site-spill .sp-lrow .av img{width:100%;height:100%;object-fit:cover}
+.site-spill .sp-lrow .tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:var(--sd-1)}
+.site-spill .sp-lrow .tx b{font-size:var(--sd-t15);font-weight:600;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.site-spill .sp-lrow .tx .m{font-size:var(--sd-t15);line-height:1.35}
+.site-spill .sp-lrow .tx small{color:var(--muted);font-size:var(--sd-t13);line-height:1.3}
+.site-spill .sp-lrow a.tx b,.site-spill a.sp-lrow .tx small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.site-spill .sp-lrow .bl{display:inline-block;height:11px;border-radius:3px;background:#3B323F;vertical-align:-1px}
+.site-spill .sp-lrow .go{flex:none;color:var(--faint);font-size:var(--sd-t20);line-height:1}
+.site-spill .sp-fine{color:var(--muted);font-size:var(--sd-t12);margin:var(--sd-2) 0 0 var(--sd-1)}
+.site-spill .sp-land .mine{font-size:var(--sd-t13)}
+.site-spill .sp-land .mine small{color:var(--muted);font-size:var(--sd-t12)}
+.site-spill .sp-top.land .sp-logo{min-height:44px}
+@container site (max-width:700px){
+  .site-spill .sp-land{grid-template-columns:minmax(0,1fr);grid-template-areas:"head" "rep" "main";padding:var(--sd-4) var(--sd-4) var(--sd-6);row-gap:var(--sd-1)}
+  .site-spill .sp-lside{display:none}
+  .site-spill .mine.narrow{display:block;grid-area:rep;margin-top:var(--sd-3)}
+  .site-spill .sp-land .sp-h{font-size:var(--sd-t20);margin:var(--sd-1) 0 var(--sd-3)}
+  .site-spill .sp-land .ui-chips{--ui-edge:16px;margin-left:calc(var(--sd-4) * -1);margin-right:calc(var(--sd-4) * -1)}
+  .site-spill .sp-land .sp-sbar.big{position:relative;display:block;max-width:none}
+  .site-spill .sp-land .sp-sbar.big input{height:52px;padding-right:112px}
+  .site-spill .sp-land .sp-sbar.big .sp-btn{position:absolute;right:var(--sd-1);top:var(--sd-1);height:44px;padding:0 var(--sd-4);border-radius:9px}
+}
+.site-spill .sp-land .sp-btn{font-size:var(--sd-t15)}
