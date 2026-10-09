@@ -22,7 +22,7 @@ body{font:14px/1.45 "Inter",system-ui,-apple-system,"Segoe UI",sans-serif;color:
 .menubar .spacer{flex:1}
 
 /* icons fill top to bottom, then the next column, so the colors read as one flow */
-.icons{position:absolute;top:calc(30px + env(safe-area-inset-top,0px) + 28px);left:28px;display:grid;grid-auto-flow:column;grid-template-rows:repeat(4,108px);grid-auto-columns:96px;gap:10px 14px}
+.icons{position:absolute;top:calc(30px + env(safe-area-inset-top,0px) + 28px);left:28px;display:grid;grid-auto-flow:column;grid-template-rows:repeat(var(--g-rows,4),108px);grid-auto-columns:96px;gap:10px 14px}
 .app{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:8px;background:none;border:none;padding:6px 4px;border-radius:10px;cursor:pointer;color:var(--label);text-decoration:none}
 .app:hover,.app:focus-visible{background:rgba(255,255,255,.08)}
 .app .ic{width:64px;height:64px;border-radius:15px;display:grid;place-items:center;box-shadow:0 6px 16px rgba(0,0,0,.35);overflow:hidden}
@@ -139,3 +139,6 @@ html.standalone .desk{bottom:auto;height:100vh;height:100lvh}
   .dock{gap:2px;padding:10px}
   .dk{flex:1 1 0;width:auto;max-width:50px;height:auto;aspect-ratio:1}
 }
+
+/* Home screen grid, Across: fill each row first (iPad and computer only; the phone's 4 across is untouched) */
+@media (min-width:721px){ .icons.across{grid-auto-flow:row;grid-template-rows:none;grid-template-columns:repeat(var(--g-cols,4),96px);grid-auto-rows:108px} }

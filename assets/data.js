@@ -576,7 +576,7 @@ const GFB = (() => {
   const registry = (() => {
     const LINK_COLS = ["id","a_sim","b_sim","b_name","kind","family","a_label","b_label","biological","adoptive","raised","secret","legacy_ids","batch"];
     const HIST_COLS = ["id","link_id","label","game_date","note","sort"];
-    let links = [], simx = new Map(), moved = null, loaded = false, busy = null, problem = null, view = { src:null, out:[] };
+    let links = [], homeEv = [], simx = new Map(), moved = null, loaded = false, busy = null, problem = null, view = { src:null, out:[] };
     const sb = () => cloudClient();
     const ready = () => !!sb();
     const pick = (o, cols) => Object.fromEntries(cols.filter(k => k in o).map(k => [k, o[k]]));
@@ -604,6 +604,8 @@ const GFB = (() => {
             pageAll(() => c.from("registry_links").select("*").order("created_at", { ascending:true }).order("id")),
             pageAll(() => c.from("registry_history").select("*").order("created_at", { ascending:true }).order("id")),
             pageAll(() => c.from("registry_sims").select("*").order("sim_id"))]);
+          let HE = []; try { const he = await c.from("registry_home_events").select("*").order("created_at", { ascending:true }); if (!he.error) HE = he.data || []; } catch {}
+          homeEv = HE;
           moved = (mv.data || [])[0] || false; links = attach(L, H); simx = new Map(S.map(r => [r.sim_id, r])); loaded = true; problem = null;
           return true;
         } catch (e) { problem = e.message; loaded = false; return false; }
@@ -774,8 +776,24 @@ const GFB = (() => {
       for (const part of chunks(keep)) { const u = await c.from("registry_sims").upsert(part, { onConflict:"user_id,sim_id" }); if (u.error) throw new Error(u.error.message); }
       localStorage.removeItem(UNDO_LINKS); await refresh(); return true;
     }
+    /* home changes on a Sim's timeline (Housed, Homeless, Townie). Own table, so the Registry move and its undo never touch it. */
+    const homeEventsOf = simId => homeEv.filter(e => e.sim_id === simId);
+    async function saveHomeEvent(ev) {
+      needCloud();
+      const row = { sim_id:ev.sim_id, kind:ev.kind, address:ev.address || null, game_date:ev.game_date || null, note:ev.note || null };
+      const q = ev.id ? sb().from("registry_home_events").update(row).eq("id", ev.id) : sb().from("registry_home_events").insert({ ...row, user_id:Cloud.userId() });
+      const { data, error } = await q.select().single();
+      if (error) throw new Error(error.message || "Couldn't save that home entry.");
+      homeEv = ev.id ? homeEv.map(x => x.id === ev.id ? data : x) : [...homeEv, data]; return data;
+    }
+    async function deleteHomeEvent(id) {
+      needCloud();
+      const { error } = await sb().from("registry_home_events").delete().eq("id", id);
+      if (error) throw new Error(error.message || "Couldn't remove that entry.");
+      homeEv = homeEv.filter(x => x.id !== id);
+    }
     const batchSims = b => [...simx.values()].filter(r => r.batch === b).map(r => r.sim_id);
-    return { ready, refresh, all, linksOf, batchSims, linkById, side, simInfo, saveSimInfo, saveLink, deleteLink, insertLinks, deleteWhere, deleteSimRows, deleteAllLinks, plan, move, applyImport, undoImportLinks, canUndoLinks,
+    return { ready, refresh, all, linksOf, batchSims, homeEventsOf, saveHomeEvent, deleteHomeEvent, linkById, side, simInfo, saveSimInfo, saveLink, deleteLink, insertLinks, deleteWhere, deleteSimRows, deleteAllLinks, plan, move, applyImport, undoImportLinks, canUndoLinks,
       isMoved, asRels, canEdit, problem:() => problem, isLoaded:() => loaded, moveInfo:() => moved || null, newId:uuid, fromRels:linksFromRels, counts:linkCounts, firstEntry };
   })();
 

@@ -58,7 +58,7 @@ const UI = (() => {
   }
   const readGameDate = (f, name, cal) => ({ season: f.get(name + "_season") || cal.today.season, day: Math.min(21, Math.max(1, parseInt(f.get(name + "_day"), 10) || 1)), year: Math.max(1, parseInt(f.get(name + "_year"), 10) || cal.year) });
   const gameOrd = (d, cal) => d && typeof d === "object" ? (d.year - 1) * 84 + cal.seasons.findIndex(x => x.name === d.season) * 21 + d.day : 0;
-  const gameLabel = d => !d ? "" : typeof d === "object" ? `${d.season}, day ${d.day}, Year ${d.year}` : new Date(d + "T12:00:00").toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" });
+  const gameLabel = d => !d ? "" : typeof d === "object" ? (d.before ? "Before the save started" : `${d.season}, day ${d.day}, Year ${d.year}`) : new Date(d + "T12:00:00").toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" });
   const gameToday = cal => ({ ...cal.today, year: cal.year });
 
   /* Searchable picker: replaces long <select>s (like "Signed in as"). A hidden input carries the id and value,

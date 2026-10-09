@@ -30,6 +30,8 @@ const APPS = [
     icon:`<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#EE5A24"/><path fill="#fff" fill-rule="evenodd" transform="translate(13.8 9.4) scale(0.0911)" d="M125 35H300L350 95V265L205 452L50 265V95ZM140 125H285V215H215V305L140 215Z"/></svg>` },
   { key:"simsta", name:"Simsta", host:"simsta.com", built:true,
     icon:`<svg viewBox="0 0 64 64"><defs><linearGradient id="smg" x1="0" y1=".2" x2="1" y2=".8"><stop offset="0" stop-color="#DB1265"/><stop offset="1" stop-color="#F95A54"/></linearGradient></defs><rect width="64" height="64" fill="url(#smg)"/><path d="M32 11C33.6 25.2 38.8 30.4 53 32C38.8 33.6 33.6 38.8 32 53C30.4 38.8 25.2 33.6 11 32C25.2 30.4 30.4 25.2 32 11Z" fill="#fff"/></svg>` },
+  { key:"spill", name:"Spill", host:"spill.app", built:true,
+    icon:`<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#17131A"/><path d="M32 11C25 22 17 30 17 39a15 15 0 0 0 30 0c0-9-8-17-15-28z" fill="#E8743B"/><circle cx="48.5" cy="50" r="4" fill="#E8743B"/></svg>` },
   { key:"photos", name:"Photos", host:"Photos", built:true, system:true,
     icon:`<svg viewBox="0 0 64 64"><defs><linearGradient id="phg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#B4527A"/><stop offset="1" stop-color="#5B2138"/></linearGradient></defs><rect width="64" height="64" fill="url(#phg)"/><g fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><rect x="13" y="16" width="38" height="32" rx="7"/><circle cx="25" cy="27" r="4"/><path d="M51 40 41 30 22 48"/></g></svg>` },
   { key:"settings", name:"Settings", host:"Settings", built:true, system:true,
@@ -43,7 +45,7 @@ let lastIcon = null;
 /* the dock holds the save tools; the desktop holds the in-world sites */
 const DOCK = ["calendar","plumb","permits","registry","slide","messages","photos","settings"];
 /* the order you pick in Settings (settings.app_layout); new apps land at the end of the desktop; Settings can never disappear */
-let SAVED_LAYOUT = null, SAVED_HIDDEN = [];
+let SAVED_LAYOUT = null, SAVED_HIDDEN = [], SAVED_GRID = null;
 /* layout(true) is every app in order (Settings lists them all); layout() leaves out the apps you've hidden. Settings can't be hidden. */
 function layout(all){
   const keys = APPS.map(a => a.key), saved = SAVED_LAYOUT || {};
@@ -55,9 +57,9 @@ function layout(all){
   const show = k => k === "settings" || !SAVED_HIDDEN.includes(k);
   return { dock:dock.filter(show), desktop:desktop.filter(show) };
 }
-function loadSaved(d){ const s = (d && d.settings) || {}; SAVED_LAYOUT = s.app_layout || null; SAVED_HIDDEN = Array.isArray(s.hidden_apps) ? s.hidden_apps : []; }
+function loadSaved(d){ const s = (d && d.settings) || {}; SAVED_LAYOUT = s.app_layout || null; SAVED_HIDDEN = Array.isArray(s.hidden_apps) ? s.hidden_apps : []; SAVED_GRID = s.grid || null; }
 /* setSaved: Settings hands over a just-saved layout so the next read is current right away (the gfb:layout event reloads it a moment later) */
-window.SimDeskLayout = { layout, setSaved: s => { SAVED_LAYOUT = s || null; drawIcons(); }, setHidden: h => { SAVED_HIDDEN = h || []; drawIcons(); }, hidden: () => SAVED_HIDDEN.slice(), apps: () => APPS.map(a => ({ key:a.key, name:a.name, icon:typeof a.icon === "function" ? a.icon() : a.icon })) };
+window.SimDeskLayout = { layout, setSaved: s => { SAVED_LAYOUT = s || null; drawIcons(); }, setHidden: h => { SAVED_HIDDEN = h || []; drawIcons(); }, setGrid: g => { SAVED_GRID = g || null; drawIcons(); }, grid: gridOf, gridFit, hidden: () => SAVED_HIDDEN.slice(), apps: () => APPS.map(a => ({ key:a.key, name:a.name, icon:typeof a.icon === "function" ? a.icon() : a.icon })) };
 window.addEventListener("gfb:layout", () => GFB.getAll().then(d => { loadSaved(d); drawIcons(); }));
 const iconHTML = a => typeof a.icon === "function" ? a.icon() : a.icon;
 const HOME_MARK = `<svg viewBox="0 0 100 100" aria-hidden="true"><g transform="translate(50 50) rotate(45) scale(0.13) translate(-166 -166)" fill="currentColor"><rect x="83" y="0" width="166" height="38"/><rect x="83" y="0" width="38" height="201"/><rect x="211" y="0" width="38" height="73"/><rect x="294" y="83" width="38" height="166"/><rect x="131" y="83" width="201" height="38"/><rect x="259" y="211" width="73" height="38"/><rect x="83" y="294" width="166" height="38"/><rect x="211" y="131" width="38" height="201"/><rect x="83" y="259" width="38" height="73"/><rect x="0" y="83" width="38" height="166"/><rect x="0" y="211" width="201" height="38"/><rect x="0" y="83" width="73" height="38"/></g></svg>`;
@@ -77,10 +79,19 @@ function applyWallpaper(){
   });
 }
 window.addEventListener("gfb:wallpaper", applyWallpaper);
+/* Home screen grid (Settings > Home screen): rows 2 to 8, columns Auto or 2 to 10, fill Down or Across. iPad and computer only; the phone keeps 4 across.
+   If the apps don't fit what you picked, a column is added so nothing is ever hidden. */
+const GRID_DEFAULT = { rows:4, cols:0, fill:"down" };
+function gridOf(){ const g = SAVED_GRID || {}, n = (v, lo, hi, d) => Number.isFinite(+v) && +v >= lo && +v <= hi ? Math.round(+v) : d;
+  return { rows:n(g.rows, 2, 8, 4), cols:g.cols ? n(g.cols, 2, 10, 0) : 0, fill:g.fill === "across" ? "across" : "down" }; }
+function gridFit(count){ const g = gridOf(), need = Math.max(1, Math.ceil(count / g.rows)), cols = g.cols ? Math.max(g.cols, need) : need;
+  return { ...g, count, spots:g.rows * (g.cols || need), cols, added:!!g.cols && count > g.rows * g.cols }; }
 function drawIcons(){
   drawDock();
   document.getElementById("icons").innerHTML = layout().desktop.map(k => APPS.find(a => a.key === k)).map(a =>
     `<a class="app" href="#/${a.key}" data-app="${a.key}"><span class="ic">${typeof a.icon === "function" ? a.icon() : a.icon}</span><span class="nm">${a.name}</span></a>`).join("");
+  const box = document.getElementById("icons"), f = gridFit(layout().desktop.length);
+  box.style.setProperty("--g-rows", f.rows); box.style.setProperty("--g-cols", f.cols); box.classList.toggle("across", f.fill === "across");
 }
 
 function setAddress(host, path, system){ document.getElementById("winUrl").innerHTML = `<b>${host}</b>${path || ""}`; document.querySelector(".padlock").style.display = system ? "none" : ""; }
@@ -120,6 +131,10 @@ async function route(){
     const data = await GFB.getAll();
     Simsta.render(site, data, parts.slice(1));
     setAddress(a.host, Simsta.address(parts.slice(1)));
+  } else if (a.key === "spill"){
+    const data = await GFB.getAll();
+    Spill.render(site, data, parts.slice(1));
+    setAddress(a.host, Spill.address(parts.slice(1)));
   } else if (a.key === "photos"){
     const data = await GFB.getAll();
     await Photos.render(site, data, parts.slice(1));

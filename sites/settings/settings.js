@@ -16,11 +16,39 @@ const Settings = (() => {
         <p class="st-note">Big photos are shrunk to fit. Saved to this browser.</p>
       </section>
       <section class="st-card" style="margin-top:16px"><h2>Desktop and dock</h2><p class="st-note" style="margin:0 0 10px">Use the switch to hide an app. Drag the handle to change the order, or drag an app between the dock and the desktop. "To dock" and "To desktop" still work too.</p><div id="st-lay">${layoutHTML()}</div></section>
+      <section class="st-card" id="st-grid" style="margin-top:16px">${gridHTML()}</section>
       <section class="st-card" style="margin-top:16px">${photosHTML()}</section>
       <section class="st-card" id="st-import" style="margin-top:16px"></section>
       <p class="st-note" style="text-align:center;margin:18px 0 6px">SimDesk build <b>${window.SIMDESK_BUILD || "dev"}</b></p></div></div>`;
     st.msg = st.err = null;
     NotionImport.mount(root.querySelector("#st-import"), data);
+  }
+
+  /* Home screen grid: settings.grid = { rows, cols (0 = Auto), fill: "down" | "across" }, read by desktop/desktop.js */
+  function gridHTML(){
+    if (!window.SimDeskLayout) return "";
+    const L = SimDeskLayout.layout(), apps = Object.fromEntries(SimDeskLayout.apps().map(a => [a.key, a])), list = L.desktop.map(k => apps[k]).filter(Boolean);
+    const f = SimDeskLayout.gridFit(list.length), g = SimDeskLayout.grid(), across = f.fill === "across";
+    const step = (key, label, sub, val, lo, hi) => `<div class="st-set"><div><b>${label}</b><small>${sub}</small></div><span class="st-step"><button type="button" data-grid="${key}:-1" aria-label="Fewer ${label.toLowerCase()}" ${val <= lo && key !== "cols" ? "disabled" : ""}>−</button><em>${val || "Auto"}</em><button type="button" data-grid="${key}:1" aria-label="More ${label.toLowerCase()}" ${val >= hi ? "disabled" : ""}>+</button></span></div>`;
+    const prev = list.length ? `<div class="st-gprev"><div class="st-gbar"></div><div class="st-ggrid ${across ? "across" : ""}" style="--r:${f.rows};--c:${f.cols}">${list.map(a => `<div class="st-gic"><span>${a.icon}</span><s>${a.name}</s></div>`).join("")}</div><div class="st-gdock"></div></div>` : "";
+    const fit = f.added ? `<p class="st-fit warn"><b>${f.count} apps, ${f.rows * f.cols} spots.</b> Adding a column so nothing's hidden.</p>` : `<p class="st-fit"><b>${f.count} apps, ${f.spots} spots.</b> Everything fits.</p>`;
+    return `<h2>Home screen</h2><p class="st-note" style="margin:0 0 6px">How apps line up on the desktop. iPad and computer only; your phone keeps 4 across.</p>
+      ${step("rows", "Rows", "Apps stacked in each column", g.rows, 2, 8)}
+      ${step("cols", "Columns", "Auto adds columns as you add apps", g.cols, 2, 10)}
+      <div class="st-set"><div><b>Fill</b><small>Which way your app order runs</small></div><span class="st-seg" role="group" aria-label="Fill"><button type="button" class="${across ? "" : "on"}" data-grid="fill:down">Down</button><button type="button" class="${across ? "on" : ""}" data-grid="fill:across">Across</button></span></div>
+      ${prev}${fit}<button class="st-btn" data-grid="reset">Back to default</button>`;
+  }
+  async function gridChange(cmd){
+    if (cmd === "reset") await GFB.saveSetting("grid", null);
+    else {
+      const [k, v] = cmd.split(":"), g = SimDeskLayout.grid();
+      if (k === "fill") g.fill = v;
+      else { const d = +v; if (k === "rows") g.rows = Math.min(8, Math.max(2, g.rows + d)); else g.cols = d > 0 ? (g.cols ? Math.min(10, g.cols + 1) : 2) : (g.cols > 2 ? g.cols - 1 : 0); }
+      const isDef = g.rows === 4 && !g.cols && g.fill === "down";
+      await GFB.saveSetting("grid", isDef ? null : g);
+    }
+    data = await GFB.getAll(); SimDeskLayout.setGrid((data.settings || {}).grid);
+    const box = root && root.querySelector("#st-grid"); if (box) box.innerHTML = gridHTML();
   }
 
   /* app order: saved as settings.app_layout = { dock:[keys], desktop:[keys] } and read by desktop/desktop.js */
@@ -148,6 +176,8 @@ const Settings = (() => {
       data = await GFB.getAll(); draw();
     });
     document.addEventListener("click", async e => {
+      const gd = mine(e.target) && e.target.closest("[data-grid]");
+      if (gd && !gd.disabled) return gridChange(gd.dataset.grid);
       const h = mine(e.target) && e.target.closest("[data-hide]");
       if (h) { const k = h.dataset.hide, cur = SimDeskLayout.hidden(), next = cur.includes(k) ? cur.filter(x => x !== k) : [...cur, k];
         await GFB.saveSetting("hidden_apps", next.length ? next : null); SimDeskLayout.setHidden(next); data = await GFB.getAll(); return layoutSaved(); }

@@ -4,7 +4,7 @@
    Until the one-time move runs, connections show from the old list, read only, with a banner to check the counts and move. */
 const Registry = (() => {
   const st = { q:"", filter:"All", where:"", sort:"name", tab:"profile", editing:false, draft:null, focus:null, openLink:null, sheet:null, hideSecrets:false,
-    creating:false, msg:"", err:false, move:null, batch:null, oldOpen:false, lists:false, busy:false };
+    creating:false, msg:"", err:false, move:null, batch:null, oldOpen:false, lists:false, busy:false, tl:{ filter:"all", add:null, edit:null } };
   let data = null, curId = null, root = null;
 
   const LIFE_STAGES = ["Infant","Toddler","Child","Teen","Young Adult","Adult","Elder"];
@@ -30,8 +30,8 @@ const Registry = (() => {
   const attrOpts = key => [...new Set(["Opposite sex", "Same sex", "Both", ...((data.tossup && data.tossup.decks) || []).filter(d => d.registry === key).flatMap(d => (d.outcomes || []).map(o => o.label))])];
   const pron = s => /^m/i.test(s.gender || "") ? "he" : /^f/i.test(s.gender || "") ? "she" : "they";
   const cal = () => data.calendar;
-  const gLabel = d => d && typeof d === "object" ? `${d.season}, day ${d.day}, Year ${d.year}` : "";
-  const gShort = d => d && typeof d === "object" ? `${d.season} ${d.day}, Y${d.year}` : "No date";
+  const gLabel = d => d && typeof d === "object" ? (d.before ? "Before the save started" : `${d.season}, day ${d.day}, Year ${d.year}`) : "";
+  const gShort = d => d && typeof d === "object" ? (d.before ? "Before save" : `${d.season} ${d.day}, Y${d.year}`) : "No date";
 
   /* ---------- property and status ---------- */
   const RESIDENTIAL = ["Apartment","Residential","Residential Rental"];
@@ -192,7 +192,7 @@ const Registry = (() => {
     return `<div class="rg-fbar"><a class="rg-back" href="#/registry">← All residents</a>
       <span class="rg-pn">${prev ? `<a href="#/registry/${prev}" aria-label="Previous resident">‹ Prev</a>` : `<span class="rg-dim">‹ Prev</span>`}<em>${at >= 0 ? `${at + 1} of ${order.length}` : ""}</em>${next ? `<a href="#/registry/${next}" aria-label="Next resident">Next ›</a>` : `<span class="rg-dim">Next ›</span>`}</span>
       <span class="rg-fno">GFB-${esc(s.file_no)}</span>
-      ${st.tab === "connections" && hasSecret ? `<button class="rg-b quiet" data-act="hidesecrets" aria-pressed="${st.hideSecrets}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/>${st.hideSecrets ? `<path d="M4 4l16 16" stroke="currentColor" stroke-width="1.8"/>` : ""}</svg>${st.hideSecrets ? "Show secrets" : "Hide secrets"}</button>` : ""}
+      ${(st.tab === "connections" || st.tab === "file") && hasSecret ? `<button class="rg-b quiet" data-act="hidesecrets" aria-pressed="${st.hideSecrets}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/>${st.hideSecrets ? `<path d="M4 4l16 16" stroke="currentColor" stroke-width="1.8"/>` : ""}</svg>${st.hideSecrets ? "Show secrets" : "Hide secrets"}</button>` : ""}
       <button class="rg-b" data-act="edit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>Edit file</button></div>`;
   }
 
@@ -348,6 +348,157 @@ const Registry = (() => {
     st.busy = false; data = await GFB.getAll(); draw();
   }
 
+
+  /* ---------- Timeline (top of the File tab) ----------
+     Every dated history entry on this Sim's connections, plus their home changes (Housed, Homeless, Townie).
+     Entries with no date sit in their own group, "Before the save started" counts as dated and sits at the very bottom. */
+  const BEFORE = { season:"Before the save started", day:0, year:0, before:true };
+  const KIND_NAME = Object.fromEntries(KINDS);
+  function relTitle(label, name){
+    const L = String(label || "").trim(), l = L.toLowerCase();
+    if (/^matched on slide/.test(l)) return `Matched with ${name} on Slide`;
+    if (/^(married|met|adopted|divorced)$/.test(l)) return `${L} ${name}`;
+    if (l === "engaged") return `Engaged to ${name}`;
+    if (l === "dating") return `Started dating ${name}`;
+    if (l === "parent and child") return `Parent and child: ${name}`;
+    return `${L || "Connected"} with ${name}`;
+  }
+  function homeAddress(s){ const h = homeOf(s); return h ? lotLabel(h) : null; }
+  /* the Sim's timeline entries, newest data first is decided later; hidden counts the secrets left out */
+  function tlItems(s){
+    const out = []; let hidden = 0;
+    linksFor(s.id).forEach(l => {
+      if (st.hideSecrets && l.secret) { hidden += (l.history || []).length; return; }
+      const sd = R().side(l, s.id), name = otherName(sd), kn = KIND_NAME[l.kind] || "";
+      (l.history || []).forEach((h, idx) => {
+        const slide = /^matched on slide/i.test(h.label || "");
+        out.push({ key:`h:${l.id}:${idx}`, type:"rel", link:l, hist:h, idx, date:h.game_date || null, tone:l.secret ? "sec" : "rom", secret:!!l.secret, kind:l.kind,
+          title:relTitle(h.label, name), sub:[slide ? "From Slide" : "", kn, l.secret ? "Secret" : (slide ? "" : sd.label)].filter(Boolean).join(" · ") });
+      });
+    });
+    const evs = R().homeEventsOf(s.id);
+    evs.forEach(e => out.push({ key:"e:" + e.id, type:"home", ev:e, date:e.game_date || null, tone:"home", kind:"home", title:{ housed:"Housed", homeless:"Homeless", townie:"Townie" }[e.kind],
+      sub:"Home · " + (e.address || (e.kind === "housed" ? "address on file" : "no home address yet")), lot:e.address ? lots().find(x => lotLabel(x) === e.address) : null }));
+    if (!evs.length) { const k = statusOf(s).toLowerCase(), a = homeAddress(s);
+      out.push({ key:"v:" + k, type:"home", virtual:true, ev:{ sim_id:s.id, kind:k, address:a }, date:null, tone:"home", kind:"home", title:statusOf(s), sub:"Home · " + (a || "no home address yet"), lot:homeOf(s) }); }
+    return { out, hidden };
+  }
+  const dayWord = d => d && d.day ? "Day " + d.day : "";
+  function tlRow(it, s){
+    const E = st.tl.edit && st.tl.edit.key === it.key;
+    if (E) return tlEditRow(it);
+    const d = it.date, dated = !!d;
+    const dayCell = dated ? `<button type="button" class="rg-evday" data-tl="date:${esc(it.key)}" aria-label="Change this date">${d.before ? "Before" : dayWord(d)}</button>` : `<button type="button" class="rg-adddate" data-tl="date:${esc(it.key)}">Add date</button>`;
+    return `<div class="rg-ev ${it.secret ? "secret" : ""} ${dated ? "" : "nd"}" data-tlopen="${esc(it.key)}" role="button" tabindex="0" style="--k:var(--${it.tone === "sec" ? "secret" : it.tone === "home" ? "navy" : "rom"})">
+      <span class="rg-evd">${dayCell}</span><span class="rg-dot ${it.tone}"></span>
+      <div><b>${esc(it.title)}${it.secret ? `<span class="rg-stamp">Secret</span>` : ""}</b><small>${esc(it.sub)}</small></div>
+      <span class="rg-go">${it.type === "home" && !it.lot ? "" : "›"}</span></div>`;
+  }
+  const tlDateFields = (d, before, pre) => before
+    ? `<span class="rg-gdfixed">Before the save started</span>`
+    : `<span class="rg-gd"><select data-tlf="${pre}season" aria-label="Season">${cal().seasons.map(x => `<option ${d && x.name === d.season ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select><input type="number" min="1" max="21" inputmode="numeric" data-tlf="${pre}day" value="${d ? d.day : 1}" aria-label="Day"><span>Y</span><input type="number" min="1" inputmode="numeric" data-tlf="${pre}year" value="${d ? d.year : cal().year}" aria-label="Year"></span>`;
+  function tlEditRow(it){
+    const e = st.tl.edit, today = UI.gameToday(cal());
+    return `<div class="rg-ev nd editing"><span class="rg-evd"></span><span class="rg-dot ${it.tone}"></span><div><b>${esc(it.title)}</b>
+      <div class="rg-gdrow">${tlDateFields(e.date, e.before, "e")}</div>
+      <div class="rg-gdq"><button type="button" class="rg-q ${e.before ? "on" : ""}" data-tl="q:before">Before the save started</button><button type="button" class="rg-q" data-tl="q:today">Today (${esc(today.season)}, day ${today.day})</button></div>
+      ${e.err ? `<p class="rg-msg err" style="margin:6px 0 0">${esc(e.err)}</p>` : ""}
+      <div class="rg-gdact">${it.type === "home" && !it.virtual ? `<button type="button" class="rg-b del" data-tl="remove">Remove</button>` : ""}<button type="button" class="rg-b quiet sm" data-tl="cancel">Cancel</button><button type="button" class="rg-b pri sm" data-tl="savedate" ${st.busy ? "disabled" : ""}>Save date</button></div></div><span></span></div>`;
+  }
+  function tlAddForm(s){
+    const a = st.tl.add, links = linksFor(s.id).filter(l => !(st.hideSecrets && l.secret)), today = UI.gameToday(cal());
+    const opts = [`<option value="home" ${a.what === "home" ? "selected" : ""}>A home change</option>`, ...links.map(l => `<option value="${l.id}" ${a.what === l.id ? "selected" : ""}>${esc(otherName(R().side(l, s.id)))} (${esc(KIND_NAME[l.kind] || "")}${l.secret ? ", secret" : ""})</option>`)];
+    return `<div class="rg-tladd"><div class="rg-flab">What happened</div>
+      <select class="rg-input" data-tlf="what" aria-label="What happened with">${opts.join("")}</select>
+      ${a.what === "home" ? `<div class="rg-kinds" style="margin-top:8px">${[["housed","Housed"],["homeless","Homeless"],["townie","Townie"]].map(([k, n]) => `<button type="button" class="${a.hkind === k ? "on" : ""}" data-tl="hk:${k}">${n}</button>`).join("")}</div>`
+        : `<input class="rg-input" data-tlf="label" list="rg-dl-hist" value="${esc(a.label)}" placeholder="Married, Engaged, Split..." aria-label="What happened" style="margin-top:8px"><datalist id="rg-dl-hist">${HIST_SUGGEST.map(x => `<option value="${esc(x)}">`).join("")}</datalist>`}
+      <div class="rg-flab" style="margin-top:10px">When</div>
+      <div class="rg-gdrow">${tlDateFields(a.date, a.before, "n")}</div>
+      <div class="rg-gdq"><button type="button" class="rg-q ${a.before ? "on" : ""}" data-tl="aq:before">Before the save started</button><button type="button" class="rg-q" data-tl="aq:today">Today (${esc(today.season)}, day ${today.day})</button></div>
+      ${a.err ? `<p class="rg-msg err" style="margin:6px 0 0">${esc(a.err)}</p>` : ""}
+      <div class="rg-gdact"><button type="button" class="rg-b quiet sm" data-tl="addcancel">Cancel</button><button type="button" class="rg-b pri sm" data-tl="addsave" ${st.busy ? "disabled" : ""}>Add to timeline</button></div></div>`;
+  }
+  function timelineHTML(s){
+    const { out, hidden } = tlItems(s), f = st.tl.filter;
+    const rel = out.filter(x => x.type === "rel"), home = out.filter(x => x.type === "home");
+    const shown = f === "rel" ? rel : f === "home" ? home : out;
+    const ord = d => UI.gameOrd(d, cal());
+    const dated = shown.filter(x => x.date && !x.date.before).sort((a, b) => ord(b.date) - ord(a.date));
+    const undated = shown.filter(x => !x.date), before = shown.filter(x => x.date && x.date.before);
+    let body = ""; let yr = null, se = null;
+    dated.forEach(x => { if (x.date.year !== yr) { yr = x.date.year; se = null; body += `<div class="rg-yr">Year ${yr}</div>`; } if (x.date.season !== se) { se = x.date.season; body += `<div class="rg-season">${esc(se)}</div>`; } body += tlRow(x, s); });
+    if (undated.length) body += `<div class="rg-undated"><span>Date not set</span><small>${undated.length}${undated.some(x => x.type === "rel" && (x.hist.note || "").includes("old file")) ? " · moved over from Notion" : ""}</small></div>` + undated.map(x => tlRow(x, s)).join("");
+    if (before.length) body += `<div class="rg-undated"><span>Before the save started</span><small>${before.length}</small></div>` + before.map(x => tlRow(x, s)).join("");
+    if (!shown.length) body = `<p class="rg-none">Nothing on the timeline for this filter.</p>`;
+    const chip = (k, n, c) => `<button type="button" class="rg-tf ${f === k ? "on" : ""}" data-tl="f:${k}">${n} <small>${c}</small></button>`;
+    return `<section class="rg-sec rg-tl" id="rg-at-timeline"><div class="rg-tlhead"><h4>Timeline</h4>${chip("all", "All", out.length)}${chip("rel", "Relationships", rel.length)}${chip("home", "Home", home.length)}<button type="button" class="rg-link" style="margin-left:auto" data-tl="add">Add to timeline</button></div>
+      ${st.tl.msg ? `<p class="rg-msg ${st.tl.err ? "err" : ""}" role="status">${esc(st.tl.msg)}</p>` : ""}
+      ${st.tl.add ? tlAddForm(s) : ""}${body}${hidden ? `<p class="rg-hiddennote">${hidden} secret ${hidden === 1 ? "entry" : "entries"} hidden</p>` : ""}</section>`;
+  }
+  /* read the date fields that are on screen */
+  function tlRead(){
+    const g = k => root.querySelector(`[data-tlf="${k}"]`);
+    const rd = (pre, o) => { if (g(pre + "season")) o.date = { season:g(pre + "season").value, day:clampDay(g(pre + "day").value), year:Math.max(1, parseInt(g(pre + "year").value, 10) || cal().year) }; };
+    if (st.tl.edit) rd("e", st.tl.edit);
+    if (st.tl.add) { rd("n", st.tl.add); if (g("label")) st.tl.add.label = g("label").value; }
+  }
+  const tlFind = (key, s) => tlItems(s).out.find(x => x.key === key);
+  async function tlAction(act, s){
+    const T = st.tl; T.msg = ""; tlRead();
+    const done = async (msg) => { st.busy = false; T.edit = null; T.add = null; T.msg = msg; T.err = false; data = await GFB.getAll(); draw(); setTimeout(() => { T.msg = ""; }, 0); };
+    const fail = (e) => { st.busy = false; T.msg = e.message; T.err = true; draw(); };
+    if (act.startsWith("f:")) { T.filter = act.slice(2); return draw(); }
+    if (act === "add") { T.edit = null; T.add = T.add ? null : { what:"home", hkind:statusOf(s).toLowerCase(), label:"", date:UI.gameToday(cal()), before:false }; return draw(); }
+    if (act === "addcancel") { T.add = null; return draw(); }
+    if (act.startsWith("hk:")) { T.add.hkind = act.slice(3); return draw(); }
+    if (act === "aq:before") { T.add.before = true; return draw(); }
+    if (act === "aq:today") { T.add.before = false; T.add.date = UI.gameToday(cal()); return draw(); }
+    if (act.startsWith("date:")) { const it = tlFind(act.slice(5), s); if (!it) return;
+      if (it.type === "rel" && !R().canEdit()) { st.tab = "file"; T.msg = "Connections are read only until your Registry moves to its new tables. Use the banner at the top to check the counts and move."; T.err = true; return draw(); }
+      T.add = null; T.edit = { key:it.key, date:it.date && !it.date.before ? { ...it.date } : UI.gameToday(cal()), before:!!(it.date && it.date.before) }; return draw(); }
+    if (act === "cancel") { T.edit = null; return draw(); }
+    if (act === "q:before") { T.edit.before = true; return draw(); }
+    if (act === "q:today") { T.edit.before = false; T.edit.date = UI.gameToday(cal()); return draw(); }
+    if (act === "savedate") {
+      const it = tlFind(T.edit.key, s); if (!it) return; const nd = T.edit.before ? { ...BEFORE } : T.edit.date;
+      st.busy = true; draw();
+      try {
+        if (it.type === "rel") { const l = it.link; await R().saveLink({ ...l }, l.history.map((e, i) => ({ id:e.id, label:e.label, game_date:i === it.idx ? nd : (e.game_date || null), note:e.note || null }))); }
+        else await R().saveHomeEvent({ ...it.ev, game_date:nd });
+        return done("Date saved.");
+      } catch (e) { return fail(e); }
+    }
+    if (act === "remove") { const it = tlFind(T.edit.key, s); if (!it || it.type !== "home" || it.virtual) return; st.busy = true; try { await R().deleteHomeEvent(it.ev.id); return done("Entry removed."); } catch (e) { return fail(e); } }
+    if (act === "addsave") {
+      const a = T.add, nd = a.before ? { ...BEFORE } : a.date; st.busy = true; draw();
+      try {
+        if (a.what === "home") await R().saveHomeEvent({ sim_id:s.id, kind:a.hkind, address:a.hkind === "housed" ? homeAddress(s) : null, game_date:nd });
+        else {
+          if (!R().canEdit()) throw new Error("Connections are read only until your Registry moves to its new tables.");
+          if (!String(a.label || "").trim()) throw new Error("Type what happened, like Married or Engaged.");
+          const l = R().linkById(a.what); await R().saveLink({ ...l }, [...l.history.map(e => ({ id:e.id, label:e.label, game_date:e.game_date || null, note:e.note || null })), { label:a.label.trim(), game_date:nd, note:null }]);
+        }
+        return done("Added to the timeline.");
+      } catch (e) { return fail(e); }
+    }
+  }
+  /* tapping an entry: a connection opens its sheet, a home entry opens the address */
+  function tlOpen(key, s){
+    const it = tlFind(key, s); if (!it) return;
+    if (it.type === "home") { if (it.lot) location.hash = "#/lotline/" + it.lot.id; return; }
+    if (R().canEdit()) { openSheet(s, it.link); return draw(); }
+    st.tab = "connections"; st.openLink = it.link.id; draw();
+  }
+  /* a home change adds an entry on its own: compare each household member's status before and after a file save */
+  const statusSnap = ids => Object.fromEntries(ids.map(id => { const x = simById(id); return [id, x ? { st:statusOf(x), addr:homeAddress(x) } : null]; }));
+  async function logHomeChanges(before){
+    for (const [id, b] of Object.entries(before)) {
+      const x = simById(id); if (!x || !b) continue; const a = { st:statusOf(x), addr:homeAddress(x) };
+      if (a.st === b.st && a.addr === b.addr) continue;
+      try { await R().saveHomeEvent({ sim_id:id, kind:a.st.toLowerCase(), address:a.addr, game_date:UI.gameToday(cal()) }); } catch {}
+    }
+  }
+
   /* ---------- File tab ---------- */
   function fileTab(s){
     const E = st.editing, d = st.draft, out = [], adds = [];
@@ -368,7 +519,7 @@ const Registry = (() => {
     if (money) out.push(sec("money", "Money", money)); else if (!E) adds.push(["bank", "Bank account"]);
     if (!E && !owned.length) adds.push(["owns", `Property ${pron(s)} own${pron(s) === "they" ? "" : "s"}`]);
     const act = activityHTML(s); if (act) out.push(sec("activity", "Activity", act));
-    let html = out.join("") + (adds.length ? `<div class="rg-adds">${adds.map(([k, n]) => k === "bank" ? `<a class="rg-add" href="#/trust/staff">${esc(n)}</a>` : `<button class="rg-add" data-addat="file:${k}">${esc(n)}</button>`).join("")}</div>` : "");
+    let html = (E ? "" : timelineHTML(s)) + out.join("") + (adds.length ? `<div class="rg-adds">${adds.map(([k, n]) => k === "bank" ? `<a class="rg-add" href="#/trust/staff">${esc(n)}</a>` : `<button class="rg-add" data-addat="file:${k}">${esc(n)}</button>`).join("")}</div>` : "");
     const notes = s.notes || [], secrets = s.secrets || [];
     if (notes.length || secrets.length) {
       const firstLine = String(notes[0] || secrets[0] || "").replace(/^#+\s*/, "").replace(/[*_]/g, "");
@@ -494,6 +645,7 @@ const Registry = (() => {
   async function saveFile(){
     const s = simById(curId), d = st.draft;
     st.busy = true; draw();
+    const snap = statusSnap(data.sims.filter(x => x.id === s.id || (s.household && x.household === s.household)).map(x => x.id));
     try {
       const keys = ["name","simsta","life_stage","gender","career","residence","household","traits","aspiration","attachment","love_language","romantic_attraction","sexual_attraction","likes","dislikes","turn_ons","turn_offs","portrait","headshot"];
       const norm = (k, v) => Array.isArray(v) ? v : (v === "" ? null : v);
@@ -510,6 +662,9 @@ const Registry = (() => {
         try { await R().saveSimInfo(s.id, { summary:sum, townie:!!d.townie }); }
         catch (e) { st.busy = false; st.editing = false; st.draft = null; st.msg = "The file saved, but the Summary and Townie need the cloud: " + e.message; st.err = true; data = await GFB.getAll(); return draw(); }
       }
+      data = await GFB.getAll();
+      const ids = new Set([...Object.keys(snap), ...data.sims.filter(x => x.id === s.id || (simById(s.id).household && x.household === simById(s.id).household)).map(x => x.id)]);
+      await logHomeChanges({ ...Object.fromEntries([...ids].map(id => [id, snap[id] || null])) });
       st.editing = false; st.draft = null; st.msg = "File saved."; st.err = false;
     } catch (e) { st.msg = e.message; st.err = true; }
     st.busy = false; data = await GFB.getAll(); draw();
@@ -558,6 +713,8 @@ const Registry = (() => {
     document.addEventListener("click", async e => {
       if (!mine(e.target)) return;
       const t = e.target, s = curId ? simById(curId) : null;
+      const tla = t.closest("[data-tl]")?.dataset.tl; if (tla && s) { tlAction(tla, s); return; }
+      const tlo = t.closest("[data-tlopen]"); if (tlo && s && !st.sheet) { tlOpen(tlo.dataset.tlopen, s); return; }
       const sa = t.closest("[data-sa]")?.dataset.sa;
       if (sa && st.sheet) {
         readSheetFields(); const h = st.sheet;
@@ -620,6 +777,7 @@ const Registry = (() => {
       if (t.id === "rg-where") { st.where = t.value; return draw(); }
       if (t.matches("[data-addtrait]") && st.draft) { if (t.value && !st.draft.traits.includes(t.value)) st.draft.traits.push(t.value); return draw(); }
       if (t.dataset.own && st.draft) { const set = new Set(st.draft.owns); t.checked ? set.add(t.dataset.own) : set.delete(t.dataset.own); st.draft.owns = [...set]; return; }
+      if (t.dataset.tlf === "what" && st.tl.add) { tlRead(); st.tl.add.what = t.value; return draw(); }
       const k = t.dataset.d;
       if (k && st.draft) {
         if (t.type === "checkbox") st.draft[k] = t.checked;

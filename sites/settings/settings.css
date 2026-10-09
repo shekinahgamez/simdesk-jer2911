@@ -88,3 +88,21 @@
 .st-app.off .ic,.st-app.off b{opacity:.45}
 
 @media (max-width:520px){.st-sw{width:44px;height:26px}.st-sw i{width:22px;height:22px}.st-sw.on i{transform:translateX(18px)}.st-app{gap:8px}.st-sm.wide{padding:0 8px;font-size:12.5px}}
+
+/* Home screen grid card */
+.st-set{display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--line)}
+.st-set b{font-weight:600;font-size:14.5px}.st-set small{display:block;color:var(--muted);font-size:12.5px}
+.st-step{margin-left:auto;display:flex;align-items:center;background:#F2F2F7;border-radius:9px;overflow:hidden;flex:none}
+.st-step button{width:44px;height:40px;border:0;background:none;color:var(--accent);font-size:20px;font-weight:600;cursor:pointer}.st-step button:disabled{opacity:.3;cursor:default}
+.st-step em{font-style:normal;min-width:56px;text-align:center;font-weight:700;font-variant-numeric:tabular-nums}
+.st-seg{margin-left:auto;display:flex;background:#F2F2F7;border-radius:8px;padding:2px;flex:none}
+.st-seg button{padding:8px 14px;font:500 13px inherit;border:0;background:none;border-radius:6px;color:var(--muted);cursor:pointer;min-height:40px}
+.st-seg button.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.1)}
+.st-gprev{margin-top:12px;border-radius:12px;background:linear-gradient(160deg,#2a2233,#141218);padding:14px;position:relative;min-height:210px;overflow:hidden}
+.st-gbar{height:8px;border-radius:3px;background:rgba(255,255,255,.12);margin-bottom:12px}
+.st-ggrid{display:grid;gap:8px 10px;grid-auto-flow:column;grid-template-rows:repeat(var(--r),40px);grid-auto-columns:46px}
+.st-ggrid.across{grid-auto-flow:row;grid-template-rows:none;grid-template-columns:repeat(var(--c),46px);grid-auto-rows:40px}
+.st-gic{display:grid;justify-items:center;gap:2px}.st-gic span{width:26px;height:26px;border-radius:7px;overflow:hidden;display:block}.st-gic span svg,.st-gic span img{width:100%;height:100%;display:block;object-fit:cover}
+.st-gic s{text-decoration:none;font-size:8.5px;color:#E8E2EE;white-space:nowrap;max-width:48px;overflow:hidden;text-overflow:ellipsis}
+.st-gdock{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);height:24px;width:60%;border-radius:9px;background:rgba(255,255,255,.12)}
+.st-fit{margin:10px 0 0;font-size:13px;color:var(--muted)}.st-fit b{color:#1E7B3C}.st-fit.warn b{color:#9A5B00}
