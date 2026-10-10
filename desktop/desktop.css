@@ -154,3 +154,42 @@ html.standalone .desk{bottom:auto;height:var(--app-h,100lvh)}
 html.standalone .dock{bottom:max(calc(env(safe-area-inset-bottom,0px) + 23px), calc(var(--app-gap,0px) + 10px))}
 html.standalone .window{bottom:max(calc(92px + env(safe-area-inset-bottom,0px)), calc(var(--app-gap,0px) + 82px))}
 @media (max-width:720px){ html.standalone .window{bottom:max(calc(74px + env(safe-area-inset-bottom,0px)), calc(var(--app-gap,0px) + 64px))} html.standalone .desk.in-app .window{bottom:0} }
+
+/* the desk sticky note: one note from Notes that floats over every app */
+.sk-card{position:fixed;z-index:800;width:300px;max-height:min(60vh,520px);display:flex;flex-direction:column;background:#FFF3B0;color:#2A2410;border-radius:12px;box-shadow:0 18px 44px rgba(20,12,0,.32),0 2px 6px rgba(20,12,0,.18);font:15px/1.45 "Public Sans",system-ui,sans-serif;overflow:hidden}
+.sk-card[hidden],.sk-tab[hidden]{display:none}
+.sk-card.dragging{box-shadow:0 26px 60px rgba(20,12,0,.4);opacity:.96}
+.sk-head{display:flex;align-items:center;gap:4px;padding:4px 4px 4px 12px;background:#F7E27A;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+.sk-card.phone .sk-head{cursor:default;touch-action:auto}
+.sk-title{flex:1;min-width:0;font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sk-ib{width:44px;height:44px;flex:none;display:grid;place-items:center;border:0;background:none;color:#5A4A12;border-radius:10px;cursor:pointer;padding:0}
+.sk-ib svg{width:20px;height:20px}
+.sk-ib:hover{background:rgba(90,74,18,.1)}
+.sk-main{overflow:auto;padding:12px 16px 16px;flex:1;min-height:0}
+.sk-body{min-height:44px;cursor:text;outline-offset:4px}
+.sk-body p{margin:0 0 8px}.sk-body h3{margin:4px 0 8px;font-size:16px}.sk-body ul{margin:0 0 8px;padding-left:20px}
+.sk-body .nt-checks{padding-left:0;list-style:none}
+.sk-body .nt-ck{display:flex;align-items:center;gap:4px;min-height:44px}
+.sk-body .nt-ck.done{color:#6E6233;text-decoration:line-through}
+.sk-body a{color:#7A4B00;font-weight:600}
+.sk-body .nt-ph{color:#6E6233}
+.sk-ta{width:100%;min-height:180px;border:1px solid rgba(90,74,18,.3);border-radius:10px;background:#FFFBE3;color:#2A2410;font:16px/1.5 "Public Sans",system-ui,sans-serif;padding:8px 12px;resize:vertical;box-sizing:border-box}
+.sk-foot{display:flex;justify-content:flex-end;padding:0 12px 12px}
+.sk-done{min-height:44px;padding:0 20px;border:0;border-radius:10px;background:#2A2410;color:#FFF3B0;font:600 15px "Public Sans",system-ui,sans-serif;cursor:pointer}
+.sk-hint{margin:0 0 12px;font-size:13px;color:#6E6233}
+.sk-list{display:grid;background:#FFFBE3;border-radius:10px;overflow:hidden}
+.sk-row{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;min-height:52px;padding:6px 12px;border:0;border-top:1px solid rgba(90,74,18,.14);background:none;color:#2A2410;text-align:left;cursor:pointer;font:inherit}
+.sk-row:first-child{border-top:0}
+.sk-row b{font-weight:600;font-size:15px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sk-row small{font-size:13px;color:#6E6233}
+.sk-row.on{background:#F7E27A}
+.sk-off{margin-top:12px;min-height:44px;width:100%;border:0;border-radius:10px;background:none;color:#8A2A12;font:600 15px "Public Sans",system-ui,sans-serif;cursor:pointer}
+.sk-card :focus-visible,.sk-tab:focus-visible{outline:3px solid #2A2410;outline-offset:2px}
+.sk-tab{position:fixed;z-index:800;right:max(12px,env(safe-area-inset-right));bottom:calc(84px + env(safe-area-inset-bottom,0px));width:48px;height:48px;border-radius:14px;border:0;background:#F7E27A;color:#2A2410;box-shadow:0 10px 26px rgba(20,12,0,.3);display:grid;place-items:center;cursor:pointer;padding:0}
+.sk-tab svg{width:24px;height:24px}
+.desk.in-app ~ .sk-tab{bottom:calc(24px + env(safe-area-inset-bottom,0px))}
+.sk-card.phone{left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));width:auto;top:auto;bottom:calc(84px + env(safe-area-inset-bottom,0px));max-height:62vh}
+@media (prefers-reduced-motion:no-preference){.sk-card{animation:sk-in .22s ease-out}}
+@keyframes sk-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.sk-body .nt-box{box-sizing:border-box;width:44px;height:44px;margin:-11px -7px -11px -11px;border:11px solid transparent;border-radius:50%;background:#FFFBE3;background-clip:content-box;box-shadow:inset 0 0 0 2px #8A7A3A;cursor:pointer;padding:0;flex:none}
+.sk-body .nt-ck.done .nt-box{background:#C99A00 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23FFFBE3' stroke-width='3'%3E%3Cpath d='M6 12l4 4 8-8'/%3E%3C/svg%3E") center/14px no-repeat;background-clip:content-box;border-color:transparent;box-shadow:none}

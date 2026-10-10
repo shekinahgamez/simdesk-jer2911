@@ -290,3 +290,7 @@ route();
 /* menu bar pencil: quick note from anywhere */
 document.getElementById("mbQuick")?.addEventListener("click", () => Notes.openQuick());
 
+
+/* the desk sticky note (desktop/sticky.js) */
+document.getElementById("mbSticky")?.addEventListener("click", () => Sticky.toggle());
+Sticky.start();

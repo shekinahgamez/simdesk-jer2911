@@ -746,6 +746,11 @@ const Registry = (() => {
     }
     const money = moneyHTML(s);
     if (money) out.push(secRows("money", "Money", money)); else if (!E) out.push(secRows("money", "Money", `<a class="rg-li" href="#/trust/staff"><span class="t acc">Add bank account</span></a>`));
+    if (!E && typeof Notes !== "undefined" && Notes.mentionsOf) {
+      const nts = Notes.mentionsOf(data, s);
+      out.push(secRows("notes", "Notes", nts.map(n => lrow("#/notes/n/" + n.id, n.title, [n.story ? "Storyline, " + n.story.toLowerCase() : n.folder, n.sticky ? "On the desk" : "", n.when].filter(Boolean).join(" · "))).join("")
+        + `<button type="button" class="rg-li" data-act="newnote"><span class="t acc">New note about ${esc(first(s.name))}</span></button>`));
+    }
     const act = activityHTML(s); if (act) out.push(secRows("activity", "Activity", act));
     let html = (E ? "" : timelineHTML(s)) + out.join("");
     const notes = s.notes || [], secrets = s.secrets || [];
@@ -775,13 +780,11 @@ const Registry = (() => {
   }
   function activityHTML(s){
     const ev = calEvents(s).sort((a,b) => seasonOrder(a.season) - seasonOrder(b.season) || a.day - b.day), lg = calLogs(s), pl = plans(s), ps = postsBy(s);
-    const nm = typeof Notes !== "undefined" && Notes.mentionsOf ? Notes.mentionsOf(data, s) : [];
     const row = (href, title, small) => `<a class="rg-li wrap" href="${href}"><span class="t"><b>${esc(title)}</b><small>${esc(small)}</small></span>${CHEV}</a>`;
     const items = [
       ...ev.map(e => row(calLink(e.season, e.day), e.title, `Calendar · ${e.season}, day ${e.day}`)),
       ...lg.map(l => row(calLink(l.season, l.day), l.title || (String(l.text || "").length > 90 ? String(l.text).slice(0, 88) + "…" : l.text || ""), `Logged · Year ${l.year}, ${l.season}, day ${l.day}`)),
       ...pl.map(t => row(`#/plumb/sim:${s.id}`, t.title, `Plumb · ${t.done ? "Completed" : t.when === "now" ? "In progress" : "Planned"}`)),
-      ...nm.map(n => row(`#/notes/n/${n.id}`, n.title, `${n.story ? "Storyline · " + n.story : "Note"} · ${n.when}`)),
       ...ps.slice(0, 6).map(p => row(`#/simsta/u/${encodeURIComponent(p.author)}`, p.caption ? String(p.caption).slice(0, 80) : "Post", "Simsta" + (p.date && p.date.season ? " · " + p.date.season + " " + p.date.day : "")))];
     return items.join("");
   }
@@ -965,6 +968,7 @@ const Registry = (() => {
       if (act === "hidesecrets") { st.hideSecrets = !st.hideSecrets; st.openLink = null; draw(); }
       if (act === "needmove") { st.msg = "Connections are read only until your Registry moves to its new tables. Use the banner at the top to check the counts and move."; st.err = true; draw(); root.scrollTop = 0; }
       if (act === "addlink" && s) openSheet(s, null);
+      if (act === "newnote" && s && typeof Notes !== "undefined") Notes.newAbout(s);
       if (act === "oldtoggle") { st.oldOpen = !st.oldOpen; draw(); }
       if (act === "copysummary" && s && st.draft) { const plain = (s.notes || []).join("\n\n").replace(/^#+\s*/gm, "").replace(/\*\*|__/g, ""); st.draft.summary = [st.draft.summary, plain].filter(x => String(x || "").trim()).join("\n\n"); st.tab = "profile"; st.focus = "summary"; draw(); }
       if (act === "lists") { st.lists = true; draw(); }
