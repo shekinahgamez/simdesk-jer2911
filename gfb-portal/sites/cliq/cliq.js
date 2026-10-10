@@ -116,8 +116,8 @@ const Cliq = (() => {
         ${field("Requirements (comma separated)", `<input name="requirements" list="cq-reqs" value="${esc((o.requirements || []).join(", "))}"><datalist id="cq-reqs">${allOf("requirements").map(x => `<option value="${esc(x)}">`).join("")}</datalist>`)}
         <div class="cq-f2">${field("Emblem", `<select name="emblem">${Object.keys(ICONS).map(k => `<option ${(o.emblem || (o.name ? emblemOf(o) : "star")) === k ? "selected" : ""}>${k}</option>`).join("")}</select>`)}${field("Meets at", `<select name="lot"><option value="">No lot yet</option>${data.lots.filter(l => !l.parent_id || l.id === o.lot).map(l => `<option value="${l.id}" ${o.lot === l.id ? "selected" : ""}>${esc(l.address)}</option>`).join("")}</select>`)}</div>
         <div class="cq-imgs">
-          <div class="cq-f"><span>Header image</span>${o.banner ? `<span class="cq-thumb wide" style="background-image:url('${o.banner}')"></span><label class="cq-ck"><input type="checkbox" name="rm_banner"> Remove it (go back to the pattern)</label>` : ""}<input type="file" name="banner" accept="image/*"></div>
-          <div class="cq-f"><span>Circle picture (optional)</span>${o.emblem_img ? `<span class="cq-thumb round" style="background-image:url('${o.emblem_img}')"></span><label class="cq-ck"><input type="checkbox" name="rm_emblem"> Remove it (go back to the icon)</label>` : ""}<input type="file" name="emblem_img" accept="image/*"><small>A picture replaces the icon above.</small></div></div>
+          <div class="cq-f"><span>Header image</span>${o.banner ? `<span class="cq-thumb wide" style="background-image:url('${o.banner}')"></span><label class="cq-ck"><input type="checkbox" name="rm_banner"> Remove it (go back to the pattern)</label>` : ""}<input type="file" name="banner" accept="image/*"${PhotoSlot.attr({ title:"Cliq header", shape:"wide", aspect:2.4, outW:1800, lots:o.lot ? [o.lot] : [], current:o.banner || "" }, "data-pslot-mark")}></div>
+          <div class="cq-f"><span>Circle picture (optional)</span>${o.emblem_img ? `<span class="cq-thumb round" style="background-image:url('${o.emblem_img}')"></span><label class="cq-ck"><input type="checkbox" name="rm_emblem"> Remove it (go back to the icon)</label>` : ""}<input type="file" name="emblem_img" accept="image/*"${PhotoSlot.attr({ title:"Cliq circle picture", shape:"circle", aspect:1, outW:400, lots:o.lot ? [o.lot] : [], current:o.emblem_img || "" }, "data-pslot-mark")}><small>A picture replaces the icon above.</small></div></div>
         ${field("Notes (private)", `<textarea name="notes">${esc(o.notes)}</textarea>`)}${err}
         ${acts(kind === "new" ? "" : `<button type="button" class="cq-btn danger" data-cq="del:${o.id}">Delete</button><span class="cq-grow"></span>`)}</form>`;
     }
@@ -152,9 +152,9 @@ const Cliq = (() => {
         const row = { ...(old || { type:"Club", members:[], related:[], category:"", tagline:"", about:"", founded_text:"", district:"", leader:"", status:"Active" }), name:v("name"), vibe:v("vibe"), join:v("join"), join_notes:v("join_notes"), meets:v("meets"),
           rules:lines(f.get("rules")), activities:csv(f.get("activities")), requirements:csv(f.get("requirements")), emblem:v("emblem"), lot:v("lot") || null, notes:v("notes") };
         if (!old) row.id = "club-" + slug(row.name) + "-" + Math.random().toString(36).slice(2, 5);
-        const bf = f.get("banner"), ef = f.get("emblem_img");
-        if (bf && bf.size) row.banner = (await GFB.uploadImage(bf, 1800)).url; else if (f.get("rm_banner")) row.banner = null;
-        if (ef && ef.size) row.emblem_img = (await GFB.uploadImage(ef, 400)).url; else if (f.get("rm_emblem")) row.emblem_img = null;
+        const bf = f.get("banner"), ef = f.get("emblem_img"), bu = form.querySelector('[name="banner"]')?.dataset.pslotUrl, eu = form.querySelector('[name="emblem_img"]')?.dataset.pslotUrl;
+        if (bu) row.banner = bu; else if (bf && bf.size) row.banner = (await GFB.uploadImage(bf, 1800)).url; else if (f.get("rm_banner")) row.banner = null;
+        if (eu) row.emblem_img = eu; else if (ef && ef.size) row.emblem_img = (await GFB.uploadImage(ef, 400)).url; else if (f.get("rm_emblem")) row.emblem_img = null;
         const saved = await GFB.saveOrg(row); st.modal = null; await refresh(); if (!old) go("club/" + saved.id); return;
       }
       const o = byId(a), s = data.sims.find(x => norm(x.name) === norm(v("name")));

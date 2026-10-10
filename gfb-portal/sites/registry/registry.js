@@ -1,424 +1,854 @@
 /* The Registry. Reads and saves everything through GFB (assets/data.js).
-   Each section edits in place. Connections save to both Sims' files. */
+   Three tabs (Profile, Connections, File). One "Edit file" mode makes the whole file editable, with one Save bar.
+   Connections are one record per link in their own tables (GFB.registry); each Sim keeps their own label.
+   Until the one-time move runs, connections show from the old list, read only, with a banner to check the counts and move. */
 const Registry = (() => {
-  const st = { clear:false, open:new Set(), q:"", filter:"All", sort:"name", tab:"profile", edit:null, rel:null, creating:false, nextEdit:null, msg:"", err:false };
+  const st = { view:"residents", cscope:"", gender:"", stages:[], q:"", filter:"All", where:"", sort:"name", tab:"profile", editing:false, draft:null, focus:null, openLink:null, sheet:null, hideSecrets:false,
+    msg:"", err:false, move:null, batch:null, oldOpen:false, lists:false, busy:false, tl:{ filter:"all", add:null, edit:null } };
   let data = null, curId = null, root = null;
 
-  const FILTERS = ["All","Lennox Park","Baymore","Bellhaven","Incomplete"];
-  const TABS = [["profile","Profile"],["connections","Connections"],["property","Property & money"],["notes","Notes & secrets"],["activity","Activity"]];
   const LIFE_STAGES = ["Infant","Toddler","Child","Teen","Young Adult","Adult","Elder"];
+  const KINDS = [["rom","Romance"],["fam","Family"],["ex","Ex"],["friend","Friend"],["work","Work"]];
+  const GROUPS = [["rom","Romance"],["fam","Family"],["ex","Exes"],["friend","Friends"],["work","Work"]];
+  const HIST_SUGGEST = ["Met","Dating","Engaged","Married","Split","Divorced","Broke up","Got back together","Matched on Slide","Moved in","Best friends","Coworkers","Adopted"];
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-  const stripNick = n => String(n || "").replace(/\s*[\u201c\u201d"].*?[\u201c\u201d"]\s*/g, " ").trim();
-  const initials = n => stripNick(n).split(/\s+/).map(w => w[0]).slice(0,2).join("");
+  const stripNick = n => String(n || "").replace(/\s*[“”"].*?[“”"]\s*/g, " ").trim();
+  const initials = n => stripNick(n).split(/\s+/).map(w => w[0]).slice(0,2).join("").toUpperCase();
   const first = n => stripNick(n).split(" ")[0];
-  const hue = s => { let h = 0; for (const c of s) h = (h*31 + c.charCodeAt(0)) % 360; return h; };
+  /* imported careers use em dashes; show a comma instead (the same helper Share uses) */
+  const NONE = "__none";
+  const sentence = t => { t = String(t || ""); return t ? t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() : ""; };
+  const ageOf = s => s.age != null && s.age !== "" ? String(s.age) : sentence(s.life_stage);
+  const dash = s => String(s || "").replace(/\s*[\u2014\u2013]\s*/g, ", ");
+  const hue = s => { let h = 0; for (const c of String(s)) h = (h*31 + c.charCodeAt(0)) % 360; return h; };
   const avColor = name => `hsl(${215 + hue(name)%30 - 15} 22% ${32 + hue(name)%14}%)`;
-  const av = (name, cls="") => `<span class="r-av ${cls}" style="background:${avColor(name)}">${esc(initials(name))}</span>`;
-  const face = (s, cls="") => s.portrait ? `<img class="r-av r-photo ${cls}" src="${esc(s.portrait)}" alt="">` : av(s.name, cls);
+  const avSq = (name, photo) => photo ? `<img src="${esc(photo)}" alt="" loading="lazy" decoding="async">` : `<span style="background:${avColor(name)}">${esc(initials(name))}</span>`;
   const money = n => n == null || n === "" ? null : "$" + Number(n).toLocaleString("en-US");
-  const isOpen = k => st.clear || st.open.has(k);
   const simById = id => data.sims.find(s => s.id === id);
-  const findSim = txt => { const t = txt.trim().toLowerCase(); return data.sims.find(x => x.name.toLowerCase() === t || stripNick(x.name).toLowerCase() === t); };
-  const relsFor = id => data.relationships.filter(r => r.from_sim === id);
-  const relById = id => data.relationships.find(r => String(r.id) === String(id));
-  const kindName = k => data.options.relationship_kind[k];
+  const findSim = txt => { const t = String(txt || "").trim().toLowerCase(); if (!t) return null; return data.sims.find(x => x.name.toLowerCase() === t || stripNick(x.name).toLowerCase() === t); };
+  const R = () => GFB.registry;
+  const linksFor = id => R().linksOf(id);
   const PREF_KEYS = [["likes","Likes"],["dislikes","Dislikes"],["turn_ons","Turn ons"],["turn_offs","Turn offs"]];
   const LIST_KEYS = [...PREF_KEYS, ["traits","Traits"],["aspiration","Aspirations"]];
-  const menu = key => [...new Set([...(data.options[key] || []), ...used(key)])].sort((a,b) => a.localeCompare(b));
   const used = field => [...new Set(data.sims.flatMap(x => Array.isArray(x[field]) ? x[field] : [x[field]]).filter(Boolean))].sort();
+  const menu = key => [...new Set([...(data.options[key] || []), ...used(key)])].sort((a,b) => a.localeCompare(b));
+  const attrOpts = key => [...new Set(["Opposite sex", "Same sex", "Both", ...((data.tossup && data.tossup.decks) || []).filter(d => d.registry === key).flatMap(d => (d.outcomes || []).map(o => o.label))])];
+  const pron = s => /^m/i.test(s.gender || "") ? "he" : /^f/i.test(s.gender || "") ? "she" : "they";
+  const cal = () => data.calendar;
+  const gLabel = d => d && typeof d === "object" ? (d.before ? "Before the save started" : `${d.season}, day ${d.day}, Year ${d.year}`) : "";
+  const gShort = d => d && typeof d === "object" ? (d.before ? "Before save" : `${d.season} ${d.day}, Y${d.year}`) : "No date";
 
-  /* Property: home comes through the household (the lot that household lives in). Ownership is by name. */
+  /* ---------- property and status ---------- */
   const RESIDENTIAL = ["Apartment","Residential","Residential Rental"];
   const lots = () => data.lots || [];
-  const checking = s => { const a = (data.accounts || []).filter(x => x.holder_sim === s.id && x.status !== "Closed"); return a.length ? money(a.reduce((n,x) => n + Number(x.balance), 0)) : null; };
-  const homeOf = s => s.household ? lots().find(l => l.household === s.household && (RESIDENTIAL.includes(l.lot_type) || !l.lot_type)) : null;
-  const ownedBy = s => lots().filter(l => l.owner && l.owner === stripNick(s.name));
+  const homeOf = s => GFB.homeOf(s, data);
+  const statusOf = s => GFB.statusOf(s, data);
+  const ownedBy = s => lots().filter(l => (l.owner_sim && l.owner_sim === s.id) || (!l.owner_sim && l.owner && l.owner === stripNick(s.name)));
   const lotLabel = l => { const p = l.parent_id ? lots().find(x => x.id === l.parent_id) : null; const d = l.district || (p || {}).district; return l.address + (d ? ", " + d : ""); };
+  const households = () => [...new Set([...(data.households || []).map(h => h.name), ...data.sims.map(x => x.household), ...lots().map(l => l.household)].filter(Boolean))].sort((a, b) => a.localeCompare(b));
 
-  /* Calendar and Plumb (read-only here) */
+  /* activity, read only here */
   const calEvents = s => ((data.calendar || {}).events || []).filter(e => (e.sims || []).includes(s.id));
   const calLogs = s => ((data.calendar || {}).logs || []).filter(l => (l.sims || []).includes(s.id)).sort((a,b) => b.year - a.year);
   const seasonOrder = n => ((data.calendar || {}).seasons || []).findIndex(x => x.name === n);
   const calLink = (season, day) => `#/calendar/${season}/${season}/${day}`;
   const plans = s => (data.todos || []).filter(t => t.app === "plumb" && (t.sims || []).includes(s.id)).sort((a,b) => a.done - b.done);
+  const postsBy = s => (data.posts || []).filter(p => String(p.author || "").split("~")[0] === s.id);
+  const orgsOf = s => (data.organizations || []).filter(o => (o.members || []).some(m => m.current !== false && ((m.sim === s.id) || (!m.sim && m.name && stripNick(m.name).toLowerCase() === stripNick(s.name).toLowerCase()))));
 
-  /* Each gap knows where it gets fixed: "tab:section" or "basics" (the header) */
+  /* the Incomplete filter (status is never a gap now) */
   function gaps(s){
     const g = [], open = 5 - (s.traits || []).length;
-    if (open > 0) g.push([`${open} trait slot${open > 1 ? "s" : ""} open`, "profile:behavior"]);
-    if (!s.aspiration) g.push(["No aspiration", "profile:behavior"]);
-    if (!s.love_language) g.push(["No love language", "profile:behavior"]);
-    if (!s.attachment) g.push(["No attachment style", "profile:behavior"]);
-    if (!s.simsta) g.push(["No Simsta handle", "basics"]);
-    if (!s.household) g.push(["No household", "basics"]);
-    else if (lots().length && !homeOf(s)) g.push(["No home address", "property:property"]);
+    if (open > 0) g.push("traits");
+    if (!s.aspiration) g.push("aspiration");
+    if (!s.love_language) g.push("love_language");
+    if (!s.attachment) g.push("attachment");
+    if (!s.simsta) g.push("simsta");
+    if (!s.household) g.push("household");
     return g;
   }
 
+  /* ---------- gallery ---------- */
+  const places = () => [...new Set(data.sims.map(s => s.residence).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   function visible(){
-    const q = st.q.toLowerCase();
+    const q = st.q.toLowerCase(), batch = st.batch ? new Set(st.batch.ids) : null;
     return data.sims.filter(s => {
+      if (batch && !batch.has(s.id)) return false;
       if (st.filter === "Incomplete" && !gaps(s).length) return false;
-      if (!["All","Incomplete"].includes(st.filter) && s.residence !== st.filter) return false;
+      if (["Housed","Homeless","Townie"].includes(st.filter) && statusOf(s) !== st.filter) return false;
+      if (st.where === NONE ? !!s.residence : (st.where && s.residence !== st.where)) return false;
+      if (st.gender && !genderIs(s, st.gender)) return false;
+      if (st.stages.length && !st.stages.includes(s.life_stage || NONE)) return false;
       if (!q) return true;
-      return [s.name, s.career, s.residence, ...(s.traits||[]), s.attachment, s.love_language].join(" ").toLowerCase().includes(q);
+      return [s.name, s.career, s.residence, s.household, ...(s.traits||[]), s.attachment, s.love_language].join(" ").toLowerCase().includes(q);
     });
   }
-
-  function pendingNames(){
-    const filedNames = new Set(data.sims.map(s => s.name.toLowerCase()));
-    const fromRels = data.relationships.filter(r => r.to_name && !r.hidden).map(r => r.to_name);
-    return [...new Set([...fromRels, ...(data.pending || [])])].filter(n => !filedNames.has(n.toLowerCase())).sort();
+  const SORTS = [["name","Name"],["file","File number"],["gaps","Most to fill in"],["status","Status"]];
+  function sortedVisible(){
+    const v = [...visible()], nm = (a, b) => stripNick(a.name).localeCompare(stripNick(b.name));
+    if (st.sort === "file") v.sort((a, b) => (parseInt(a.file_no, 10) || 0) - (parseInt(b.file_no, 10) || 0));
+    else if (st.sort === "gaps") v.sort((a, b) => gaps(b).length - gaps(a).length || nm(a, b));
+    else if (st.sort === "status") v.sort((a, b) => statusOf(a).localeCompare(statusOf(b)) || nm(a, b));
+    else v.sort(nm);
+    return v;
   }
-
-  /* ---------- small builders ---------- */
-  const tagList = arr => arr && arr.length ? `<div class="r-tags">${arr.map(t => `<span class="r-tagi">${esc(t)}</span>`).join("")}</div>` : `<span class="r-none">Not on file</span>`;
-  const orNone = v => v ? esc(v) : `<span class="r-none">Not on file</span>`;
-  const sel = (name, opts, val, blank="Not on file") => { const o = val && !opts.includes(val) ? [val, ...opts] : opts; return `<select name="${name}"><option value="">${blank}</option>${o.map(x => `<option ${x===val?"selected":""}>${esc(x)}</option>`).join("")}</select>`; };
-  const dl = (id, vals) => `<datalist id="${id}">${vals.map(v => `<option value="${esc(v)}">`).join("")}</datalist>`;
-  const actions = (extra="") => `<div class="r-actions">${extra}<button type="button" class="r-btn ghost" data-act="cancel">Cancel</button><button type="submit" class="r-btn">Save</button></div>`;
-  const form = (key, inner) => `<form class="r-form r-secform" data-sec="${key}">${inner}${actions()}</form>`;
-  function sec(key, title, small, body, editable = true){
-    const btn = editable && st.edit !== key ? `<button type="button" class="r-sec-edit" data-edit="${key}">Edit</button>` : "";
-    return `<section class="r-sec" id="r-sec-${key}"><h3>${title}${small ? ` <small>${small}</small>` : ""}${btn}</h3>${body}</section>`;
-  }
-  const chip = (name, v) => `<span class="sp-chip">${esc(v)}<button type="button" class="sp-x" aria-label="Remove ${esc(v)}">\u00d7</button><input type="hidden" name="${name}" value="${esc(v)}"></span>`;
-  const tagInput = (name, label, vals) => `<div class="r-taginput" data-name="${name}"><span class="r-lbl">${label}</span>
-      <div class="sp-chips">${(vals || []).map(v => chip(name, v)).join("")}</div>
-      <div class="r-tagadd"><input class="r-input" list="r-dl-${name}" placeholder="Type one, then Add" autocomplete="off"><button type="button" class="r-btn ghost" data-tagadd>Add</button></div>${dl("r-dl-" + name, menu(name))}</div>`;
-
-  /* ---------- index ---------- */
-  function listHTML(){
-    const v = visible();
-    if (!v.length) return `<p class="r-pending">No residents match. Clear the search or pick another filter.</p>`;
-    return v.map(s => {
-      const g = gaps(s).length;
-      return `<button class="r-subj" data-open="${s.id}" ${s.id === curId ? 'aria-current="true"' : ""}>${face(s)}<span><span class="nm">${esc(s.name)}</span><br><span class="sub">${esc(s.career)}</span></span>${g ? `<span class="r-gap">${g} gap${g>1?"s":""}</span>` : ""}</button>`;
-    }).join("");
-  }
-  const newForm = () => st.creating
-    ? `<form class="r-newform" data-sec="new"><input class="r-search" name="name" placeholder="Full name" required autocomplete="off"><div class="r-newrow"><button type="button" class="r-chip" data-act="cancel">Cancel</button><button type="submit" class="r-chip on">Create record</button></div></form>`
-    : `<button class="r-newbtn" data-act="new">+ New resident</button>`;
-
-  /* ---------- header ---------- */
-  function factsHTML(s){
-    const facts = [
-      ["Age", [s.age, s.life_stage].filter(x => x != null && x !== "").map(esc).join(", ") || "Not on file"], ["Gender", orNone(s.gender)], ["Occupation", orNone(s.career)],
-      ["Residence", orNone(s.residence)], ["Household", esc(s.household || "Unassigned")],
-      ["Status", s.status ? `<span class="r-status st-${esc(s.status)}">${esc(s.status)}</span>` : orNone()]
-    ];
-    return `<dl class="r-facts">${facts.map(([k,v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>`;
-  }
-  function basicsForm(s){
-    const o = data.options;
-    const households = [...new Set([...data.sims.map(x => x.household), ...lots().map(l => l.household)].filter(Boolean))].sort();
-    return `<form class="r-form r-secform r-basics" data-sec="basics">
-      <div class="row">
-        <label><span class="r-lbl">Full name</span><input class="r-input" name="name" value="${esc(s.name)}" required></label>
-        <label><span class="r-lbl">Simsta handle</span><input class="r-input" name="simsta" value="${esc(s.simsta)}" placeholder="@handle"></label>
-        <label><span class="r-lbl">Age</span><input class="r-input" name="age" type="number" min="0" inputmode="numeric" value="${esc(s.age)}"></label>
-        <label><span class="r-lbl">Life stage</span>${sel("life_stage", LIFE_STAGES, s.life_stage)}</label>
-        <label><span class="r-lbl">Gender</span><input class="r-input" name="gender" list="r-dl-gender" value="${esc(s.gender)}">${dl("r-dl-gender", used("gender"))}</label>
-        <label><span class="r-lbl">Status</span>${sel("status", o.status, s.status)}</label>
-        <label><span class="r-lbl">Occupation</span><input class="r-input" name="career" value="${esc(s.career)}"></label>
-        <label><span class="r-lbl">Residence</span><input class="r-input" name="residence" list="r-dl-res" value="${esc(s.residence)}">${dl("r-dl-res", used("residence"))}</label>
-        <label><span class="r-lbl">Household</span><input class="r-input" name="household" list="r-dl-hh" value="${esc(s.household)}">${dl("r-dl-hh", households)}</label>
-      </div>
-      <div><span class="r-lbl">Profile photo <small>(Registry, Simsta, Cliq)</small></span><div class="r-portrow">${face(s, "sm")}<input type="file" name="portrait" accept="image/*">${s.portrait ? `<label class="r-check"><input type="checkbox" name="noportrait"> Remove photo</label>` : ""}</div></div>
-      <div><span class="r-lbl">Professional headshot <small>(Huddl only, optional)</small></span><div class="r-portrow">${s.headshot ? `<img class="r-av r-photo sm" src="${esc(s.headshot)}" alt="">` : av(s.name, "sm")}<input type="file" name="headshot" accept="image/*">${s.headshot ? `<label class="r-check"><input type="checkbox" name="noheadshot"> Remove headshot</label>` : ""}</div></div>
-      ${actions()}</form>`;
-  }
-
-  /* ---------- tabs ---------- */
-  function profileTab(s){
-    const o = data.options;
-    const slots = Array.from({length: Math.max(0, 5 - (s.traits||[]).length)}, () => `<span class="r-trait empty">Open slot</span>`).join("");
-    const behaviorView = `<div class="r-traits">${(s.traits||[]).map(t => `<span class="r-trait">${esc(t)}</span>`).join("")}${slots}</div>
-      <div class="r-grid2" style="margin-top:16px">
-        <div><span class="r-lbl">Aspiration</span>${orNone(s.aspiration)}</div>
-        <div><span class="r-lbl">Attachment style</span>${orNone(s.attachment)}</div>
-        <div><span class="r-lbl">Love language</span>${orNone(s.love_language)}</div>
-      </div>`;
-    const behaviorEdit = form("behavior", `
-      <div><span class="r-lbl">Traits</span><div class="row">${[0,1,2,3,4].map(i => sel("trait"+i, menu("traits"), (s.traits||[])[i], "Open slot")).join("")}</div></div>
-      <div class="row">
-        <label><span class="r-lbl">Aspiration</span>${sel("aspiration", menu("aspiration"), s.aspiration)}</label>
-        <label><span class="r-lbl">Attachment style</span>${sel("attachment", o.attachment, s.attachment)}</label>
-        <label><span class="r-lbl">Love language</span>${sel("love_language", o.love_language, s.love_language)}</label>
-      </div>`);
-    const prefsView = `<div class="r-grid2">
-        <div><span class="r-lbl">Likes</span>${tagList(s.likes)}</div><div><span class="r-lbl">Dislikes</span>${tagList(s.dislikes)}</div>
-        <div><span class="r-lbl">Turn ons</span>${tagList(s.turn_ons)}</div><div><span class="r-lbl">Turn offs</span>${tagList(s.turn_offs)}</div></div>`;
-    const prefsEdit = form("prefs", `<div class="r-grid2">${tagInput("likes","Likes",s.likes)}${tagInput("dislikes","Dislikes",s.dislikes)}${tagInput("turn_ons","Turn ons",s.turn_ons)}${tagInput("turn_offs","Turn offs",s.turn_offs)}</div>
-      <p class="r-help">Anything new you type gets added to the option list, so it shows up for every Sim next time.</p>`);
-    const listsEdit = form("lists", `<p class="r-help" style="margin-top:0">One option per line. Paste in a whole list when you add a mod. Options a Sim already has stay on the list until they're removed from that Sim.</p>
-      <div class="r-grid2">${LIST_KEYS.map(([k,n]) => `<label><span class="r-lbl">${n} <em>${menu(k).length}</em></span><textarea name="${k}" class="r-listbox">${esc(menu(k).join("\n"))}</textarea></label>`).join("")}</div>`);
-    const mine = (data.organizations || []).filter(o => (o.members || []).some(m => (m.sim === s.id) || (!m.sim && m.name && stripNick(m.name).toLowerCase() === stripNick(s.name).toLowerCase())));
-    const aff = mine.length ? sec("orgs", "Affiliations", "", `<div class="r-callist">${mine.map(o => { const m = o.members.find(x => x.sim === s.id || stripNick(x.name || "").toLowerCase() === stripNick(s.name).toLowerCase()); return `<a href="#/${o.type === "Club" ? "cliq/club/" : "huddl/org/"}${o.id}"><span>${o.type === "Club" ? "Member of" : "Works at"}</span>${esc(o.name)}${m && m.role ? ", " + esc(m.role) : ""}</a>`; }).join("")}</div>`, false) : "";
-    const nm = typeof Notes !== "undefined" ? Notes.mentionsOf(data, s) : [];
-    const notesSec = nm.length ? sec("mnotes", "Mentioned in notes", "", `<div class="r-callist">${nm.map(n => `<a href="#/notes/n/${n.id}"><span>${n.story ? "Storyline \u00b7 " + esc(n.story) : "Note"} \u00b7 ${esc(n.when)}</span>${esc(n.title)}</a>`).join("")}</div>`, false) : "";
-    return aff + notesSec + sec("behavior", "Behavioral profile", "", st.edit === "behavior" ? behaviorEdit : behaviorView)
-         + sec("prefs", "Preferences", "", st.edit === "prefs" ? prefsEdit : prefsView)
-         + (st.edit === "lists" ? sec("lists", "Option lists", "Shared by every Sim", listsEdit) : `<p class="r-optlink"><button type="button" data-edit="lists">Manage option lists</button> for traits, aspirations, likes, dislikes, and turn ons/offs.</p>`);
-  }
-
-  function relHTML(s, r){
-    const key = "rel:" + r.id;
-    if (r.hidden && !isOpen(key)) {
-      return `<button class="r-rel unfiled" data-reveal="${key}" aria-label="Classified connection. Select to declassify">${av("?","sm")}<span><span class="who"><span class="r-redline"></span></span><br><span class="what">Classified connection</span></span><span class="kind" style="color:var(--stamp)">Restricted</span></button>`;
+  const pill = s => { const t = statusOf(s); return `<span class="rg-st ${ {Housed:"h",Homeless:"x",Townie:"t"}[t] }"><i></i>${t}</span>`; };
+  const photoOf = s => s.portrait ? `<img loading="lazy" decoding="async" src="${esc(s.portrait)}" alt="">` : esc(initials(s.name));
+  const meta = (s, town) => [ageOf(s), dash(s.career), town ? s.residence : ""].filter(Boolean).join(" · ");
+  const personRow = s => `<a class="rg-li rg-person" href="#/registry/${s.id}"><span class="rg-idp">${photoOf(s)}</span><span class="t"><b>${esc(s.name)}</b><small>${esc(meta(s, true))}</small></span>${pill(s)}</a>`;
+  const personCard = s => `<a class="rg-card" href="#/registry/${s.id}"><span class="rg-cph">${photoOf(s)}<span class="rg-fno">GFB-${esc(s.file_no)}</span>${pill(s)}</span><span class="rg-cb"><b>${esc(s.name)}</b><small>${esc([ageOf(s), s.residence].filter(Boolean).join(" · "))}</small></span></a>`;
+  /* phone list (letter sections when sorted by name) and iPad grid; CSS shows the one that fits the width */
+  function resultsHTML(){
+    const v = sortedVisible();
+    if (!v.length) return `<p class="rg-none">No residents match. Clear the search or pick another filter.</p>`;
+    let list;
+    if (st.sort !== "name") list = `<div class="rg-group">${v.map(personRow).join("")}</div>`;
+    else {
+      const by = new Map();
+      v.forEach(x => { const c = (stripNick(x.name)[0] || "#").toUpperCase(), k = /[A-Z]/.test(c) ? c : "#"; if (!by.has(k)) by.set(k, []); by.get(k).push(x); });
+      list = [...by].map(([k, a]) => `<p class="rg-letter">${k}</p><div class="rg-group">${a.map(personRow).join("")}</div>`).join("");
     }
-    const filed = r.to_sim ? simById(r.to_sim) : null;
-    const name = filed ? filed.name : r.to_name;
-    const secret = r.secret ? (isOpen(key) ? ` <span style="color:var(--stamp)">${esc(r.secret)}</span>` : ` <span class="r-redline" role="button" tabindex="0" data-reveal="${key}" aria-label="Declassify"></span>`) : "";
-    const label = [r.label, filed ? "" : "file pending"].filter(Boolean).join(", ");
-    const inner = `${filed ? face(filed,"sm") : av(name,"sm")}<span><span class="who">${esc(name)}</span><br><span class="what">${esc(label)}${secret}</span></span><span class="kind" style="color:var(--${r.kind})">${kindName(r.kind)}</span>`;
-    const main = filed ? `<button class="r-rel-main" data-open="${filed.id}">${inner}</button>` : `<div class="r-rel-main">${inner}</div>`;
-    return `<div class="r-rel ${filed ? "" : "unfiled"}">${main}<button type="button" class="r-rel-edit" data-rel="${r.id}" aria-label="Edit connection to ${esc(name)}">Edit</button></div>`;
+    return `<div class="rg-listview">${list}</div><div class="rg-grid">${v.map(personCard).join("")}</div>`;
+  }
+  function pendingNames(){
+    const filed = new Set(data.sims.map(s => s.name.toLowerCase()));
+    return [...new Set([...R().all().filter(l => !l.b_sim && l.b_name && !l.secret).map(l => l.b_name), ...(data.pending || [])])].filter(n => !filed.has(String(n).toLowerCase())).sort();
+  }
+  /* towns with head counts, biggest first; people with no town sit last */
+  function townCounts(){
+    const c = new Map(); data.sims.forEach(x => { const k = x.residence || NONE; c.set(k, (c.get(k) || 0) + 1); });
+    return [...c].filter(([k]) => k !== NONE).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).concat(c.has(NONE) ? [[NONE, c.get(NONE)]] : []);
+  }
+  const townName = k => k === NONE ? "No town yet" : k;
+  const whereOptions = () => `<option value="">Everywhere (${data.sims.length})</option>${townCounts().map(([k, n]) => `<option value="${esc(k)}" ${k === st.where ? "selected" : ""}>${esc(townName(k))} (${n})</option>`).join("")}`;
+  const sortOptions = () => SORTS.map(([k, n]) => `<option value="${k}" ${st.sort === k ? "selected" : ""}>${n}</option>`).join("");
+  const sortName = () => (SORTS.find(x => x[0] === st.sort) || SORTS[0])[1];
+  const viewSwitch = () => `<div class="rg-seg rg-viewseg" role="group" aria-label="View">${[["residents","Residents"],["census","Census"]].map(([k, n]) => `<button type="button" data-view="${k}" aria-pressed="${st.view === k}"><span>${n}</span></button>`).join("")}</div>`;
+  const ICON_SEARCH = `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16.5 16.5L21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
+  const ICON_PLUS = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`;
+
+  /* The shared sheet lives on <body>, outside the Registry's palette, so hand it the colors it needs. */
+  function sheetTheme(){
+    const cs = getComputedStyle(root.querySelector(".site-registry") || root), t = {};
+    ["--paper","--panel","--panel2","--ink","--muted","--faint","--rule","--rule2","--accent","--accentSoft","--onAccent","--stamp","--stampSoft","--sans","--mono","--r-box","--r-ctl","--r-photo"].forEach(k => { t[k] = cs.getPropertyValue(k); });
+    return { ...t, "--ui-sheet-bg":t["--paper"], "--ui-sheet-fg":t["--ink"], "--ui-sheet-accent":t["--accent"], "--ui-accent":t["--accent"], "--ui-on-accent":t["--onAccent"], "--link":t["--accent"], "--navy":t["--accent"], "--secret":t["--stamp"], "--ui-edge":"16px" };
+  }
+  /* Phone: Where and Sort live behind the Filters button. */
+  /* gender and age (life stage) filters live in the Filters sheet on every size. Where joins them only when the side list is hidden (phone and narrow iPad). */
+  const GENDERS = [["", "Any"], ["f", "Women"], ["m", "Men"], [NONE, "Not set"]];
+  const genderIs = (s, g) => g === "f" ? /^f/i.test(s.gender || "") : g === "m" ? /^m/i.test(s.gender || "") : g === NONE ? !s.gender : true;
+  const stageName = k => k === NONE ? "Not set" : sentence(k);
+  const filterCount = () => (st.gender ? 1 : 0) + (st.stages.length ? 1 : 0) + (st.where ? 1 : 0);
+  function activeLine(){
+    const bits = [];
+    if (st.gender) bits.push((GENDERS.find(g => g[0] === st.gender) || ["", ""])[1] + (st.gender === NONE ? " (gender)" : ""));
+    if (st.stages.length) bits.push(st.stages.map(stageName).join(", "));
+    if (st.where) bits.push(townName(st.where));
+    return bits.length ? `<div class="rg-active"><span>${esc(bits.join(" · "))}</span><button type="button" class="rg-link" data-act="clearfilters">Clear</button></div>` : "";
+  }
+  function filterBody(){
+    const stages = [...LIFE_STAGES.filter(k => data.sims.some(x => x.life_stage === k)), ...(data.sims.some(x => !x.life_stage) ? [NONE] : [])];
+    const n = visible().length;
+    return `<div class="rg-sheetui">
+      <p class="rg-shd">Gender</p><div class="rg-seg rg-gseg" role="group" aria-label="Gender">${GENDERS.map(([k, l]) => `<button type="button" data-fg="${k}" aria-pressed="${st.gender === k}"><span>${l}</span></button>`).join("")}</div>
+      <p class="rg-shd">Age</p><div class="rg-group rg-pad"><div class="ui-chips wrap" role="group" aria-label="Life stage">${stages.map(k => { const on = st.stages.includes(k); return `<button type="button" class="ui-chip ${on ? "on" : ""}" data-fs="${esc(k)}" aria-pressed="${on}"><span>${esc(stageName(k))} <small>${data.sims.filter(x => (x.life_stage || NONE) === k).length}</small></span></button>`; }).join("")}</div><p class="rg-help">Pick one or more. None picked shows every age.</p></div>
+      ${root.offsetWidth > 1000 ? "" : `<p class="rg-shd">Where</p><div class="rg-group rg-pad"><select class="rg-input" id="rg-fwhere" aria-label="Where">${whereOptions()}</select></div>`}
+      <p class="rg-shd">Sort</p><div class="rg-group rg-pad"><select class="rg-input" id="rg-fsort" aria-label="Sort">${sortOptions()}</select></div>
+      <p class="rg-fmatch" role="status">${n} ${n === 1 ? "resident matches" : "residents match"}</p></div>`;
+  }
+  function openFilters(){
+    let sh;
+    const refresh = () => { if (!curId) draw(); sh.body.innerHTML = filterBody(); const l = sh.el.querySelector("[data-sl]"); l.style.visibility = filterCount() ? "" : "hidden"; };
+    sh = UI.sheet({ title:"Filters", left:"Clear", right:"Done", theme:sheetTheme(), body:filterBody(),
+      onLeft: () => { st.gender = ""; st.stages = []; st.where = ""; refresh(); } });
+    sh.el.querySelector("[data-sl]").style.visibility = filterCount() ? "" : "hidden";
+    sh.el.addEventListener("click", e => {
+      const g = e.target.closest("[data-fg]"); if (g) { st.gender = g.dataset.fg; return refresh(); }
+      const f = e.target.closest("[data-fs]"); if (f) { const k = f.dataset.fs; st.stages = st.stages.includes(k) ? st.stages.filter(x => x !== k) : [...st.stages, k]; return refresh(); }
+    });
+    sh.el.addEventListener("change", e => {
+      if (e.target.id === "rg-fwhere") { st.where = e.target.value; refresh(); }
+      if (e.target.id === "rg-fsort") { st.sort = e.target.value; refresh(); }
+    });
+  }
+  /* New resident: the shared sheet, one full-width field and one filled button. */
+  function openNew(){
+    const sh = UI.sheet({ title:"New resident", left:"", right:"", theme:sheetTheme(),
+      body:`<form class="rg-newform rg-sheetui" autocomplete="off"><label class="rg-flab" for="rg-newname">Full name</label>
+        <input class="rg-input" id="rg-newname" name="name" placeholder="First and last name" required autocomplete="off" autocapitalize="words">
+        <button class="rg-b pri big">Create resident</button><button type="button" class="rg-b big quiet" data-cancel style="min-height:44px;border-color:transparent">Cancel</button></form>` });
+    const form = sh.el.querySelector("form");
+    form.addEventListener("submit", e => { e.preventDefault(); const n = form.elements.name.value.trim(); if (!n) return; sh.close(); createSim(n); });
+    form.querySelector("[data-cancel]").addEventListener("click", () => sh.close());
+    if (matchMedia("(pointer:coarse)").matches) setTimeout(() => form.elements.name.focus(), 50);
+  }
+  function drawGallery(){
+    if (st.view === "census") return drawCensus();
+    const chip = (k, label, n) => `<button type="button" class="ui-chip ${st.filter === k ? "on" : ""}" data-filter="${k}" aria-pressed="${st.filter === k}"><span>${label}${n != null ? ` <small>${n}</small>` : ""}</span></button>`;
+    const chev = `<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    const filtered = !!st.where || st.sort !== "name";
+    const pend = pendingNames(), towns = townCounts();
+    const whereRows = [["", "Everywhere", data.sims.length], ...towns.map(([k, n]) => [k, townName(k), n])];
+    root.innerHTML = `<div class="site-registry">${header()}
+      <div class="rg-page">${moveBanner()}
+        <div class="rg-bar">${viewSwitch()}
+          <div class="rg-searchrow"><label class="rg-searchbox">${ICON_SEARCH}<input class="rg-search" id="rg-q" type="search" placeholder="Search a name" aria-label="Search residents" value="${esc(st.q)}" autocomplete="off"></label>
+            <button type="button" class="rg-b rg-filterbtn" data-act="filters" aria-label="Filters${filterCount() ? ", " + filterCount() + " on" : ""}" aria-pressed="${!!filterCount()}"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 7h16M7 12h10M10 17h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span class="lab">Filters</span>${filterCount() ? `<span class="rg-fcount">${filterCount()}</span>` : ""}</button></div>
+          <button type="button" class="rg-b pri rg-newbtn" data-act="new">${ICON_PLUS}New resident</button>
+        </div>
+        ${st.batch ? `<div class="rg-batch">Showing the ${st.batch.ids.length} Sims from your last import. <button class="rg-link" data-act="clearbatch">Show everyone</button></div>` : ""}
+        ${st.msg ? `<p class="rg-msg ${st.err ? "err" : ""}" role="status">${esc(st.msg)}</p>` : ""}
+        <div class="rg-cols">
+          <div class="rg-main">
+            <div class="rg-titlerow"><h2 class="rg-title">Residents</h2></div>
+            <div class="rg-chiprow"><div class="ui-chips rg-statchips" role="group" aria-label="Show">${chip("All", "All")}${chip("Housed", "Housed")}${chip("Homeless", "Homeless")}${chip("Townie", "Townies")}${chip("Incomplete", "Incomplete")}</div><label class="rg-sortlab">Sorted by <b>${esc(sortName().toLowerCase())}</b>${chev}<select id="rg-sort" aria-label="Sort">${sortOptions()}</select></label></div>
+            ${activeLine()}
+            <div class="ui-chips rg-wherechips" role="group" aria-label="Where">${whereRows.map(([k, n, c]) => `<button type="button" class="ui-chip ${st.where === k ? "on" : ""}" data-where="${esc(k)}" aria-pressed="${st.where === k}"><span>${esc(n)} <small>${c}</small></span></button>`).join("")}</div>
+            <div id="rg-results">${resultsHTML()}</div>
+          </div>
+          <aside class="rg-side">
+            <section class="rg-wheresec"><p class="rg-shd">Where</p><div class="rg-group">${whereRows.map(([k, n, c]) => `<button type="button" class="rg-li" data-where="${esc(k)}" aria-pressed="${st.where === k}"><span class="t">${esc(n)}</span><span class="v">${c}</span><span class="rg-tick" aria-hidden="true">${st.where === k ? "✓" : ""}</span></button>`).join("")}</div></section>
+            ${pend.length ? `<section><p class="rg-shd">Awaiting a file</p><div class="rg-group">${pend.map(n => `<button type="button" class="rg-li" data-file="${esc(n)}"><span class="t">${esc(n)}</span><span class="rg-ofile" data-confirm>Open file</span></button>`).join("")}</div><p class="rg-foot">Named in someone's connections but not on file yet.</p></section>` : ""}
+          </aside>
+        </div></div></div>`;
+    st.msg = ""; st.err = false;
+  }
+  /* ---------- census ----------
+     Whole save or one town. A checking balance is the open checking accounts a Sim holds (alone or joint) in Harbor Trust and Porchlight. No balance means "not on file", never $0. */
+  const checkingOf = s => {
+    const acc = (data.accounts || []).filter(a => !a.card && a.status !== "Closed" && /checking/i.test(a.type || "") && (a.holder_sim === s.id || a.co_holder === s.id));
+    return acc.length ? acc.reduce((t, a) => t + Number(a.balance || 0), 0) : null;
+  };
+  const BANDS = [["Under $1,000", 0, 1000], ["$1,000 to $9,999", 1000, 10000], ["$10,000 to $99,999", 10000, 100000], ["$100,000 to $999,999", 100000, 1000000], ["$1 million and up", 1000000, Infinity]];
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const pct = (n, t) => t ? Math.round(n / t * 100) + "%" : "0%";
+  function censusOf(list){
+    const women = list.filter(x => /^f/i.test(x.gender || "")).length, men = list.filter(x => /^m/i.test(x.gender || "")).length, noGender = list.filter(x => !x.gender).length;
+    const stages = new Map(); list.forEach(x => { if (x.life_stage) stages.set(x.life_stage, (stages.get(x.life_stage) || 0) + 1); });
+    const stageRows = [...stages].sort((a, b) => b[1] - a[1] || LIFE_STAGES.indexOf(a[0]) - LIFE_STAGES.indexOf(b[0]));
+    const bal = list.map(checkingOf).filter(v => v != null).sort((a, b) => a - b);
+    const median = bal.length ? (bal.length % 2 ? bal[(bal.length - 1) / 2] : (bal[bal.length / 2 - 1] + bal[bal.length / 2]) / 2) : null;
+    return { n:list.length, women, men, noGender, stageRows, noStage:list.filter(x => !x.life_stage).length, bal, median, noBal:list.length - bal.length, bands:BANDS.map(([l, lo, hi]) => [l, bal.filter(v => v >= lo && v < hi).length]) };
+  }
+  function ratioLine(w, m){
+    if (!w && !m) return "No gender on file yet";
+    if (!m) return "No men on file";
+    if (!w) return "No women on file";
+    const r = Math.max(w, m) / Math.min(w, m);
+    if (Math.abs(r - 1) < .05) return "About as many women as men";
+    return `${r.toFixed(1)} ${w > m ? "women for every man" : "men for every woman"}`;
+  }
+  function drawCensus(){
+    const scope = st.cscope && (st.cscope === NONE || data.sims.some(x => x.residence === st.cscope)) ? st.cscope : "";
+    const list = data.sims.filter(x => !scope ? true : scope === NONE ? !x.residence : x.residence === scope), c = censusOf(list), gt = c.women + c.men;
+    const rows = [["", "Whole save", data.sims.length], ...townCounts().map(([k, n]) => [k, townName(k), n])];
+    const where = scope ? (scope === NONE ? "with no town yet" : "in " + scope) : "in the save";
+    const maxStage = Math.max(1, ...c.stageRows.map(r => r[1])), maxBand = Math.max(1, ...c.bands.map(r => r[1]));
+    const bars = (items, max) => `<div class="rg-group rg-bars">${items.map(([l, n]) => `<div class="rg-li static"><span class="t">${esc(l)}</span><span class="rg-track" aria-hidden="true"><i style="width:${Math.round(n / max * 100)}%"></i></span><span class="n">${n}</span></div>`).join("")}</div>`;
+    const money0 = v => "$" + Math.round(v).toLocaleString("en-US");
+    root.innerHTML = `<div class="site-registry">${header()}
+      <div class="rg-page">${moveBanner()}
+        <div class="rg-bar">${viewSwitch()}</div>
+        <div class="rg-cols">
+          <div class="rg-main">
+            <div class="rg-titlerow"><h2 class="rg-title">Census</h2></div>
+            <div class="ui-chips rg-cchips" role="group" aria-label="Where">${rows.map(([k, n, ct]) => `<button type="button" class="ui-chip ${scope === k ? "on" : ""}" data-cscope="${esc(k)}" aria-pressed="${scope === k}"><span>${esc(n)} <small>${ct}</small></span></button>`).join("")}</div>
+            <div class="rg-pop"><b>${c.n}</b><span>${c.n === 1 ? "resident" : "residents"} ${esc(where)}</span></div>
+            <div class="rg-cgrid">
+              <section><p class="rg-shd">Gender</p><div class="rg-group rg-pad">
+                <b class="rg-big">${esc(ratioLine(c.women, c.men))}</b>
+                ${gt ? `<div class="rg-split" role="img" aria-label="${plural(c.women, "woman", "women")}, ${plural(c.men, "man", "men")}">${c.women ? `<i style="flex:${c.women}"></i>` : ""}${c.men ? `<i style="flex:${c.men}"></i>` : ""}</div>` : ""}
+                <div class="rg-gl"><div><span class="k"><i style="background:var(--women)"></i>Women</span><b>${c.women}</b><small>${pct(c.women, gt)} of ${gt}</small></div><div><span class="k"><i style="background:var(--men)"></i>Men</span><b>${c.men}</b><small>${pct(c.men, gt)} of ${gt}</small></div></div>
+                ${c.noGender ? `<p class="rg-note">${plural(c.noGender, "resident has", "residents have")} no gender set.</p>` : ""}</div></section>
+              <section><p class="rg-shd">Life stage</p>${c.stageRows.length ? bars(c.stageRows, maxStage) : `<div class="rg-group rg-pad rg-empty">No life stages on file yet.</div>`}${c.noStage ? `<p class="rg-foot">${plural(c.noStage, "resident has", "residents have")} no life stage set.</p>` : ""}</section>
+              <section><p class="rg-shd">Checking balance</p>${c.bal.length ? `<div class="rg-group rg-pad rg-medrow"><span>Median</span><b>${money0(c.median)}</b><small>of ${c.bal.length} with a balance</small></div>${bars(c.bands, maxBand)}` : `<div class="rg-group rg-pad rg-empty">No balances on file yet.</div>`}
+                <p class="rg-foot">${c.noBal} of ${c.n} not on file. Balances come from Harbor Trust and Porchlight, and are made up.</p></section>
+            </div>
+          </div>
+          <aside class="rg-side"><section class="rg-csec"><p class="rg-shd">Where</p><div class="rg-group">${rows.map(([k, n, ct]) => `<button type="button" class="rg-li" data-cscope="${esc(k)}" aria-pressed="${scope === k}"><span class="t">${esc(n)}</span><span class="v">${ct}</span><span class="rg-tick" aria-hidden="true">${scope === k ? "✓" : ""}</span></button>`).join("")}</div></section></aside>
+        </div></div></div>`;
+    st.msg = ""; st.err = false;
   }
 
-  function relForm(s, r){
-    const filed = r && r.to_sim ? simById(r.to_sim) : null;
-    const who = r ? (filed ? filed.name : r.to_name || "") : "";
-    const k = r ? r.kind : "friend";
-    const note = !r ? `<p class="r-help">If they're on file, this connection is added to their record too, worded the same way.</p>`
-      : r.pair != null ? `<p class="r-help">Edits here change only ${esc(first(s.name))}'s file. Delete removes it from both files.</p>` : "";
-    return `<form class="r-form r-relform" data-sec="rel" data-rel="${r ? r.id : "new"}">
-      <label><span class="r-lbl">Who</span><input class="r-input" name="who" list="r-dl-sims" value="${esc(who)}" required autocomplete="off">${dl("r-dl-sims", data.sims.filter(x => x.id !== s.id).map(x => x.name))}
-        <div class="r-help">Pick a resident on file, or type a new name to mark them file pending.</div></label>
-      <div><span class="r-lbl">Kind</span><div class="r-kinds">${Object.entries(data.options.relationship_kind).map(([v,n]) => `<label class="r-kind" style="--c:var(--${v})"><input type="radio" name="kind" value="${v}" ${v===k?"checked":""}><span>${n}</span></label>`).join("")}</div></div>
-      <label><span class="r-lbl">How they're connected</span><input class="r-input" name="label" value="${esc(r && r.label)}" placeholder="Short description"></label>
-      <label><span class="r-lbl">Secret line</span><input class="r-input" name="secret" value="${esc(r && r.secret)}"><div class="r-help">Optional. Shows as a redaction bar until declassified.</div></label>
-      <label class="r-check"><input type="checkbox" name="hidden" ${r && r.hidden ? "checked" : ""}> Classified: hide the whole connection in Public view</label>
-      ${note}
-      ${actions(r ? `<button type="button" class="r-btn danger" data-act="rel-del">Delete</button><span class="r-grow"></span>` : "")}
-    </form>`;
+  /* ---------- header and the move banner ---------- */
+  const SEAL = `<svg class="rg-seal" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="30" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="32" cy="32" r="23" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="2 3"/><path d="M32 14l10 18-10 18-10-18z" fill="currentColor"/><path d="M32 14l10 18H22z" fill="currentColor" opacity=".55"/></svg>`;
+  function header(){
+    const upd = data.updated ? new Date(data.updated + "T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "";
+    return `<header class="rg-agency" id="rg-agency">${SEAL}<div><small>Simerican Office of Resident Affairs</small><b>Resident Registry</b></div>
+      <div class="rg-meta">${data.sims.length} residents on file${upd ? `<br>Records current to ${upd}` : ""}</div>
+      <button type="button" class="rg-hdrnew" data-act="new" aria-label="New resident"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button></header>`;
+  }
+  function moveBanner(){
+    if (R().isMoved()) return st.move && st.move.done ? moveDone() : "";
+    if (!R().ready()) return `<div class="rg-move"><b>Your Registry has a new home.</b> Sign in to SimDesk's cloud to move your connections into their own tables. Until then, connections show here read only.</div>`;
+    if (R().problem()) return `<div class="rg-move err"><b>The new Registry tables aren't reachable.</b> ${esc(R().problem())}. Your connections show from the old list for now, read only.</div>`;
+    if (!st.move) return `<div class="rg-move"><div><b>Your Registry is ready to move.</b> Connections get their own tables: one record per link, with dated history and one Secret checkbox. Check the counts first; nothing switches until they match.</div><button class="rg-b pri" data-act="moveplan">Check the counts</button></div>`;
+    const p = R().plan(), c = p.counts, sims = data.sims, housed = sims.filter(s => statusOf(s) === "Housed").length;
+    const row = (k, a, b) => `<tr><td>${k}</td><td class="n">${a}</td><td>${b}</td></tr>`;
+    return `<div class="rg-move open"><h3>Moving your Registry</h3><p>What's in your save right now and where each piece goes. Nothing is deleted; the old list stays in your save as a backup.</p>
+      <table><thead><tr><th>Thing</th><th class="n">Now</th><th>After the move</th></tr></thead><tbody>
+      ${row("Connections", `${p.rows} rows`, `${c.links} links (each pair becomes one)`)}
+      ${row("Romance / Family / Ex / Friend / Work", `${c.rom} / ${c.parent + c.sibling + c.otherFamily} / ${c.ex} / ${c.friend} / ${c.work}`, `same, ${c.parent} parent links start Biological and Raised them`)}
+      ${row("Hidden (Classified) links", c.secret, "Secret checked")}
+      ${row("Slide matches", c.slide, "first history entry dated from the label")}
+      ${row("History entries", "none", `${c.history} (the rest say "date not set")`)}
+      ${row("Case notes", `${p.caseNotes} Sims`, "word for word in Old case notes, File tab")}
+      ${row("Restricted lines", `${p.restricted} on ${p.restrictedSims} Sims`, "word for word under Restricted in Old case notes")}
+      ${row("Status", `${sims.length} Sims`, `${housed} Housed, ${sims.length - housed} Homeless (from the address)`)}
+      </tbody></table>
+      ${st.move.err ? `<p class="rg-msg err">${esc(st.move.err)}</p>` : ""}
+      <div class="rg-moveacts"><button class="rg-b quiet" data-act="movecancel">Not now</button><button class="rg-b pri" data-act="movego" ${st.busy ? "disabled" : ""}>${st.busy ? "Moving..." : `Move ${c.links} links now`}</button></div></div>`;
+  }
+  function moveDone(){
+    const k = st.move.done, ok = (a, b) => a === b ? `<span class="ok">✓ match</span>` : `<span class="bad">different</span>`;
+    const row = (label, a, b) => `<tr><td>${label}</td><td class="n">${a}</td><td class="n">${b}</td><td>${ok(a, b)}</td></tr>`;
+    return `<div class="rg-move open done"><h3>Moved. Every count matches.</h3>
+      <table><thead><tr><th>Thing</th><th class="n">In</th><th class="n">Out</th><th></th></tr></thead><tbody>
+      ${row("Old rows covered", k.in.rows, k.out.rows)}${row("Links", k.in.links, k.out.links)}${row("History entries", k.in.history, k.out.history)}${row("Secret links", k.in.secret, k.out.secret)}
+      ${row("Sims with case notes", k.in.caseNotes, k.out.caseNotes)}${row("Restricted lines", k.in.restricted, k.out.restricted)}</tbody></table>
+      <div class="rg-moveacts"><button class="rg-b pri" data-act="movedone">Done</button></div></div>`;
   }
 
+  /* ---------- the file ---------- */
+  const LS_SHORT = { "Young Adult":"YA" };
+  const ageTrio = s => [s.age != null && s.age !== "" ? String(s.age) : "", s.life_stage ? (LS_SHORT[s.life_stage] || sentence(s.life_stage)) : ""].filter(Boolean).join(" · ");
+  const ageSide = s => [s.age, sentence(s.life_stage)].filter(x => x != null && x !== "").map(String).join(", ");
+  const NOFILE = `<span class="rg-nf">Not on file</span>`;
+  const ICON_UP = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  const ICON_DOWN = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  const iconEye = off => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/>${off ? `<path d="M4 4l16 16" stroke="currentColor" stroke-width="1.8"/>` : ""}</svg>`;
+  const CHEV = `<span class="chev" aria-hidden="true">›</span>`;
+  const order = () => sortedVisible().map(x => x.id);
+  const neighbors = id => { const o = order(), at = o.indexOf(id); return { at, total:o.length, prev:at > 0 ? o[at - 1] : null, next:at >= 0 && at < o.length - 1 ? o[at + 1] : null }; };
+
+  /* the bar under the header: back, file number, up and down arrows (iPad), Edit */
+  function navbar(s){
+    if (st.editing) return `<nav class="rg-nav editing" aria-label="Editing"><button type="button" class="rg-nb" data-act="canceledit">Cancel</button><span class="c">Editing</span><button type="button" class="rg-nb strong" data-act="savefile" ${st.busy ? "disabled" : ""}>${st.busy ? "Saving..." : "Save"}</button></nav>`;
+    const nb = neighbors(s.id), hasSecret = linksFor(s.id).some(l => l.secret);
+    const arrow = (id, icon, label) => id ? `<a class="rg-nb ic rg-pn" href="#/registry/${id}" aria-label="${label}">${icon}</a>` : `<span class="rg-nb ic rg-pn off" aria-hidden="true">${icon}</span>`;
+    const eye = (st.tab === "connections" || st.tab === "file") && hasSecret ? `<button type="button" class="rg-nb ic" data-act="hidesecrets" aria-label="${st.hideSecrets ? "Show secrets" : "Hide secrets"}" aria-pressed="${st.hideSecrets}">${iconEye(st.hideSecrets)}</button>` : "";
+    return `<nav class="rg-nav" aria-label="Resident file"><a class="rg-nb back" href="#/registry"><span aria-hidden="true">‹</span> Residents</a>
+      <span class="c">GFB-${esc(s.file_no)}${nb.at >= 0 ? `<span class="rg-of"> · ${nb.at + 1} of ${nb.total}</span>` : ""}</span>
+      <span class="r">${arrow(nb.prev, ICON_UP, "Previous resident")}${arrow(nb.next, ICON_DOWN, "Next resident")}${eye}<button type="button" class="rg-nb strong" data-act="edit">Edit</button></span></nav>`;
+  }
+
+  /* the record card: photo, file number, name, handle, status */
+  function recCard(s){
+    const E = st.editing, d = st.draft, ph = E ? d.portrait : s.portrait, nm = E ? (d.name || s.name) : s.name;
+    return `<div class="rg-rec"><div class="rg-phwrap"><div class="rg-photo">${ph ? `<img src="${esc(ph)}" alt="">` : esc(initials(nm))}</div>${E ? `<button type="button" class="rg-b sm" data-act="portrait">${ph ? "Change photo" : "Add photo"}</button>` : ""}</div>
+      <div class="rg-recb"><p class="rg-fn">File GFB-${esc(s.file_no)}</p>${E ? `<input class="rg-input rg-name" data-d="name" value="${esc(d.name)}" aria-label="Full name">` : `<h2>${esc(s.name)}</h2>`}<p class="rg-hd">${s.simsta ? esc(s.simsta) : "No Simsta handle"}</p>${pill(s)}</div></div>`;
+  }
+  const trio = s => `<div class="rg-trio">${[["Age", ageTrio(s)], ["Job", dash(s.career)], ["Home", s.household]].map(([k, v]) => `<div><small>${k}</small><b>${v ? esc(v) : NOFILE}</b></div>`).join("")}</div>`;
+  const compactRow = s => `<div class="rg-group"><div class="rg-li rg-person static"><span class="rg-idp">${photoOf(s)}</span><span class="t"><b>${esc(s.name)}</b><small>${esc(meta(s, true))}</small></span>${pill(s)}</div></div>`;
+  const sideFacts = s => `<div class="rg-group rg-facts">${[["Age", ageSide(s)], ["Gender", s.gender], ["Job", dash(s.career)], ["Household", s.household], ["Town", s.residence]].map(([k, v]) => `<div class="rg-li static"><span class="t">${k}</span><span class="v">${v ? esc(v) : NOFILE}</span></div>`).join("")}</div>`;
+
+  /* edit mode: the facts form, once, above the tabs */
+  function facts(s){
+    const d = st.draft;
+    const sel = (f, opts, val, blank) => `<select class="rg-input" data-d="${f}">${blank != null ? `<option value="">${blank}</option>` : ""}${[...new Set([...(val && !opts.includes(val) ? [val] : []), ...opts])].map(o => `<option ${o === val ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+    const hh = households();
+    return `<section><p class="rg-shd">Basics</p><div class="rg-group rg-pad"><dl class="rg-editf">
+      <div><dt>Age</dt><dd class="two"><input class="rg-input" data-d="age" type="number" min="0" inputmode="numeric" value="${esc(d.age)}" aria-label="Age">${sel("life_stage", LIFE_STAGES, d.life_stage, "Life stage")}</dd></div>
+      <div><dt>Gender</dt><dd>${sel("gender", [...new Set(["Female","Male", ...used("gender")])], d.gender, "Not on file")}</dd></div>
+      <div id="rg-at-career"><dt>Job</dt><dd><input class="rg-input" data-d="career" value="${esc(d.career)}" aria-label="Job"></dd></div>
+      <div id="rg-at-household"><dt>Household</dt><dd>${d.newHousehold ? `<input class="rg-input" data-d="household" value="${esc(d.household || "")}" placeholder="New household name" aria-label="New household name">` : `<select class="rg-input" data-d="household" aria-label="Household"><option value="">Pick a household</option>${hh.map(h => `<option ${h === d.household ? "selected" : ""}>${esc(h)}</option>`).join("")}<option value="__new">New household…</option></select>`}</dd></div>
+      <div id="rg-at-townie"><dt>Status</dt><dd><label class="rg-check"><input type="checkbox" data-d="townie" ${d.townie ? "checked" : ""}> Townie (never needs a home)</label><small class="rg-help">Housed or Homeless comes from the address.</small></dd></div>
+      <div id="rg-at-simsta"><dt>Simsta</dt><dd><input class="rg-input" data-d="simsta" value="${esc(d.simsta || "")}" placeholder="@handle" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="Simsta handle"></dd></div>
+      <div id="rg-at-residence"><dt>Town</dt><dd><input class="rg-input" data-d="residence" list="rg-dl-res" value="${esc(d.residence || "")}" aria-label="Town"><datalist id="rg-dl-res">${places().map(p => `<option value="${esc(p)}">`).join("")}</datalist></dd></div>
+      <div><dt>Headshot</dt><dd><button type="button" class="rg-link" data-act="headshot">${d.headshot ? "Change Huddl headshot" : "Add Huddl headshot"}</button></dd></div>
+    </dl></div></section>`;
+  }
+
+  /* ---------- Profile tab ---------- */
+  const sec = (key, title, body) => `<section class="rg-sec" id="rg-at-${key}"><p class="rg-shd">${title}</p><div class="rg-group rg-pad">${body}</div></section>`;
+  const tagsView = arr => `<div class="rg-chips">${arr.map(t => `<span class="rg-tg">${esc(t)}</span>`).join("")}</div>`;
+  const kv = (k, v) => `<div class="rg-kv"><span>${k}</span><div>${v}</div></div>`;
+  const rowv = (k, v) => `<div class="rg-li static"><span class="t">${k}</span><span class="v">${esc(v)}</span></div>`;
+  const rowadd = (k, key, tab) => `<button type="button" class="rg-li" data-addat="${tab}:${key}"><span class="t">${k}</span><span class="v acc">Add</span></button>`;
+  function tagEdit(key, label, vals){
+    return `<div class="rg-tagedit" data-tagkey="${key}"><div class="rg-chips">${(vals || []).map((v, i) => `<span class="rg-tg x">${esc(v)}<button type="button" data-untag="${key}:${i}" aria-label="Remove ${esc(v)}">×</button></span>`).join("")}</div>
+      <div class="rg-tagadd"><input class="rg-input" list="rg-dl-${key}" placeholder="Add to ${esc(label.toLowerCase())}" autocomplete="off" aria-label="Add to ${esc(label)}"><button type="button" class="rg-b sm" data-tagadd="${key}">Add</button></div><datalist id="rg-dl-${key}">${menu(key).map(v => `<option value="${esc(v)}">`).join("")}</datalist></div>`;
+  }
+  /* the "still to fill in" meter counts the same six things as the Incomplete filter */
+  function meter(s){
+    const g = gaps(s), n = 6 - g.length, pct = Math.round(n / 6 * 100);
+    return `<div class="rg-group"><div class="rg-meter"><div class="top"><b>File ${n} of 6 filled</b><span>${pct}%</span></div><div class="bar" aria-hidden="true"><i style="width:${pct}%"></i></div></div>
+      ${g.length ? `<button type="button" class="rg-li" data-act="fillgaps"><span class="t acc">${g.length === 1 ? "Fill in the last one" : "Fill in the other " + g.length}</span>${CHEV}</button>` : ""}</div>`;
+  }
+  function profileTab(s){
+    const E = st.editing, d = st.draft;
+    if (!E) {
+      const sum = R().simInfo(s.id).summary, out = [], r = [], traits = s.traits || [];
+      if (traits.length) out.push(`<div><p class="rg-shd">Personality</p><div class="rg-group rg-pad">${tagsView(traits)}</div></div>`);
+      if (!traits.length) r.push(rowadd("Personality", "traits", "profile"));
+      [["Attachment style", "attachment"], ["Love language", "love_language"], ["Aspiration", "aspiration"]].forEach(([k, f]) => r.push(s[f] ? rowv(k, s[f]) : rowadd(k, f, "profile")));
+      [["Romantic attraction", "romantic_attraction"], ["Sexual attraction", "sexual_attraction"]].forEach(([k, f]) => { if (s[f]) r.push(rowv(k, s[f])); });
+      if (!sum) r.push(rowadd("Summary", "summary", "profile"));
+      if (!PREF_KEYS.some(([k]) => (s[k] || []).length)) r.push(rowadd("Likes and dislikes", "likes", "profile"));
+      out.push(`<div class="rg-group">${r.join("")}</div>`);
+      if (sum) out.push(`<div><p class="rg-shd">Summary</p><div class="rg-group rg-pad"><p class="rg-summary">${esc(sum).replace(/\n/g, "<br>")}</p></div></div>`);
+      PREF_KEYS.forEach(([k, n]) => { if ((s[k] || []).length) out.push(`<div><p class="rg-shd">${n}</p><div class="rg-group rg-pad">${tagsView(s[k])}</div></div>`); });
+      out.push(meter(s));
+      return out.join("");
+    }
+    const sel = (f, opts, val) => `<select class="rg-input" data-d="${f}"><option value="">Pick one</option>${[...new Set([...(val && !opts.includes(val) ? [val] : []), ...opts])].map(o => `<option ${o === val ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+    const o = data.options, traits = d.traits || [];
+    return sec("traits", "Personality", `<div class="rg-chips">${traits.map((t, i) => `<span class="rg-tg x">${esc(t)}<button type="button" data-untrait="${i}" aria-label="Remove ${esc(t)}">×</button></span>`).join("")}${Array.from({ length:Math.max(0, 5 - traits.length) }, () => `<label class="rg-tg new">+ Trait<select data-addtrait aria-label="Add a trait"><option value="">Pick a trait</option>${menu("traits").filter(t => !traits.includes(t)).map(t => `<option>${esc(t)}</option>`).join("")}</select></label>`).join("")}</div>`)
+      + `<section><p class="rg-shd">Details</p><div class="rg-group rg-pad"><div class="rg-row2 edit">
+          <div class="rg-kv" id="rg-at-aspiration"><span>Aspiration</span><div>${sel("aspiration", menu("aspiration"), d.aspiration)}</div></div>
+          <div class="rg-kv" id="rg-at-attachment"><span>Attachment style</span><div>${sel("attachment", o.attachment || [], d.attachment)}</div></div>
+          <div class="rg-kv" id="rg-at-love_language"><span>Love language</span><div>${sel("love_language", o.love_language || [], d.love_language)}</div></div>
+          <div class="rg-kv" id="rg-at-romantic_attraction"><span>Romantic attraction</span><div>${sel("romantic_attraction", attrOpts("romantic_attraction"), d.romantic_attraction)}</div></div>
+          <div class="rg-kv" id="rg-at-sexual_attraction"><span>Sexual attraction</span><div>${sel("sexual_attraction", attrOpts("sexual_attraction"), d.sexual_attraction)}</div></div>
+        </div></div></section>`
+      + sec("summary", "Summary", `<textarea class="rg-input rg-ta" data-d="summary" placeholder="Optional. 4 to 10 sentences in your own words." aria-label="Summary">${esc(d.summary || "")}</textarea>`)
+      + PREF_KEYS.map(([k, n]) => sec(k, n, tagEdit(k, n, d[k]))).join("")
+      + `<p class="rg-optlink"><button type="button" class="rg-link" data-act="lists">Manage option lists</button> for traits, aspirations, likes, dislikes, and turn ons and offs.</p>`;
+  }
+
+  /* ---------- Connections tab ---------- */
+  const otherName = (sd) => sd.other ? (simById(sd.other) ? simById(sd.other).name : sd.other) : (sd.otherName || "Unknown");
+  function subline(sd){
+    const l = sd.link, h = (l.history || []).slice(-1)[0], lab = sd.label || "";
+    let tail = "";
+    if (h) { if (h.label === lab) tail = h.game_date ? gLabel(h.game_date) : ""; else tail = h.label + ", " + (h.game_date ? gLabel(h.game_date) : "date not set"); }
+    if (l.family === "parent") { const rel = [l.biological && "Biological", l.adoptive && "Adoptive", l.raised && "Raised them"].filter(Boolean).join(", "); if (rel && !(l.biological && l.raised && !l.adoptive)) tail = rel; if (l.unconfirmed) tail = (tail ? tail + ", " : "") + "Unconfirmed"; }
+    return [lab, tail].filter(Boolean).join(" · ") + (sd.other ? "" : (lab || tail ? ", " : "") + "file pending");
+  }
   function connectionsTab(s){
-    const rels = relsFor(s.id);
-    const rows = rels.map(r => st.rel === String(r.id) ? relForm(s, r) : relHTML(s, r)).join("");
-    const list = `${st.rel === "new" ? relForm(s, null) : ""}${rows || (st.rel === "new" ? "" : '<span class="r-none">No connections on file</span>')}`;
-    return `<section class="r-sec"><h3>Connections <small>${rels.length} on file</small>${st.rel ? "" : `<button type="button" class="r-sec-edit" data-act="rel-new">+ Add</button>`}</h3>
-      <div class="r-conn"><div class="r-rels">${list}</div>
-        <div class="r-webbox"><svg viewBox="0 0 320 320" role="img" aria-label="Connection web">${webSVG(s)}</svg>
-          <div class="r-legend">
-            <span><i style="background:var(--fam)"></i>Family</span><span><i style="background:var(--rom)"></i>Romance</span>
-            <span><i style="background:var(--ex)"></i>Ex</span><span><i style="background:var(--work)"></i>Work</span>
-            <span><i style="background:var(--friend)"></i>Friend</span><span><i style="background:var(--stamp);opacity:.5"></i>Classified</span>
-          </div></div></div></section>`;
+    const all = linksFor(s.id), list = all.filter(l => !(st.hideSecrets && l.secret)), canEdit = R().canEdit(), hid = all.length - list.length;
+    const groups = GROUPS.map(([k, n]) => {
+      const items = list.filter(l => l.kind === k).map(l => R().side(l, s.id)).sort((a, b) => stripNick(otherName(a)).localeCompare(stripNick(otherName(b))));
+      if (!items.length && k !== "rom" && k !== "fam") return "";
+      return `<section><p class="rg-shd rg-kind"><i class="rg-kd" style="background:var(--${k})"></i>${n}</p>${items.length ? `<div class="rg-group">${items.map(sd => linkRow(s, sd)).join("")}</div>` : `<div class="rg-group rg-pad rg-empty">None on file yet.</div>`}</section>`;
+    }).join("");
+    return `${hid ? `<p class="rg-hiddennote">${hid} secret ${hid === 1 ? "connection" : "connections"} hidden</p>` : ""}${groups}
+      <button type="button" class="rg-b full" data-act="${canEdit ? "addlink" : "needmove"}">${ICON_PLUS}Add connection</button>`;
+  }
+  function linkRow(s, sd){
+    const l = sd.link, o = sd.other ? simById(sd.other) : null, name = otherName(sd);
+    return `<button type="button" class="rg-li rg-person ${l.secret ? "secret" : ""}" data-link="${l.id}" aria-haspopup="dialog">
+      <span class="rg-av">${avSq(name, o && o.portrait)}</span>
+      <span class="t"><b>${esc(name)}</b><small>${esc(subline(sd))}</small></span>${l.secret ? `<span class="rg-st sec">Secret</span>` : ""}${CHEV}</button>`;
   }
 
-  function propertyTab(s){
-    const home = homeOf(s), owned = new Set(ownedBy(s).map(l => l.id));
-    const view = `<div class="r-grid2">
-        <div><span class="r-lbl">Home address</span>${home ? esc(lotLabel(home)) : '<span class="r-none">Not on file</span>'}</div>
-        <div><span class="r-lbl">Owns</span>${ownedBy(s).length ? `<div class="r-tags">${ownedBy(s).map(l => `<span class="r-tagi">${esc(lotLabel(l))}</span>`).join("")}</div>` : '<span class="r-none">No property on record</span>'}</div></div>`;
-    const homes = lots().filter(l => RESIDENTIAL.includes(l.lot_type) && !lots().some(u => u.parent_id === l.id));
-    const edit = form("property", `
-      <label><span class="r-lbl">Home address</span><select name="home"><option value="">No home on file</option>${homes.map(l => `<option value="${l.id}" ${home && home.id===l.id?"selected":""}>${esc(lotLabel(l))}${l.household && l.household !== s.household ? " (" + esc(l.household) + ")" : (!l.household ? " (vacant)" : "")}</option>`).join("")}</select>
-        <div class="r-help">Moves this Sim's whole household into that lot. If another household already lives there, this Sim joins it.</div></label>
-      <div><span class="r-lbl">Owns</span><div class="r-owns">${lots().filter(l => !l.parent_id || owned.has(l.id)).map(l => `<label><input type="checkbox" name="owns" value="${l.id}" ${owned.has(l.id)?"checked":""}>${esc(lotLabel(l))}${l.owner && !owned.has(l.id) ? ` <em>owned by ${esc(l.owner)}</em>` : ""}</label>`).join("")}</div>
-        <div class="r-help">Homes or community lots. Checking a lot someone else owns transfers it to this Sim.</div></div>`);
-    return (lots().length ? sec("property", "Property records", "", st.edit === "property" ? edit : view) : "")
-      + sec("money", "Money", "From Harbor Trust and Porchlight", moneyHTML(s), false);
+  /* ---------- the connection sheet (UI.sheet: bottom sheet on phone, card on iPad) ---------- */
+  let SH = null;
+  function openSheet(s, link, focus){
+    const ro = !R().canEdit();
+    if (link) {
+      const sd = R().side(link, s.id);
+      st.sheet = { id:link.id, me:s.id, other:sd.other, otherName:sd.otherName, who:"", kind:link.kind, readonly:ro,
+        fam: link.family === "parent" ? (sd.isParent ? "me" : "them") : (link.family || "sibling"),
+        myLabel:sd.label || "", theirLabel:sd.theirLabel || "", biological:!!link.biological, adoptive:!!link.adoptive, raised:!!link.raised, secret:!!link.secret, unconfirmed:!!link.unconfirmed, editCalls:false, adding:focus === "hist",
+        history:(link.history || []).map(h => ({ ...h })), entry:{ date:UI.gameToday(cal()), nodate:false, label:"" }, editEntry:null, focus };
+    } else st.sheet = { id:null, me:s.id, other:null, otherName:null, who:"", kind:"friend", readonly:false, fam:"sibling", myLabel:"", theirLabel:"", biological:true, adoptive:false, raised:true, secret:false, unconfirmed:false, editCalls:false, adding:focus === "hist", history:[], entry:{ date:UI.gameToday(cal()), nodate:false, label:"" }, editEntry:null, focus };
+    mountSheet(s);
+  }
+  const noRelOf = h => h.kind === "fam" && (h.fam === "me" || h.fam === "them") && !h.biological && !h.adoptive && !h.raised;
+  function mountSheet(s){
+    const h = st.sheet;
+    SH = UI.sheet({ title:h.readonly ? "Connection" : h.id ? "Edit connection" : "New connection", left:h.readonly ? "" : "Cancel", right:h.readonly ? "Done" : "Save", theme:sheetTheme(), body:sheetBody(s),
+      onRight: close => { if (!st.sheet || st.sheet.readonly) close("done"); else saveSheet(s); },
+      onClose: () => { SH = null; st.sheet = null; } });
+    SH.body.classList.add("rg-sheetui");
+    SH.el.addEventListener("click", e => sheetClick(e.target, s));
+    SH.el.addEventListener("change", e => { if (e.target.dataset.se === "enodate") { readSheetFields(); refreshSheet(s); } });
+    SH.el.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.dataset && e.target.dataset.se === "nlabel") { e.preventDefault(); sheetAct("entryadd", null, s); } });
+    refreshSheet(s);
+  }
+  function refreshSheet(s){
+    if (!SH || !st.sheet) return;
+    const h = st.sheet, bd = SH.body, y = bd.scrollTop;
+    bd.innerHTML = sheetBody(s); bd.scrollTop = y;
+    const r = SH.el.querySelector("[data-sr]");
+    if (!h.readonly) { r.textContent = st.busy ? "Saving..." : "Save"; r.disabled = !!st.busy || noRelOf(h); r.style.opacity = r.disabled ? ".5" : ""; }
+    if (h.focus === "hist") { h.focus = null; const f = bd.querySelector('[data-se="nlabel"]'); if (f) { f.scrollIntoView({ block:"center" }); f.focus({ preventScroll:true }); } }
+  }
+  function sheetBody(s){
+    const h = st.sheet, other = h.other ? simById(h.other) : null, oName = other ? other.name : (h.otherName || h.who || "them");
+    const A = first(s.name), B = first(oName) || "Them", ro = h.readonly;
+    const grp = rows => `<div class="rg-group">${rows}</div>`;
+    const shd = t => `<p class="rg-shd">${t}</p>`;
+    const dl = DEFAULT_LABEL[h.fam] || [], ml = h.myLabel || dl[0] || "", tl = h.theirLabel || dl[1] || "";
+    const dateFields = (prefix, d) => `<span class="rg-gd"><select data-se="${prefix}season" aria-label="Season">${cal().seasons.map(x => `<option ${d && x.name === d.season ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select><input type="number" min="1" max="21" inputmode="numeric" data-se="${prefix}day" value="${d ? d.day : 1}" aria-label="Day"><span>Y</span><input type="number" min="0" inputmode="numeric" data-se="${prefix}year" value="${d ? d.year : cal().year}" aria-label="Year"></span>`;
+    const links = other ? (() => { const thread = GFB.messages && GFB.messages.isLoaded() ? GFB.messages.find([s.id, other.id]) : null; const href = thread ? `#/messages/t/${thread.id}/${s.id}` : `#/messages/sim/${s.id}`;
+      return grp(`<a class="rg-li" href="${href}"><span class="t">Messages with ${esc(B)}</span>${CHEV}</a><a class="rg-li" href="#/registry/${other.id}"><span class="t">${esc(B)}'s file</span>${CHEV}</a>`); })() : "";
+    const person = h.id ? grp(`<div class="rg-li rg-person static"><span class="rg-av">${avSq(oName, other && other.portrait)}</span><span class="t"><b>${esc(A)} and ${esc(B)}</b><small>${esc(KIND_NAME[h.kind] || "")}${ml && tl && ml !== tl ? ` · ${esc(A)} is ${esc(ml)}, ${esc(B)} is ${esc(tl)}` : ml || tl ? ` · ${esc(ml || tl)}` : ""}</small></span>${h.secret ? `<span class="rg-st sec">Secret</span>` : ""}</div>`) : "";
+    const histRO = h.history.length ? grp(h.history.map(e => `<div class="rg-li rg-entryrow static"><span class="rg-entrydate">${esc(gShort(e.game_date))}</span><span class="t">${esc(e.label)}${e.note ? `<small>${esc(e.note)}</small>` : ""}</span></div>`).join("")) : grp(`<div class="rg-pad rg-empty">No history yet.</div>`);
+    if (ro) return `${person}${shd("History")}${histRO}${links}<p class="rg-help rg-pad">Connections are read only until your Registry moves to its new tables.</p>`;
+    const isParent = h.kind === "fam" && (h.fam === "me" || h.fam === "them"), noRel = noRelOf(h);
+    const sw = (key, label, help) => `<button type="button" class="rg-li rg-swrow" role="switch" aria-checked="${!!h[key]}" data-sp="${key}"><span class="t">${label}${help ? `<small>${help}</small>` : ""}</span><span class="rg-sw" aria-hidden="true"></span></button>`;
+    const radio = (name, v, label, val) => `<button type="button" class="rg-li" role="radio" aria-checked="${v === val}" data-sk="${name}:${v}"><span class="t">${esc(label)}</span><span class="rg-tick" aria-hidden="true">${v === val ? "✓" : ""}</span></button>`;
+    const secretHelp = h.secret ? (h.kind === "fam" ? "Heirloom hides it behind the eye button, and Spill keeps it out of the public layer." : "Shows with a red Secret chip, and Spill keeps it out of the public layer.") : "Hidden from public screens.";
+    const entries = h.history.map((e, i) => h.editEntry === i
+      ? `<div class="rg-pad rg-entryedit">${dateFields("e", e.game_date || UI.gameToday(cal()))}<button type="button" class="ui-chip ${e.game_date && e.game_date.year === 0 ? "on" : ""}" data-sa="y0:e" aria-pressed="${!!e.game_date && e.game_date.year === 0}"><span>Year 0</span></button><label class="rg-check"><input type="checkbox" data-se="enodate" ${e.game_date ? "" : "checked"}> No date</label><input class="rg-input" data-se="elabel" value="${esc(e.label)}" list="rg-dl-hist" aria-label="What happened"><button type="button" class="rg-b sm pri" data-sa="entrydone">Done</button></div>`
+      : `<div class="rg-li rg-entryrow"><button type="button" class="rg-entrydate" data-sa="entryedit:${i}" aria-label="Change this entry">${esc(gShort(e.game_date))}</button><span class="t">${esc(e.label)}${e.note ? `<small>${esc(e.note)}</small>` : ""}</span><button type="button" class="rg-rm" data-sa="entrydel:${i}">Remove</button></div>`).join("");
+    const calls = h.editCalls || (!ml && !tl && h.kind !== "fam" && !h.id)
+      ? `<div class="rg-pad rg-two"><div><div class="rg-flab">${esc(A)} calls it</div><input class="rg-input" data-se="myLabel" value="${esc(h.myLabel)}" aria-label="${esc(A)} calls it"></div><div><div class="rg-flab">${esc(B)} calls it</div><input class="rg-input" data-se="theirLabel" value="${esc(h.theirLabel)}" aria-label="${esc(B)} calls it"></div></div>`
+      : `<div class="rg-li static"><span class="t">${ml && tl && ml !== tl ? `${esc(A)} is ${esc(ml)}, ${esc(B)} is ${esc(tl)}` : ml || tl ? `They call it ${esc(ml || tl)}` : "No label yet"}</span><button type="button" class="rg-link" data-sa="calls">${ml || tl ? "Change" : "Add"}</button></div>`;
+    return `${h.id ? person : `${shd("Who")}${grp(`<div class="rg-pad"><input class="rg-input" data-se="who" list="rg-dl-sims" value="${esc(h.who)}" placeholder="Start typing a name" autocomplete="off" aria-label="Who"><datalist id="rg-dl-sims">${data.sims.filter(x => x.id !== s.id).map(x => `<option value="${esc(x.name)}">`).join("")}</datalist><p class="rg-help">Pick a resident on file, or type a new name to mark them file pending.</p></div>`)}`}
+      ${shd("Kind")}<div class="rg-seg rg-kindseg" role="group" aria-label="Kind">${KINDS.map(([k, n]) => `<button type="button" data-sk="kind:${k}" aria-pressed="${h.kind === k}"><span>${n}</span></button>`).join("")}</div>
+      ${h.kind === "fam" ? `${shd("Family link")}${grp([["them", `${B} is ${A}'s parent`], ["me", `${A} is ${B}'s parent`], ["sibling", "Siblings"], ["other", "Other family"]].map(([v, l]) => radio("fam", v, l, h.fam)).join(""))}` : ""}
+      ${isParent ? `${shd("This link is")}${grp(sw("biological", "Biological") + sw("adoptive", "Adoptive") + sw("raised", "Raised them") + sw("unconfirmed", "Unconfirmed", h.unconfirmed ? "Heirloom shows it dashed with a ? until a DNA kit confirms it." : ""))}${noRel ? `<p class="rg-help rg-warn">Pick at least one: Biological, Adoptive or Raised them.</p>` : ""}` : ""}
+      ${grp(sw("secret", "Secret", secretHelp))}
+      ${shd("What they call it")}${grp(calls)}
+      <div id="rg-sheet-hist">${shd("History")}${grp(entries + (h.adding ? `<div class="rg-pad rg-newentry">${dateFields("n", h.entry.date)}<button type="button" class="ui-chip ${h.entry.date && h.entry.date.year === 0 ? "on" : ""}" data-sa="y0:n" aria-pressed="${!!h.entry.date && h.entry.date.year === 0}"><span>Year 0</span></button><input class="rg-input" data-se="nlabel" list="rg-dl-hist" value="${esc(h.entry.label)}" placeholder="Dating" aria-label="What happened"><button type="button" class="rg-link" data-sa="entrycancel">Cancel</button></div>` : "") + `<button type="button" class="rg-li" data-sa="newentry"><span class="t acc">Add to history</span></button>`)}<datalist id="rg-dl-hist">${HIST_SUGGEST.map(x => `<option value="${esc(x)}">`).join("")}</datalist></div>
+      ${h.err ? `<p class="rg-msg err">${esc(h.err)}</p>` : ""}
+      ${links}
+      ${h.id ? grp(`<button type="button" class="rg-li rg-delrow" data-sa="delete">Delete connection</button>`) : ""}`;
+  }
+  function readSheetFields(){
+    const h = st.sheet; if (!h || !SH) return;
+    const g = k => SH.el.querySelector(`[data-se="${k}"]`);
+    if (g("who")) h.who = g("who").value;
+    ["myLabel","theirLabel"].forEach(k => { if (g(k)) h[k] = g(k).value; });
+    if (g("nseason")) h.entry = { ...h.entry, date:{ season:g("nseason").value, day:clampDay(g("nday").value), year:yearOf(g("nyear").value) }, label:g("nlabel").value };
+    if (h.editEntry != null && g("eseason")) { const e = h.history[h.editEntry]; e.label = g("elabel").value.trim() || e.label; e.game_date = g("enodate").checked ? null : { season:g("eseason").value, day:clampDay(g("eday").value), year:yearOf(g("eyear").value) }; }
+  }
+  /* Year 0 is allowed so past lore can be dated before the save's first year */
+  const yearOf = v => { const n = parseInt(v, 10); return isNaN(n) ? cal().year : Math.max(0, n); };
+  const clampDay = v => Math.min(21, Math.max(1, parseInt(v, 10) || 1));
+  const DEFAULT_LABEL = { me:["Child","Parent"], them:["Parent","Child"], sibling:["Sibling","Sibling"] };
+  function sheetClick(t, s){
+    const h = st.sheet; if (!h) return;
+    if (t.closest("a[href]")) { SH && SH.close("nav"); return; }
+    const b = t.closest("[data-sa]"); if (b) return sheetAct(b.dataset.sa, b, s);
+    const sp = t.closest("[data-sp]")?.dataset.sp;
+    if (sp) { readSheetFields(); h[sp] = !h[sp]; return refreshSheet(s); }
+    const sk = t.closest("[data-sk]")?.dataset.sk;
+    if (sk) { readSheetFields(); const [k, v] = sk.split(":");
+      if (k === "kind") h.kind = v;
+      if (k === "fam") { const was = h.fam; h.fam = v; if (DEFAULT_LABEL[v]) { const [a, b2] = DEFAULT_LABEL[v], defs = Object.values(DEFAULT_LABEL).flat(); if (!h.myLabel || defs.includes(h.myLabel)) h.myLabel = a; if (!h.theirLabel || defs.includes(h.theirLabel)) h.theirLabel = b2; } if ((v === "me" || v === "them") && !(was === "me" || was === "them") && !h.id) { h.biological = true; h.raised = true; h.adoptive = false; } }
+      refreshSheet(s);
+    }
+  }
+  async function sheetAct(sa, btn, s){
+    const h = st.sheet; if (!h) return;
+    readSheetFields();
+    if (sa === "y0:n") { h.entry = { ...h.entry, nodate:false, date:{ ...(h.entry.date || UI.gameToday(cal())), year:0 } }; return refreshSheet(s); }
+    if (sa === "y0:e" && h.editEntry != null) { const e = h.history[h.editEntry]; e.game_date = { ...(e.game_date || UI.gameToday(cal())), year:0 }; return refreshSheet(s); }
+    if (sa === "calls") { h.editCalls = true; return refreshSheet(s); }
+    if (sa === "newentry") { if (h.adding && h.entry.label.trim()) { h.history.push({ id:null, label:h.entry.label.trim(), game_date:h.entry.nodate ? null : h.entry.date, note:null }); } h.adding = true; h.entry = { ...h.entry, label:"" }; h.err = null; h.focus = "hist"; return refreshSheet(s); }
+    if (sa === "entrycancel") { h.adding = false; h.entry = { ...h.entry, label:"" }; return refreshSheet(s); }
+    if (sa === "entryadd") { if (!h.entry.label.trim()) { h.err = "Type what happened, then tap Add to history."; return refreshSheet(s); } h.history.push({ id:null, label:h.entry.label.trim(), game_date:h.entry.date, note:null }); h.entry = { ...h.entry, label:"" }; h.err = null; h.focus = "hist"; return refreshSheet(s); }
+    if (sa.startsWith("entryedit:")) { h.editEntry = Number(sa.split(":")[1]); return refreshSheet(s); }
+    if (sa === "entrydone") { h.editEntry = null; return refreshSheet(s); }
+    if (sa.startsWith("entrydel:")) { if (!UI.confirmTap(btn, "Tap again to remove")) return; h.history.splice(Number(sa.split(":")[1]), 1); h.editEntry = null; return refreshSheet(s); }
+    if (sa === "delete") {
+      if (!UI.confirmTap(btn, "Tap again to delete")) return;
+      try { await R().deleteLink(h.id); } catch (err) { h.err = err.message; return refreshSheet(s); }
+      if (SH) SH.close("deleted"); st.openLink = null; st.msg = "Connection removed from both files."; st.err = false; data = await GFB.getAll(); return draw();
+    }
+  }
+  async function saveSheet(s){
+    readSheetFields();
+    const h = st.sheet; h.err = null;
+    let other = h.other, otherName = h.otherName;
+    if (!h.id) {
+      const t = findSim(h.who);
+      if (!h.who.trim()) { h.err = "Pick who this connection is with."; return refreshSheet(s); }
+      if (t && t.id === s.id) { h.err = "A Sim can't be connected to themselves."; return refreshSheet(s); }
+      other = t ? t.id : null; otherName = t ? null : h.who.trim();
+      if (other && linksFor(s.id).some(l => l.a_sim === other || l.b_sim === other)) { h.err = `${first(s.name)} and ${first(t.name)} already have a connection. Open it from the list to change it.`; return refreshSheet(s); }
+    }
+    if (h.entry.label.trim()) h.history.push({ id:null, label:h.entry.label.trim(), game_date:h.entry.nodate ? null : h.entry.date, note:null });
+    const parent = h.kind === "fam" && (h.fam === "me" || h.fam === "them");
+    let myL = h.myLabel.trim() || null, thL = h.theirLabel.trim() || null;
+    if (h.kind === "fam" && DEFAULT_LABEL[h.fam]) { if (!myL) myL = DEFAULT_LABEL[h.fam][0]; if (!thL) thL = DEFAULT_LABEL[h.fam][1]; }
+    /* the parent is always a_sim; otherwise the Sim whose file it's opened from goes first on a new link, and an existing link keeps its order */
+    const old = h.id ? R().linkById(h.id) : null;
+    let meIsA = old ? old.a_sim === s.id : true;
+    if (parent) meIsA = h.fam === "me";
+    if (!other && !meIsA) meIsA = true;   /* a file-pending Sim can't be a_sim */
+    const link = { id:h.id || R().newId(), a_sim:meIsA ? s.id : other, b_sim:meIsA ? other : s.id, b_name:meIsA && !other ? otherName : null, kind:h.kind,
+      family:h.kind === "fam" ? (parent ? "parent" : h.fam === "sibling" ? "sibling" : "other") : null,
+      a_label:meIsA ? myL : thL, b_label:meIsA ? thL : myL, biological:parent ? h.biological : null, adoptive:parent ? h.adoptive : null, raised:parent ? h.raised : null, secret:h.secret, unconfirmed:parent ? !!h.unconfirmed : false };
+    if (!parent && h.kind === "fam" && !other && h.fam !== "sibling") link.family = "other";
+    st.busy = true; refreshSheet(s);
+    let saved = false;
+    try { await R().saveLink(link, h.history.map(e => ({ id:e.id || undefined, label:e.label, game_date:e.game_date || null, note:e.note || null }))); saved = true; }
+    catch (e) { h.err = e.message; }
+    st.busy = false;
+    if (!saved) return refreshSheet(s);
+    if (SH) SH.close("saved");
+    st.openLink = null; st.msg = "Connection saved."; st.err = false; data = await GFB.getAll(); draw();
   }
 
-  /* every account this Sim holds, shares, or is custodian of, at both banks, plus loans and credit score */
+
+  /* ---------- Timeline (top of the File tab) ----------
+     Every dated history entry on this Sim's connections, plus their home changes (Housed, Homeless, Townie).
+     Entries with no date sit in their own group, "Before the save started" counts as dated and sits at the very bottom. */
+  const BEFORE = { season:"Before the save started", day:0, year:0, before:true };
+  const KIND_NAME = Object.fromEntries(KINDS);
+  function relTitle(label, name){
+    const L = String(label || "").trim(), l = L.toLowerCase();
+    if (/^matched on slide/.test(l)) return `Matched with ${name} on Slide`;
+    if (/^(married|met|adopted|divorced)$/.test(l)) return `${L} ${name}`;
+    if (l === "engaged") return `Engaged to ${name}`;
+    if (l === "dating") return `Started dating ${name}`;
+    if (l === "parent and child") return `Parent and child: ${name}`;
+    return `${L || "Connected"} with ${name}`;
+  }
+  function homeAddress(s){ const h = homeOf(s); return h ? lotLabel(h) : null; }
+  /* the Sim's timeline entries, newest data first is decided later; hidden counts the secrets left out */
+  function tlItems(s){
+    const out = []; let hidden = 0;
+    linksFor(s.id).forEach(l => {
+      if (st.hideSecrets && l.secret) { hidden += (l.history || []).length; return; }
+      const sd = R().side(l, s.id), name = otherName(sd), kn = KIND_NAME[l.kind] || "";
+      (l.history || []).forEach((h, idx) => {
+        const slide = /^matched on slide/i.test(h.label || "");
+        out.push({ key:`h:${l.id}:${idx}`, type:"rel", link:l, hist:h, idx, date:h.game_date || null, tone:l.secret ? "sec" : "rom", secret:!!l.secret, kind:l.kind,
+          title:relTitle(h.label, name), sub:[slide ? "From Slide" : "", kn, l.secret ? "Secret" : (slide ? "" : sd.label)].filter(Boolean).join(" · ") });
+      });
+    });
+    const evs = R().homeEventsOf(s.id);
+    evs.forEach(e => out.push({ key:"e:" + e.id, type:"home", ev:e, date:e.game_date || null, tone:"home", kind:"home", title:{ housed:"Housed", homeless:"Homeless", townie:"Townie" }[e.kind],
+      sub:"Home · " + (e.address || (e.kind === "housed" ? "address on file" : "no home address yet")), lot:e.address ? lots().find(x => lotLabel(x) === e.address) : null }));
+    if (!evs.length) { const k = statusOf(s).toLowerCase(), a = homeAddress(s);
+      out.push({ key:"v:" + k, type:"home", virtual:true, ev:{ sim_id:s.id, kind:k, address:a }, date:null, tone:"home", kind:"home", title:statusOf(s), sub:"Home · " + (a || "no home address yet"), lot:homeOf(s) }); }
+    return { out, hidden };
+  }
+  const dayWord = d => d && d.day ? "Day " + d.day : "";
+  function tlRow(it, s){
+    if (st.tl.edit && st.tl.edit.key === it.key) return tlEditRow(it);
+    const d = it.date, dated = !!d, tone = it.tone === "sec" ? "secret" : it.tone === "home" ? "bar" : it.kind, go = !(it.type === "home" && !it.lot);
+    const dayBtn = dated ? `<button type="button" class="rg-evday" data-tl="date:${esc(it.key)}" aria-label="Change this date">${d.before ? "Before" : esc(dayWord(d))}</button>` : `<button type="button" class="rg-evday add" data-tl="date:${esc(it.key)}">Add date</button>`;
+    const inner = `<i class="rg-dot ${it.tone}" style="--c:var(--${tone})"></i><span class="t"><b>${esc(it.title)}${it.secret ? `<span class="rg-st sec">Secret</span>` : ""}</b><small>${esc(it.sub)}</small></span>${go ? CHEV : ""}`;
+    return `<div class="rg-ev ${it.secret ? "secret" : ""}">${dayBtn}${go ? `<button type="button" class="rg-evmain" data-tlopen="${esc(it.key)}">${inner}</button>` : `<div class="rg-evmain">${inner}</div>`}</div>`;
+  }
+  const tlDateFields = (d, before, pre) => before
+    ? `<span class="rg-gdfixed">Before the save started</span>`
+    : `<span class="rg-gd"><select data-tlf="${pre}season" aria-label="Season">${cal().seasons.map(x => `<option ${d && x.name === d.season ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select><input type="number" min="1" max="21" inputmode="numeric" data-tlf="${pre}day" value="${d ? d.day : 1}" aria-label="Day"><span>Y</span><input type="number" min="0" inputmode="numeric" data-tlf="${pre}year" value="${d ? d.year : cal().year}" aria-label="Year"></span>`;
+  function tlEditRow(it){
+    const e = st.tl.edit, today = UI.gameToday(cal());
+    return `<div class="rg-ev editing"><div class="rg-evedit"><b>${esc(it.title)}</b>
+      <div class="rg-gdrow">${tlDateFields(e.date, e.before, "e")}</div>
+      <div class="ui-chips wrap"><button type="button" class="ui-chip ${e.before ? "on" : ""}" data-tl="q:before" aria-pressed="${!!e.before}"><span>Before the save started</span></button><button type="button" class="ui-chip ${!e.before && e.date && e.date.year === 0 ? "on" : ""}" data-tl="q:y0" aria-pressed="${!e.before && !!e.date && e.date.year === 0}"><span>Year 0</span></button><button type="button" class="ui-chip" data-tl="q:today"><span>Today (${esc(today.season)}, day ${today.day})</span></button></div>
+      ${e.err ? `<p class="rg-msg err" style="margin:8px 0 0">${esc(e.err)}</p>` : ""}
+      <div class="rg-gdact">${it.type === "home" && !it.virtual ? `<button type="button" class="rg-b del" data-tl="remove">Remove</button>` : ""}<button type="button" class="rg-b quiet sm" data-tl="cancel">Cancel</button><button type="button" class="rg-b pri sm" data-tl="savedate" ${st.busy ? "disabled" : ""}>Save date</button></div></div></div>`;
+  }
+  function tlAddForm(s){
+    const a = st.tl.add, links = linksFor(s.id).filter(l => !(st.hideSecrets && l.secret)), today = UI.gameToday(cal());
+    const opts = [`<option value="home" ${a.what === "home" ? "selected" : ""}>A home change</option>`, ...links.map(l => `<option value="${l.id}" ${a.what === l.id ? "selected" : ""}>${esc(otherName(R().side(l, s.id)))} (${esc(KIND_NAME[l.kind] || "")}${l.secret ? ", secret" : ""})</option>`)];
+    return `<div class="rg-tladd"><div class="rg-flab">What happened</div>
+      <select class="rg-input" data-tlf="what" aria-label="What happened with">${opts.join("")}</select>
+      ${a.what === "home" ? `<div class="ui-chips wrap" role="group" aria-label="Home change">${[["housed","Housed"],["homeless","Homeless"],["townie","Townie"]].map(([k, n]) => `<button type="button" class="ui-chip ${a.hkind === k ? "on" : ""}" data-tl="hk:${k}" aria-pressed="${a.hkind === k}"><span>${n}</span></button>`).join("")}</div>`
+        : `<input class="rg-input" data-tlf="label" list="rg-dl-hist" value="${esc(a.label)}" placeholder="Married, Engaged, Split..." aria-label="What happened" style="margin-top:8px"><datalist id="rg-dl-hist">${HIST_SUGGEST.map(x => `<option value="${esc(x)}">`).join("")}</datalist>`}
+      <div class="rg-flab" style="margin-top:10px">When</div>
+      <div class="rg-gdrow">${tlDateFields(a.date, a.before, "n")}</div>
+      <div class="ui-chips wrap"><button type="button" class="ui-chip ${a.before ? "on" : ""}" data-tl="aq:before" aria-pressed="${!!a.before}"><span>Before the save started</span></button><button type="button" class="ui-chip ${!a.before && a.date && a.date.year === 0 ? "on" : ""}" data-tl="aq:y0" aria-pressed="${!a.before && !!a.date && a.date.year === 0}"><span>Year 0</span></button><button type="button" class="ui-chip" data-tl="aq:today"><span>Today (${esc(today.season)}, day ${today.day})</span></button></div>
+      ${a.err ? `<p class="rg-msg err" style="margin:6px 0 0">${esc(a.err)}</p>` : ""}
+      <div class="rg-gdact"><button type="button" class="rg-b quiet sm" data-tl="addcancel">Cancel</button><button type="button" class="rg-b pri sm" data-tl="addsave" ${st.busy ? "disabled" : ""}>Add to timeline</button></div></div>`;
+  }
+  function timelineHTML(s){
+    const { out, hidden } = tlItems(s), f = st.tl.filter;
+    const rel = out.filter(x => x.type === "rel"), home = out.filter(x => x.type === "home");
+    const shown = f === "rel" ? rel : f === "home" ? home : out;
+    const ord = d => UI.gameOrd(d, cal());
+    const dated = shown.filter(x => x.date && !x.date.before).sort((a, b) => ord(b.date) - ord(a.date));
+    const undated = shown.filter(x => !x.date), before = shown.filter(x => x.date && x.date.before);
+    const years = [];
+    dated.forEach(x => { let y = years[years.length - 1]; if (!y || y.year !== x.date.year) years.push(y = { year:x.date.year, seasons:[] }); let se = y.seasons[y.seasons.length - 1]; if (!se || se.name !== x.date.season) y.seasons.push(se = { name:x.date.season, items:[] }); se.items.push(x); });
+    let body = years.map(y => `<p class="rg-yr">Year ${y.year}</p>${y.seasons.map(se => `<p class="rg-shd">${esc(se.name)}</p><div class="rg-group">${se.items.map(x => tlRow(x, s)).join("")}</div>`).join("")}`).join("");
+    if (undated.length) body += `<p class="rg-shd rg-undated">Date not set · ${undated.length}${undated.some(x => x.type === "rel" && (x.hist.note || "").includes("old file")) ? " · moved over from Notion" : ""}</p><div class="rg-group">${undated.map(x => tlRow(x, s)).join("")}</div>`;
+    if (before.length) body += `<p class="rg-shd rg-undated">Before the save started · ${before.length}</p><div class="rg-group">${before.map(x => tlRow(x, s)).join("")}</div>`;
+    if (!shown.length) body = `<div class="rg-group rg-pad rg-empty">Nothing on the timeline for this filter.</div>`;
+    const chip = (k, n, c) => `<button type="button" class="ui-chip rg-tf ${f === k ? "on" : ""}" data-tl="f:${k}" aria-pressed="${f === k}"><span>${n} <small>${c}</small></span></button>`;
+    return `<section class="rg-tl" id="rg-at-timeline"><div class="rg-tlhead"><p class="rg-shd">Timeline</p><button type="button" class="rg-link" data-tl="add">Add to timeline</button></div>
+      <div class="ui-chips wrap" role="group" aria-label="Timeline filter">${chip("all", "All", out.length)}${chip("rel", "Relationships", rel.length)}${chip("home", "Home", home.length)}</div>
+      ${st.tl.msg ? `<p class="rg-msg ${st.tl.err ? "err" : ""}" role="status">${esc(st.tl.msg)}</p>` : ""}
+      ${st.tl.add ? tlAddForm(s) : ""}${body}${hidden ? `<p class="rg-hiddennote">${hidden} secret ${hidden === 1 ? "entry" : "entries"} hidden</p>` : ""}</section>`;
+  }
+  /* read the date fields that are on screen */
+  function tlRead(){
+    const g = k => root.querySelector(`[data-tlf="${k}"]`);
+    const rd = (pre, o) => { if (g(pre + "season")) o.date = { season:g(pre + "season").value, day:clampDay(g(pre + "day").value), year:yearOf(g(pre + "year").value) }; };
+    if (st.tl.edit) rd("e", st.tl.edit);
+    if (st.tl.add) { rd("n", st.tl.add); if (g("label")) st.tl.add.label = g("label").value; }
+  }
+  const tlFind = (key, s) => tlItems(s).out.find(x => x.key === key);
+  async function tlAction(act, s){
+    const T = st.tl; T.msg = ""; tlRead();
+    const done = async (msg) => { st.busy = false; T.edit = null; T.add = null; T.msg = msg; T.err = false; data = await GFB.getAll(); draw(); setTimeout(() => { T.msg = ""; }, 0); };
+    const fail = (e) => { st.busy = false; T.msg = e.message; T.err = true; draw(); };
+    if (act.startsWith("f:")) { T.filter = act.slice(2); return draw(); }
+    if (act === "add") { T.edit = null; T.add = T.add ? null : { what:"home", hkind:statusOf(s).toLowerCase(), label:"", date:UI.gameToday(cal()), before:false }; return draw(); }
+    if (act === "addcancel") { T.add = null; return draw(); }
+    if (act.startsWith("hk:")) { T.add.hkind = act.slice(3); return draw(); }
+    if (act === "aq:before") { T.add.before = true; return draw(); }
+    if (act === "aq:y0") { T.add.before = false; T.add.date = { ...(T.add.date || UI.gameToday(cal())), year:0 }; return draw(); }
+    if (act === "q:y0") { T.edit.before = false; T.edit.date = { ...(T.edit.date || UI.gameToday(cal())), year:0 }; return draw(); }
+    if (act === "aq:today") { T.add.before = false; T.add.date = UI.gameToday(cal()); return draw(); }
+    if (act.startsWith("date:")) { const it = tlFind(act.slice(5), s); if (!it) return;
+      if (it.type === "rel" && !R().canEdit()) { st.tab = "file"; T.msg = "Connections are read only until your Registry moves to its new tables. Use the banner at the top to check the counts and move."; T.err = true; return draw(); }
+      T.add = null; T.edit = { key:it.key, date:it.date && !it.date.before ? { ...it.date } : UI.gameToday(cal()), before:!!(it.date && it.date.before) }; return draw(); }
+    if (act === "cancel") { T.edit = null; return draw(); }
+    if (act === "q:before") { T.edit.before = true; return draw(); }
+    if (act === "q:today") { T.edit.before = false; T.edit.date = UI.gameToday(cal()); return draw(); }
+    if (act === "savedate") {
+      const it = tlFind(T.edit.key, s); if (!it) return; const nd = T.edit.before ? { ...BEFORE } : T.edit.date;
+      st.busy = true; draw();
+      try {
+        if (it.type === "rel") { const l = it.link; await R().saveLink({ ...l }, l.history.map((e, i) => ({ id:e.id, label:e.label, game_date:i === it.idx ? nd : (e.game_date || null), note:e.note || null }))); }
+        else await R().saveHomeEvent({ ...it.ev, game_date:nd });
+        return done("Date saved.");
+      } catch (e) { return fail(e); }
+    }
+    if (act === "remove") { const it = tlFind(T.edit.key, s); if (!it || it.type !== "home" || it.virtual) return; st.busy = true; try { await R().deleteHomeEvent(it.ev.id); return done("Entry removed."); } catch (e) { return fail(e); } }
+    if (act === "addsave") {
+      const a = T.add, nd = a.before ? { ...BEFORE } : a.date; st.busy = true; draw();
+      try {
+        if (a.what === "home") await R().saveHomeEvent({ sim_id:s.id, kind:a.hkind, address:a.hkind === "housed" ? homeAddress(s) : null, game_date:nd });
+        else {
+          if (!R().canEdit()) throw new Error("Connections are read only until your Registry moves to its new tables.");
+          if (!String(a.label || "").trim()) throw new Error("Type what happened, like Married or Engaged.");
+          const l = R().linkById(a.what); await R().saveLink({ ...l }, [...l.history.map(e => ({ id:e.id, label:e.label, game_date:e.game_date || null, note:e.note || null })), { label:a.label.trim(), game_date:nd, note:null }]);
+        }
+        return done("Added to the timeline.");
+      } catch (e) { return fail(e); }
+    }
+  }
+  /* tapping an entry: a connection opens its sheet, a home entry opens the address */
+  function tlOpen(key, s){
+    const it = tlFind(key, s); if (!it) return;
+    if (it.type === "home") { if (it.lot) location.hash = "#/lotline/" + it.lot.id; return; }
+    openSheet(s, it.link);
+  }
+  /* a home change adds an entry on its own: compare each household member's status before and after a file save */
+  const statusSnap = ids => Object.fromEntries(ids.map(id => { const x = simById(id); return [id, x ? { st:statusOf(x), addr:homeAddress(x) } : null]; }));
+  async function logHomeChanges(before){
+    for (const [id, b] of Object.entries(before)) {
+      const x = simById(id); if (!x || !b) continue; const a = { st:statusOf(x), addr:homeAddress(x) };
+      if (a.st === b.st && a.addr === b.addr) continue;
+      try { await R().saveHomeEvent({ sim_id:id, kind:a.st.toLowerCase(), address:a.addr, game_date:UI.gameToday(cal()) }); } catch {}
+    }
+  }
+
+  /* ---------- File tab ---------- */
+  function fileTab(s){
+    const E = st.editing, d = st.draft, out = [];
+    const orgs = orgsOf(s), jobs = orgs.filter(o => String(o.type).toLowerCase() !== "club"), clubs = orgs.filter(o => String(o.type).toLowerCase() === "club");
+    const role = o => { const m = (o.members || []).find(x => x.sim === s.id || stripNick(x.name || "").toLowerCase() === stripNick(s.name).toLowerCase()); return m && m.role ? m.role : ""; };
+    const lrow = (href, title, small) => `<a class="rg-li wrap" href="${href}"><span class="t"><b>${esc(title)}</b>${small ? `<small>${esc(small)}</small>` : ""}</span>${CHEV}</a>`;
+    const secRows = (key, title, rows) => `<section class="rg-sec" id="rg-at-${key}"><p class="rg-shd">${title}</p><div class="rg-group">${rows}</div></section>`;
+    if (jobs.length || clubs.length) out.push(secRows("work", "Work and clubs", jobs.map(o => lrow("#/huddl/org/" + o.id, o.name, ["Company", role(o)].filter(Boolean).join(" · "))).join("") + clubs.map(o => lrow("#/cliq/club/" + o.id, o.name, ["Club", role(o)].filter(Boolean).join(" · "))).join("")));
+    const home = homeOf(s), owned = ownedBy(s);
+    if (E) {
+      const homes = lots().filter(l => RESIDENTIAL.includes(l.lot_type) && !lots().some(u => u.parent_id === l.id));
+      const ownSet = new Set(d.owns);
+      out.push(sec("home", "Home and property", `<div class="rg-kv"><span>Home address</span><div><select class="rg-input" data-d="home" aria-label="Home address"><option value="">No home on file</option>${homes.map(l => `<option value="${l.id}" ${d.home === l.id ? "selected" : ""}>${esc(lotLabel(l))}${l.household && l.household !== s.household ? " (" + esc(l.household) + ")" : (!l.household ? " (vacant)" : "")}</option>`).join("")}</select><small class="rg-help">Moves ${esc(first(s.name))}'s whole household into that lot. If another household lives there, ${pron(s)} joins it.</small></div></div>
+        <div class="rg-kv" id="rg-at-owns"><span>Owns</span><div class="rg-owns">${lots().filter(l => !l.parent_id || ownSet.has(l.id)).map(l => `<label class="rg-check"><input type="checkbox" data-own="${l.id}" ${ownSet.has(l.id) ? "checked" : ""}>${esc(lotLabel(l))}${l.owner && !ownSet.has(l.id) && l.owner_sim !== s.id ? ` <em>owned by ${esc(l.owner)}</em>` : ""}</label>`).join("")}</div></div>`));
+    } else {
+      const add = (key, label) => `<button type="button" class="rg-li" data-addat="file:${key}"><span class="t acc">${label}</span></button>`;
+      out.push(secRows("home", "Home and property", (home ? lrow("#/lotline/" + home.id, lotLabel(home), "Home address") : "") + owned.map(l => lrow("#/lotline/" + l.id, lotLabel(l), "Owns")).join("") + (home ? "" : add("home", "Add home address")) + (owned.length ? "" : add("owns", "Add property"))));
+    }
+    const money = moneyHTML(s);
+    if (money) out.push(secRows("money", "Money", money)); else if (!E) out.push(secRows("money", "Money", `<a class="rg-li" href="#/trust/staff"><span class="t acc">Add bank account</span></a>`));
+    if (!E && typeof Notes !== "undefined" && Notes.mentionsOf) {
+      const nts = Notes.mentionsOf(data, s);
+      out.push(secRows("notes", "Notes", nts.map(n => lrow("#/notes/n/" + n.id, n.title, [n.story ? "Storyline, " + n.story.toLowerCase() : n.folder, n.sticky ? "On the desk" : "", n.when].filter(Boolean).join(" · "))).join("")
+        + `<button type="button" class="rg-li" data-act="newnote"><span class="t acc">New note about ${esc(first(s.name))}</span></button>`));
+    }
+    const act = activityHTML(s); if (act) out.push(secRows("activity", "Activity", act));
+    let html = (E ? "" : timelineHTML(s)) + out.join("");
+    const notes = s.notes || [], secrets = s.secrets || [];
+    if (notes.length || secrets.length) {
+      const firstLine = String(notes[0] || secrets[0] || "").replace(/^#+\s*/, "").replace(/[*_]/g, "");
+      html += `<section class="rg-sec rg-old"><div class="rg-oldh"><div><p class="rg-shd">Old case notes</p><p class="rg-foot">From Notion, kept as they were</p></div><button type="button" class="rg-link" data-act="oldtoggle" aria-expanded="${st.oldOpen}">${st.oldOpen ? "Hide" : "Show"}</button></div>
+        <div class="rg-group rg-pad">${st.oldOpen ? `<div class="rg-notes">${notes.map(fmtNote).join("")}</div>${secrets.length ? `<p class="rg-shd rg-resth">Restricted</p><ul class="rg-rest">${secrets.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}${E ? `<button type="button" class="rg-b sm" data-act="copysummary">Copy case notes into the Summary</button>` : ""}`
+          : `<p class="rg-oldprev">${esc(dash(firstLine.length > 150 ? firstLine.slice(0, 148) + "…" : firstLine))}</p>`}</div></section>`;
+    }
+    return html;
+  }
   function moneyHTML(s){
     const BANKS = { harbor:["Harbor Trust","trust"], porchlight:["Porchlight","porchlight"] };
     const nm = id => stripNick((simById(id) || {}).name || id);
     const mine = (data.accounts || []).filter(a => a.status !== "Closed" && (a.holder_sim === s.id || a.co_holder === s.id || (a.custodians || []).includes(s.id)));
+    const row = (href, title, small) => `<a class="rg-li wrap" href="${href}"><span class="t"><b>${title}</b><small>${esc(small)}</small></span>${CHEV}</a>`;
     const rows = mine.map(a => {
       const [bank, route] = BANKS[a.bank || "harbor"];
       const who = [a.co_holder ? "Joint with " + nm(a.co_holder === s.id ? a.holder_sim : a.co_holder) : "", a.minor ? ((a.custodians || []).includes(s.id) ? "Custodian of " + nm(a.holder_sim) + "'s minor account" : "Minor account") : ""].filter(Boolean).join(", ");
       const line = a.card ? `Credit card ••${esc(a.number)}: ${money(a.balance) || "$0"} owed of ${money(a.limit) || "$0"}${a.status !== "Active" ? ", " + esc(a.status) : ""}` : `${esc(a.type)} ••${esc(a.number)}: ${money(a.balance) || "$0"}${a.status !== "Active" ? ", " + esc(a.status) : ""}`;
-      return `<a href="#/${route}/staff/a/${a.id}"><span>${bank}${who ? ", " + esc(who) : ""}</span>${line}</a>`;
+      return row(`#/${route}/staff/a/${a.id}`, line, bank + (who ? ", " + who : ""));
     });
     const loans = (data.loans || []).filter(l => l.status !== "Paid off" && (l.borrower === stripNick(s.name) || (s.household && l.borrower === s.household)))
-      .map(l => `<a href="#/${BANKS[l.bank || "harbor"][1]}/staff"><span>${BANKS[l.bank || "harbor"][0]} loan, ${esc(l.status)}</span>${esc(l.type)}: ${money(l.balance) || "$0"} remaining</a>`);
-    return `<div class="r-grid2"><div><span class="r-lbl">Accounts and cards</span>${rows.length ? `<div class="r-callist">${rows.join("")}</div>` : '<span class="r-none">No accounts on record</span>'}</div>
-      <div><span class="r-lbl">Loans</span>${loans.length ? `<div class="r-callist">${loans.join("")}</div>` : '<span class="r-none">No open loans</span>'}
-      <span class="r-lbl" style="margin-top:14px">Credit score (Porchlight)</span>${s.credit_score ? esc(s.credit_score) : '<span class="r-none">Not on file</span>'}</div></div>`;
+      .map(l => row(`#/${BANKS[l.bank || "harbor"][1]}/staff`, `${esc(l.type)}: ${money(l.balance) || "$0"} remaining`, `${BANKS[l.bank || "harbor"][0]} loan, ${l.status}`));
+    if (!rows.length && !loans.length && !s.credit_score) return "";
+    return rows.join("") + loans.join("") + (s.credit_score ? rowv("Credit score", s.credit_score) : "");
   }
-
-  /* case-note formatting: ## heading, **bold**, *italic*, "- " bullets. Text is escaped before any formatting is applied. */
+  function activityHTML(s){
+    const ev = calEvents(s).sort((a,b) => seasonOrder(a.season) - seasonOrder(b.season) || a.day - b.day), lg = calLogs(s), pl = plans(s), ps = postsBy(s);
+    const row = (href, title, small) => `<a class="rg-li wrap" href="${href}"><span class="t"><b>${esc(title)}</b><small>${esc(small)}</small></span>${CHEV}</a>`;
+    const items = [
+      ...ev.map(e => row(calLink(e.season, e.day), e.title, `Calendar · ${e.season}, day ${e.day}`)),
+      ...lg.map(l => row(calLink(l.season, l.day), l.title || (String(l.text || "").length > 90 ? String(l.text).slice(0, 88) + "…" : l.text || ""), `Logged · Year ${l.year}, ${l.season}, day ${l.day}`)),
+      ...pl.map(t => row(`#/plumb/sim:${s.id}`, t.title, `Plumb · ${t.done ? "Completed" : t.when === "now" ? "In progress" : "Planned"}`)),
+      ...ps.slice(0, 6).map(p => row(`#/simsta/u/${encodeURIComponent(p.author)}`, p.caption ? String(p.caption).slice(0, 80) : "Post", "Simsta" + (p.date && p.date.season ? " · " + p.date.season + " " + p.date.day : "")))];
+    return items.join("");
+  }
+  /* case-note formatting: ## heading, **bold**, *italic*, "- " bullets. Text is escaped first. */
   const inline = t => t.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/(^|[^*])\*(?!\s)(.+?)\*(?!\*)/g, "$1<em>$2</em>").replace(/(^|\W)_(?!\s)(.+?)_(?=\W|$)/g, "$1<em>$2</em>");
   function fmtNote(block){
     const out = []; let list = [], para = [];
     const flushPara = () => { if (para.length) out.push(`<p>${para.map(inline).join("<br>")}</p>`); para = []; };
     const flushList = () => { if (list.length) out.push(`<ul>${list.map(x => `<li>${inline(x)}</li>`).join("")}</ul>`); list = []; };
     esc(block).split("\n").forEach(line => {
-      const h = line.match(/^\s*#{1,3}\s+(.*)$/), b = line.match(/^\s*[-\u2022*]\s+(.*)$/);
-      if (h) { flushPara(); flushList(); out.push(`<h4 class="r-nh">${inline(h[1])}</h4>`); }
+      const h = line.match(/^\s*#{1,3}\s+(.*)$/), b = line.match(/^\s*[-•*]\s+(.*)$/);
+      if (h) { flushPara(); flushList(); out.push(`<h5>${inline(h[1])}</h5>`); }
       else if (b) { flushPara(); list.push(b[1]); }
       else if (line.trim()) { flushList(); para.push(line); }
     });
     flushPara(); flushList(); return out.join("");
   }
-  function applyFmt(kind, ta){
-    const v = ta.value, a = ta.selectionStart, z = ta.selectionEnd, sel = v.slice(a, z);
-    if (kind === "b" || kind === "i") {
-      const m = kind === "b" ? "**" : "*", inner = sel || (kind === "b" ? "bold text" : "italic text");
-      ta.value = v.slice(0, a) + m + inner + m + v.slice(z); ta.setSelectionRange(a + m.length, a + m.length + inner.length);
-    } else {
-      const ls = v.lastIndexOf("\n", a - 1) + 1, nl = v.indexOf("\n", z), le = nl === -1 ? v.length : nl;
-      const pre = kind === "h" ? "## " : "- ", lines = v.slice(ls, le).split("\n");
-      const strip = l => kind === "h" ? l.replace(/^#{1,3}\s*/, "") : l.replace(/^[-\u2022*]\s+/, "");
-      const on = lines.every(l => l.startsWith(pre)), next = lines.map(l => on ? l.slice(pre.length) : pre + strip(l)).join("\n");
-      ta.value = v.slice(0, ls) + next + v.slice(le); ta.setSelectionRange(ls, ls + next.length);
-    }
-    ta.focus();
-  }
 
-  function notesTab(s){
-    const notesView = `<div class="r-notes">${(s.notes||[]).map(fmtNote).join("") || '<span class="r-none">No notes yet</span>'}</div>`;
-    const tb = `<div class="r-fmt" role="toolbar" aria-label="Formatting"><button type="button" data-fmt="h" aria-label="Heading">Heading</button><button type="button" data-fmt="b" aria-label="Bold"><b>B</b></button><button type="button" data-fmt="i" aria-label="Italic"><i>I</i></button><button type="button" data-fmt="ul" aria-label="Bulleted list">\u2022 List</button></div>`;
-    const notesEdit = form("notes", `<label><span class="r-lbl">Case notes</span>${tb}<textarea name="notes" class="r-notesbox" aria-label="Case notes">${esc((s.notes||[]).join("\n\n"))}</textarea><div class="r-help">Select words, then tap a button. Or type: <code>## Heading</code>, <code>**bold**</code>, <code>*italic*</code>, and <code>- </code> at the start of a line for bullets. Leave a blank line between paragraphs.</div></label>`);
-    const secretsView = (s.secrets||[]).map((t,i) => { const k = s.id + ":sec:" + i; return `<button class="r-redact ${isOpen(k)?"open":""}" data-reveal="${k}" ${isOpen(k) ? 'aria-disabled="true"' : 'aria-label="Redacted line. Select to declassify"'}><span class="txt">${esc(t)}</span></button>`; }).join("") || '<span class="r-none">Nothing restricted</span>';
-    const secretsEdit = form("secrets", `<label><textarea name="secrets" aria-label="Restricted lines">${esc((s.secrets||[]).join("\n"))}</textarea><div class="r-help">One secret per line. Each line gets its own redaction bar.</div></label>`);
-    return sec("notes", "Case notes", "", st.edit === "notes" ? notesEdit : notesView)
-         + sec("secrets", "Restricted", st.clear ? "Restricted access active" : "Select a bar to declassify it", st.edit === "secrets" ? secretsEdit : secretsView);
-  }
-
-  function activityTab(s){
-    const ev = calEvents(s).sort((a,b) => seasonOrder(a.season) - seasonOrder(b.season) || a.day - b.day);
-    return sec("cal", "Calendar record", "Edit in Calendar", `<div class="r-grid2">
-        <div><span class="r-lbl">Recurring appearances</span>${ev.length ? `<div class="r-callist">${ev.map(e => `<a href="${calLink(e.season, e.day)}"><span>${esc(e.season)}, day ${e.day}</span>${esc(e.title)}</a>`).join("")}</div>` : '<span class="r-none">None on record</span>'}</div>
-        <div><span class="r-lbl">Logged activity</span>${calLogs(s).length ? `<div class="r-callist">${calLogs(s).map(l => `<a href="${calLink(l.season, l.day)}"><span>Year ${l.year}, ${esc(l.season)}, day ${l.day}</span>${esc(l.title || (l.text.length > 90 ? l.text.slice(0, 88) + "\u2026" : l.text))}</a>`).join("")}</div>` : '<span class="r-none">None on record</span>'}</div></div>`, false)
-      + sec("plans", "Known plans", "Edit in Plumb", plans(s).length ? `<div class="r-callist">${plans(s).map(t => `<a href="#/plumb/sim:${s.id}"><span>${t.done ? "Completed" : t.when === "now" ? "In progress" : "Planned"}</span>${esc(t.title)}</a>`).join("")}</div>` : '<span class="r-none">None on record</span>', false);
-  }
-
-  function webSVG(s){
-    const C = 160, R = 112, rels = relsFor(s.id), n = rels.length || 1;
-    const pts = rels.map((r,k) => { const a = -Math.PI/2 + 2*Math.PI*k/n; return { r, x: C + R*Math.cos(a), y: C + R*Math.sin(a) }; });
-    let out = "";
-    pts.forEach(({r,x,y}) => {
-      const key = "rel:" + r.id, shown = !r.hidden || isOpen(key);
-      if (!shown) { out += `<line x1="${C}" y1="${C}" x2="${x}" y2="${y}" stroke="var(--stamp)" stroke-width="1.5" stroke-dasharray="3 4" opacity=".5"/>`; return; }
-      const dashed = (r.hidden || r.secret) && isOpen(key);
-      out += `<line x1="${C}" y1="${C}" x2="${x}" y2="${y}" stroke="var(--${r.kind})" stroke-width="2" ${dashed ? 'stroke-dasharray="6 4"' : ""}/>`;
-    });
-    pts.forEach(({r,x,y}) => {
-      const key = "rel:" + r.id, shown = !r.hidden || isOpen(key);
-      const filed = r.to_sim ? simById(r.to_sim) : null;
-      const name = shown ? (filed ? filed.name : r.to_name) : "?";
-      const label = shown ? first(name) : "Restricted";
-      const fill = shown ? avColor(name) : "var(--redact)";
-      const attrs = !shown ? `class="node" data-reveal="${key}" tabindex="0" role="button" aria-label="Declassify connection"`
-                  : filed ? `class="node" data-open="${filed.id}" tabindex="0" role="button" aria-label="Open ${esc(filed.name)}"` : "";
-      out += `<g ${attrs}><circle cx="${x}" cy="${y}" r="19" fill="${fill}" ${filed || !shown ? "" : 'stroke="var(--muted)" stroke-dasharray="3 3"'}/>
-        <text x="${x}" y="${y+5}" text-anchor="middle" font-family="Public Sans, Arial, sans-serif" font-weight="700" font-size="14" fill="#fff">${shown ? esc(initials(name)) : "?"}</text>
-        <text x="${x}" y="${y+35}" text-anchor="middle" font-family="Public Sans, Arial, sans-serif" font-size="11.5" fill="var(--ink)">${esc(label)}</text></g>`;
-    });
-    out += `<circle cx="${C}" cy="${C}" r="30" fill="${avColor(s.name)}" stroke="var(--ink)" stroke-width="2"/>
-      <text x="${C}" y="${C+7}" text-anchor="middle" font-family="Public Sans, Arial, sans-serif" font-weight="700" font-size="20" fill="#fff">${esc(initials(s.name))}</text>`;
-    return out;
+  /* ---------- option lists (a sheet) ---------- */
+  function listsSheet(){
+    return `<div class="rg-sheetwrap" data-sheetbg><form class="rg-sheet wide" data-sec="lists" role="dialog" aria-modal="true" aria-label="Option lists">
+      <div class="rg-sh"><b>Option lists</b><button type="button" class="rg-x" data-act="listsclose" aria-label="Close">×</button></div>
+      <div class="rg-sb"><p class="rg-help" style="margin:0">One option per line. Paste in a whole list when you add a mod. Options a Sim already has stay on the list until they're removed from that Sim.</p>
+      <div class="rg-two">${LIST_KEYS.map(([k,n]) => `<label><span class="rg-flab">${n} <em>${menu(k).length}</em></span><textarea name="${k}" class="rg-input rg-listbox">${esc(menu(k).join("\n"))}</textarea></label>`).join("")}</div></div>
+      <div class="rg-sfoot"><button type="button" class="rg-b quiet" data-act="listsclose">Cancel</button><button class="rg-b pri">Save lists</button></div></form></div>`;
   }
 
   /* ---------- full render ---------- */
-  /* banner + agency header, shared by the gallery and the record pages */
-  function topHTML(){ return `      <div class="r-banner"><span class="flag" aria-hidden="true"></span>An official website of the Simerican government</div>
-      <div class="r-agency">
-        <svg class="r-seal" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="22" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="24" cy="24" r="17" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="24" cy="24" r="11" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="2 2"/><path d="M24 12 L30 24 L24 36 L18 24 Z" fill="currentColor"/></svg>
-        <div><p class="org">Simerican Office of Resident Affairs</p><h1>Resident Registry</h1></div>
-        <div class="spacer"></div>
-        <div class="r-count">${data.sims.length} residents on file<br>Records current to ${new Date(data.updated + "T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
-        <div class="r-access" role="group" aria-label="Access level"><button data-act="public" aria-pressed="${!st.clear}">Public</button><button class="restricted" data-act="restricted" aria-pressed="${st.clear}">Restricted</button></div>
-      </div>
-`; }
-
-  /* ---------- gallery (Registry home) ---------- */
-  const SORTS = [["name","Name"],["file","File number"],["gaps","Most file gaps"],["status","Status"]];
-  function sortedVisible(){
-    const v = [...visible()];
-    if (st.sort === "file") v.sort((a, b) => (parseInt(a.file_no, 10) || 0) - (parseInt(b.file_no, 10) || 0));
-    else if (st.sort === "gaps") v.sort((a, b) => gaps(b).length - gaps(a).length || stripNick(a.name).localeCompare(stripNick(b.name)));
-    else if (st.sort === "status") v.sort((a, b) => String(a.status || "~").localeCompare(String(b.status || "~")) || stripNick(a.name).localeCompare(stripNick(b.name)));
-    else v.sort((a, b) => stripNick(a.name).localeCompare(stripNick(b.name)));
-    return v;
-  }
-  function galCards(){
-    const v = sortedVisible();
-    if (!v.length) return `<p class="r-galnone">No residents match. Clear the search or pick another filter.</p>`;
-    return v.map(s => { const g = gaps(s).length, age = [s.age, s.life_stage].filter(x => x != null && x !== "").join(", ");
-      return `<a class="r-card" href="#/registry/${s.id}"><span class="r-card-ph">${s.portrait ? `<img loading="lazy" decoding="async" src="${esc(s.portrait)}" alt="">` : `<span class="r-card-ini" style="background:${avColor(s.name)}">${esc(initials(s.name))}</span>`}${s.status ? `<span class="r-card-st">${esc(s.status)}</span>` : ""}</span>
-        <span class="r-card-b"><b>${esc(s.name)}</b>${age ? `<small>${esc(age)}</small>` : ""}<span class="r-card-job">${esc(s.career || "No occupation on file")}</span>${s.residence || s.household ? `<small>${esc([s.residence, s.household].filter(Boolean).join(" \u00b7 "))}</small>` : ""}${g ? `<span class="r-gap">${g} gap${g > 1 ? "s" : ""}</span>` : ""}</span></a>`; }).join("");
-  }
-  function drawGallery(){
-    root.innerHTML = `<div class="site-registry">${topHTML()}
-      <div class="r-galwrap"><div class="r-galbar">
-          <input class="r-search" id="r-q" type="search" placeholder="Search ${data.sims.length} residents" aria-label="Search residents" value="${esc(st.q)}">
-          <div class="r-filters">${FILTERS.map(f => `<button class="r-chip" data-filter="${f}" aria-pressed="${st.filter===f}">${f}</button>`).join("")}</div>
-          <label class="r-sortl">Sort <select id="r-sort">${SORTS.map(([k, n]) => `<option value="${k}" ${st.sort === k ? "selected" : ""}>${n}</option>`).join("")}</select></label>
-          <div class="r-galnew">${newForm()}</div></div>
-        <div class="r-gal" id="r-gal">${galCards()}</div>
-        ${pendingNames().length ? `<div class="r-galpend"><h3>Awaiting processing</h3>${pendingNames().map(p => `<button class="r-pendchip" data-file="${esc(p)}">${esc(p)} <span>Open file</span></button>`).join("")}</div>` : ""}
-      </div></div>`;
-  }
-
+  const TABS = [["profile","Profile"],["connections","Connections"],["file","File"]];
   function draw(){
     if (!curId || !simById(curId)) return drawGallery();
-    const s = simById(curId), g = gaps(s);
-    const body = { profile:profileTab, connections:connectionsTab, property:propertyTab, notes:notesTab, activity:activityTab }[st.tab](s);
-    root.innerHTML = `<div class="site-registry">
-${topHTML()}      <div class="r-shell solo">
-        <section class="r-file">
-          <div class="r-recbar">${(() => { const order = sortedVisible().map(x => x.id), at = order.indexOf(s.id), prev = at > 0 ? order[at - 1] : null, next = at >= 0 && at < order.length - 1 ? order[at + 1] : null;
-            return `<a class="r-allres" href="#/registry">All residents</a><span class="r-pn">${prev ? `<a href="#/registry/${prev}" aria-label="Previous resident">\u2039 Prev</a>` : `<span>\u2039 Prev</span>`}<em>${at >= 0 ? `${at + 1} of ${order.length}` : ""}</em>${next ? `<a href="#/registry/${next}" aria-label="Next resident">Next \u203a</a>` : `<span>Next \u203a</span>`}</span><span class="r-recno">GFB-${esc(s.file_no)}</span>`; })()}${st.edit === "basics" ? "" : `<button class="r-edit-btn" data-edit="basics">Edit basics</button>`}</div>
-          <article class="r-folder ${st.clear ? "cleared" : ""}">
-            <div class="r-stamp" aria-hidden="true">Restricted</div>
-            <div class="r-head">${face(s,"lg")}
-              <div style="min-width:0;flex:1">
-                <h2>${esc(s.name)}</h2>
-                <p class="r-alias">${s.simsta ? esc(s.simsta) : "No Simsta handle on file"}</p>
-                ${st.edit === "basics" ? "" : factsHTML(s)}
-              </div>
-            </div>
-            ${st.edit === "basics" ? basicsForm(s) : ""}
-            ${st.msg ? `<p class="r-saved ${st.err ? "err" : ""}" role="status">${esc(st.msg)}</p>` : ""}
-            ${g.length ? `<div class="r-gapbar"><b>Still to fill in</b>${g.map(([t, to]) => `<button class="r-gapchip" data-gap="${to}">${t}</button>`).join("")}</div>` : ""}
-            <div class="r-tabs" role="tablist">${TABS.map(([k,n]) => `<button role="tab" data-tab="${k}" aria-selected="${st.tab===k}">${n}${k === "connections" ? ` <span>${relsFor(s.id).length}</span>` : ""}</button>`).join("")}</div>
-            ${body}
-            <div class="r-foot"><span>File GFB-${esc(s.file_no)}</span></div>
-          </article>
-        </section>
+    const s = simById(curId), E = st.editing, body = { profile:profileTab, connections:connectionsTab, file:fileTab }[st.tab](s);
+    const nConn = linksFor(s.id).filter(l => !(st.hideSecrets && l.secret)).length;
+    const keepY = root.scrollTop;
+    const head = E ? recCard(s) : st.tab === "profile" ? recCard(s) + trio(s) : compactRow(s);
+    root.innerHTML = `<div class="site-registry is-file ${E ? "is-editing" : ""}">${header()}${navbar(s)}
+      <div class="rg-page">${moveBanner()}${st.msg ? `<p class="rg-msg ${st.err ? "err" : ""}" role="status">${esc(st.msg)}</p>` : ""}
+        <div class="rg-fcols"><div class="rg-fmain">
+          <div class="rg-head">${head}</div>
+          ${E ? facts(s) : ""}
+          <div class="rg-seg rg-tabseg" role="tablist" aria-label="File sections">${TABS.map(([k, n]) => `<button type="button" role="tab" data-tab="${k}" aria-selected="${st.tab === k}"><span>${n}${k === "connections" ? ` <em>${nConn}</em>` : ""}</span></button>`).join("")}</div>
+          <div class="rg-tabbody" role="tabpanel">${body}</div>
+        </div>${E ? "" : `<aside class="rg-fside" aria-label="Resident card">${recCard(s)}${sideFacts(s)}</aside>`}</div>
       </div>
+      ${st.lists ? listsSheet() : ""}
     </div>`;
     st.msg = ""; st.err = false;
-    if (st.edit && st.edit !== "basics") root.querySelector(`#r-sec-${st.edit}`)?.scrollIntoView({block:"nearest"});
+    root.scrollTop = keepY;
+    if (st.focus) { const el = root.querySelector("#rg-at-" + st.focus); st.focus = null; if (el) { el.scrollIntoView({ block:"center" }); el.querySelector("input,select,textarea")?.focus({ preventScroll:true }); } }
   }
 
-  /* ---------- saving ---------- */
-  async function mirror(r){
-    if (!r.to_sim || r.to_sim === r.from_sim) return false;
-    if (data.relationships.some(x => x.id !== r.id && x.from_sim === r.to_sim && x.to_sim === r.from_sim)) return false; /* their file already lists this Sim */
-    const m = await GFB.saveRel({ from_sim:r.to_sim, to_sim:r.from_sim, to_name:null, kind:r.kind, label:r.label, secret:r.secret, hidden:r.hidden, pair:r.id });
-    await GFB.saveRel({ id:r.id, pair:m.id });
-    return true;
+  /* ---------- Edit file ---------- */
+  function startEdit(s, focus){
+    const info = R().simInfo(s.id), home = homeOf(s);
+    st.draft = { name:s.name, simsta:s.simsta || "", age:s.age ?? "", life_stage:s.life_stage || "", gender:s.gender || "", career:s.career || "", residence:s.residence || "", household:s.household || "", newHousehold:false,
+      townie:!!info.townie, summary:info.summary || "", traits:[...(s.traits || [])], aspiration:s.aspiration || "", attachment:s.attachment || "", love_language:s.love_language || "",
+      romantic_attraction:s.romantic_attraction || "", sexual_attraction:s.sexual_attraction || "", likes:[...(s.likes || [])], dislikes:[...(s.dislikes || [])], turn_ons:[...(s.turn_ons || [])], turn_offs:[...(s.turn_offs || [])],
+      portrait:s.portrait || null, headshot:s.headshot || null, home:home ? home.id : "", owns:ownedBy(s).map(l => l.id) };
+    st.editing = true; st.focus = focus || null; st.sheet = null;
   }
-
-  async function createSim(name){
-    name = name.trim(); if (!name) return;
-    const existing = findSim(name);
-    if (existing) { st.creating = false; location.hash = "#/registry/" + existing.id; return; }
-    const slug = t => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    let id = slug(first(name)) || "resident";
-    if (simById(id)) { id = slug(stripNick(name)); let n = 2; while (simById(id)) id = slug(stripNick(name)) + "-" + n++; }
-    const file_no = String(Math.max(0, ...data.sims.map(x => parseInt(x.file_no, 10) || 0)) + 1).padStart(3, "0");
-    await GFB.addSim({ id, file_no, name, simsta:null, age:null, life_stage:null, gender:null, career:"", residence:"", household:null, status:"Planned",
-      traits:[], aspiration:null, attachment:null, love_language:null, likes:[], dislikes:[], turn_ons:[], turn_offs:[], notes:[], secrets:[] });
-    /* anyone who listed this name as "file pending" now points at the new record, and gets mirrored */
-    for (const r of data.relationships.filter(r => !r.to_sim && r.to_name && r.to_name.toLowerCase() === name.toLowerCase())) {
-      const u = { ...r, to_sim:id, to_name:null }; await GFB.saveRel(u); await mirror(u);
-    }
-    st.creating = false; st.tab = "profile"; st.nextEdit = "basics";
-    location.hash = "#/registry/" + id;
-  }
-
-  async function saveProperty(f, s){
+  async function saveProperty(s, homeId, owns){
     let household = s.household;
-    const homeId = f.get("home") || "", oldHome = homeOf(s);
-    if (homeId) {
+    const oldHome = homeOf(s);
+    if (homeId && (!oldHome || oldHome.id !== homeId)) {
       const lot = lots().find(l => l.id === homeId);
       if (lot.household && lot.household !== household) household = lot.household;
       else if (!lot.household) {
@@ -426,124 +856,193 @@ ${topHTML()}      <div class="r-shell solo">
         for (const l of lots().filter(l => l.household === household && RESIDENTIAL.includes(l.lot_type))) await GFB.saveLot({ ...l, household:null });
         await GFB.saveLot({ ...lot, household, market_status: lot.market_status === "For lease" ? "Leased" : lot.market_status === "For sale" ? "Owner-occupied" : lot.market_status });
       }
-    } else if (oldHome && data.sims.filter(x => x.household === household).length <= 1) {
+    } else if (!homeId && oldHome && data.sims.filter(x => x.household === household).length <= 1) {
       await GFB.saveLot({ ...oldHome, household:null, market_status: oldHome.market_status === "Leased" ? "For lease" : oldHome.market_status });
     }
-    const me = stripNick(s.name), want = new Set(f.getAll("owns"));
+    const me = stripNick(s.name), want = new Set(owns);
     for (const l of lots()) {
-      if (want.has(l.id) && l.owner !== me) await GFB.saveLot({ ...l, owner:me });
-      if (!want.has(l.id) && l.owner === me) await GFB.saveLot({ ...l, owner:null });
+      const mine = l.owner_sim === s.id || (!l.owner_sim && l.owner === me);
+      if (want.has(l.id) && !mine) await GFB.saveLot({ ...l, owner:me });
+      if (!want.has(l.id) && mine) await GFB.saveLot({ ...l, owner:null });
     }
     if (household !== s.household) await GFB.saveSim(s.id, { household });
   }
-
-  async function save(form){
-    const f = new FormData(form), v = k => String(f.get(k) || "").trim(), key = form.dataset.sec, s = simById(curId);
+  async function saveFile(){
+    const s = simById(curId), d = st.draft;
+    st.busy = true; draw();
+    const snap = statusSnap(data.sims.filter(x => x.id === s.id || (s.household && x.household === s.household)).map(x => x.id));
     try {
-      if (key === "new") return await createSim(v("name"));
-      if (key === "basics") {
-        const patch = { name: v("name") || s.name, simsta: v("simsta") || null, age: v("age") === "" ? null : Number(v("age")), life_stage: v("life_stage") || null,
-          gender: v("gender") || null, status: v("status") || null, career: v("career"), residence: v("residence"), household: v("household") || null };
-        const file = f.get("portrait");
-        if (file && file.size) patch.portrait = (await GFB.uploadImage(file, 800)).url;
-        else if (f.get("noportrait")) patch.portrait = null;
-        const hs = f.get("headshot");
-        if (hs && hs.size) patch.headshot = (await GFB.uploadImage(hs, 800)).url;
-        else if (f.get("noheadshot")) patch.headshot = null;
-        if (stripNick(patch.name) !== stripNick(s.name)) for (const l of lots().filter(l => l.owner === stripNick(s.name))) await GFB.saveLot({ ...l, owner: stripNick(patch.name) });
-        await GFB.saveSim(curId, patch);
-      }
-      if (key === "behavior") await GFB.saveSim(curId, {
-        traits: [0,1,2,3,4].map(i => v("trait"+i)).filter(Boolean).filter((t,i,a) => a.indexOf(t) === i),
-        aspiration: v("aspiration") || null, attachment: v("attachment") || null, love_language: v("love_language") || null });
-      if (key === "prefs") {
-        const patch = Object.fromEntries(PREF_KEYS.map(([k]) => [k, f.getAll(k)]));
-        for (const [k, vals] of Object.entries(patch)) { const list = data.options[k] || [], add = vals.filter(x => !list.some(y => y.toLowerCase() === x.toLowerCase())); if (add.length) await GFB.saveOptions(k, [...list, ...add].sort((a,b) => a.localeCompare(b))); }
-        await GFB.saveSim(curId, patch);
-      }
-      if (key === "lists") for (const [k] of LIST_KEYS) {
-        const list = [...new Set(String(f.get(k) || "").split("\n").map(x => x.trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b));
-        await GFB.saveOptions(k, list);
-      }
-      if (key === "notes") await GFB.saveSim(curId, { notes: v("notes").split(/\n\s*\n/).map(x => x.trim()).filter(Boolean) });
-      if (key === "secrets") await GFB.saveSim(curId, { secrets: v("secrets").split("\n").map(x => x.trim()).filter(Boolean) });
-      if (key === "property") await saveProperty(f, s);
-      if (key === "rel") {
-        const old = form.dataset.rel === "new" ? null : relById(form.dataset.rel);
-        const target = findSim(v("who"));
-        if (target && target.id === curId) { st.msg = "A Sim can't be connected to themselves."; st.err = true; return draw(); }
-        const row = { ...(old ? { id:old.id } : {}), from_sim:curId, to_sim: target ? target.id : null, to_name: target ? null : v("who"),
-          kind: v("kind") || "friend", label: v("label"), secret: v("secret") || null, hidden: !!f.get("hidden") };
-        const saved = await GFB.saveRel(row);
-        if (saved.to_sim && (!old || (!old.to_sim && old.pair == null))) {
-          const who = first(simById(saved.to_sim).name);
-          st.msg = (await mirror(saved)) ? `Connection saved to ${first(s.name)}'s and ${who}'s files.` : `Saved. ${who}'s file already lists ${first(s.name)}, so it wasn't added twice.`;
-        }
+      const keys = ["name","simsta","life_stage","gender","career","residence","household","traits","aspiration","attachment","love_language","romantic_attraction","sexual_attraction","likes","dislikes","turn_ons","turn_offs","portrait","headshot"];
+      const norm = (k, v) => Array.isArray(v) ? v : (v === "" ? null : v);
+      const patch = {};
+      keys.forEach(k => { const nv = k === "name" ? (String(d.name || "").trim() || s.name) : (["career","residence"].includes(k) ? String(d[k] || "").trim() : norm(k, typeof d[k] === "string" ? d[k].trim() : d[k])); const ov = k === "career" || k === "residence" ? (s[k] || "") : (s[k] ?? (Array.isArray(nv) ? [] : null)); if (JSON.stringify(nv) !== JSON.stringify(ov)) patch[k] = nv; });
+      const age = d.age === "" || d.age == null ? null : Number(d.age); if (age !== (s.age ?? null)) patch.age = age;
+      for (const [k] of [...PREF_KEYS, ["traits"]]) if (patch[k]) { const list = data.options[k] || [], add = patch[k].filter(x => !list.some(y => y.toLowerCase() === x.toLowerCase())); if (add.length) await GFB.saveOptions(k, [...list, ...add].sort((a, b) => a.localeCompare(b))); }
+      if (Object.keys(patch).length) await GFB.saveSim(s.id, patch);
+      data = await GFB.getAll();
+      const fresh = simById(s.id), home = homeOf(fresh), owned = ownedBy(fresh).map(l => l.id).sort().join();
+      if ((home ? home.id : "") !== d.home || owned !== [...d.owns].sort().join()) { await saveProperty(fresh, d.home, d.owns); data = await GFB.getAll(); }
+      const info = R().simInfo(s.id), sum = String(d.summary || "").trim() || null;
+      if ((info.summary || null) !== sum || !!info.townie !== !!d.townie) {
+        try { await R().saveSimInfo(s.id, { summary:sum, townie:!!d.townie }); }
+        catch (e) { st.busy = false; st.editing = false; st.draft = null; st.msg = "The file saved, but the Summary and Townie need the cloud: " + e.message; st.err = true; data = await GFB.getAll(); return draw(); }
       }
       data = await GFB.getAll();
-      st.edit = null; st.rel = null;
-      st.msg = st.msg || "Record updated. Saved to this browser.";
-    } catch (err) { st.msg = err.message; st.err = true; }
-    draw();
+      const ids = new Set([...Object.keys(snap), ...data.sims.filter(x => x.id === s.id || (simById(s.id).household && x.household === simById(s.id).household)).map(x => x.id)]);
+      await logHomeChanges({ ...Object.fromEntries([...ids].map(id => [id, snap[id] || null])) });
+      st.editing = false; st.draft = null; st.msg = "File saved."; st.err = false;
+    } catch (e) { st.msg = e.message; st.err = true; }
+    st.busy = false; data = await GFB.getAll(); draw();
   }
 
-  async function deleteRel(id){
-    const r = relById(id); if (!r) return;
-    await GFB.deleteRel(r.id);
-    if (r.pair != null && relById(r.pair)) await GFB.deleteRel(relById(r.pair).id);
-    data = await GFB.getAll(); st.rel = null; st.msg = r.pair != null ? "Connection removed from both files." : "Connection removed."; draw();
+  /* ---------- new residents ---------- */
+  async function createSim(name){
+    name = String(name || "").trim(); if (!name) return;
+    const existing = findSim(name);
+    if (existing) { location.hash = "#/registry/" + existing.id; return; }
+    const slug = t => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    let id = slug(first(name)) || "resident";
+    if (simById(id)) { id = slug(stripNick(name)); let n = 2; while (simById(id)) id = slug(stripNick(name)) + "-" + n++; }
+    const file_no = String(Math.max(0, ...data.sims.map(x => parseInt(x.file_no, 10) || 0)) + 1).padStart(3, "0");
+    await GFB.addSim({ id, file_no, name, simsta:null, age:null, life_stage:null, gender:null, career:"", residence:"", household:null, status:null,
+      traits:[], aspiration:null, attachment:null, love_language:null, likes:[], dislikes:[], turn_ons:[], turn_offs:[], notes:[], secrets:[] });
+    /* "file pending" links to this name now point at the new file, so nothing has to be relinked */
+    if (R().canEdit()) for (const l of R().all().filter(l => !l.b_sim && l.b_name && l.b_name.toLowerCase() === name.toLowerCase())) { try { await R().saveLink({ ...l, b_sim:id, b_name:null }); } catch {} }
+    st.tab = "profile";
+    data = await GFB.getAll();
+    st.nextEdit = true;
+    location.hash = "#/registry/" + id;
   }
 
-  function addTag(box){
-    const input = box.querySelector(".r-tagadd input"), name = box.dataset.name;
-    const have = new Set([...box.querySelectorAll("input[type=hidden]")].map(i => i.value.toLowerCase()));
-    input.value.split(",").map(x => x.trim()).filter(Boolean).forEach(t => { if (!have.has(t.toLowerCase())) { box.querySelector(".sp-chips").insertAdjacentHTML("beforeend", chip(name, t)); have.add(t.toLowerCase()); } });
-    input.value = ""; input.focus();
+  /* ---------- photos ---------- */
+  async function pickPhoto(kind){
+    const s = simById(curId), d = st.draft;
+    if (typeof PhotoSlot === "undefined" || !PhotoSlot.ready()) {      /* not signed in to the cloud: the plain file picker still works */
+      const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
+      inp.onchange = async () => { if (!inp.files[0]) return; try { d[kind] = (await GFB.uploadImage(inp.files[0], 800)).url; } catch (err) { st.msg = err.message; st.err = true; } draw(); };
+      inp.click(); return;
+    }
+    const head = kind === "headshot";
+    const r = await PhotoSlot.open({ shape:head ? "circle" : "portrait", aspect:head ? 1 : 4 / 5, outW:800, title:head ? `Huddl headshot · ${first(s.name)}` : `File photo · ${first(s.name)}`,
+      sims:[s.id], current:d[kind] || "", removable:!!d[kind], removeLabel:head ? "Remove headshot" : "Remove file photo",
+      previews:head ? [{ label:"Huddl", size:44 }] : [{ label:"File", size:60 }, { label:"Card", size:44 }] });
+    if (!r) return;
+    d[kind] = r.removed ? null : r.url; draw();
   }
 
   /* ---------- events (bound once) ---------- */
   let bound = false;
   function bind(){
     if (bound) return; bound = true;
-    document.addEventListener("click", e => {
-      if (!root || !root.contains(e.target) || !root.querySelector(".site-registry")) return;
-      const t = e.target;
-      const fb = t.closest("[data-fmt]"); if (fb) { const box = fb.closest("form")?.querySelector(".r-notesbox"); if (box) applyFmt(fb.dataset.fmt, box); return; }
-      const ta = t.closest("[data-tagadd]"); if (ta) { addTag(ta.closest(".r-taginput")); return; }
-      const rev = t.closest("[data-reveal]"); if (rev) { st.open.add(rev.dataset.reveal); draw(); return; }
-      const re = t.closest("[data-rel]:not(form)"); if (re) { st.rel = re.dataset.rel; st.edit = null; draw(); return; }
-      const op = t.closest("[data-open]"); if (op) { location.hash = "#/registry/" + op.dataset.open; if (innerWidth <= 720) scrollTo({top:0,behavior:"smooth"}); return; }
-      const fl = t.closest("[data-filter]"); if (fl) { st.filter = fl.dataset.filter; draw(); return; }
-      const tb = t.closest("[data-tab]"); if (tb) { st.tab = tb.dataset.tab; st.edit = null; st.rel = null; draw(); return; }
-      const ed = t.closest("[data-edit]"); if (ed) { st.edit = ed.dataset.edit; st.rel = null; draw(); return; }
-      const gp = t.closest("[data-gap]"); if (gp) { const [tab, part] = gp.dataset.gap.split(":"); if (part) { st.tab = tab; st.edit = part; } else st.edit = tab; st.rel = null; draw(); return; }
-      const pf = t.closest("[data-file]"); if (pf) { if (UI.confirmTap(pf, "Tap again to open a file")) createSim(pf.dataset.file); return; }
+    const mine = t => root && root.contains(t) && root.querySelector(".site-registry");
+    document.addEventListener("click", async e => {
+      if (!mine(e.target)) return;
+      const t = e.target, s = curId ? simById(curId) : null;
+      const tla = t.closest("[data-tl]")?.dataset.tl; if (tla && s) { if (tla === "remove" && !UI.confirmTap(t.closest("[data-tl]"), "Tap again to remove")) return; tlAction(tla, s); return; }
+      const tlo = t.closest("[data-tlopen]"); if (tlo && s) { tlOpen(tlo.dataset.tlopen, s); return; }
+      const ln = t.closest("[data-link]"); if (ln && s) { const l = R().linkById(ln.dataset.link); if (l) openSheet(s, l); return; }
+      const fl = t.closest("[data-filter]"); if (fl) { st.filter = fl.dataset.filter; return draw(); }
+      const wh = t.closest("[data-where]"); if (wh) { st.where = wh.dataset.where; return draw(); }
+      const cs = t.closest("[data-cscope]"); if (cs) { st.cscope = cs.dataset.cscope; return draw(); }
+      const vw = t.closest("[data-view]"); if (vw) { st.view = vw.dataset.view; return draw(); }
+      const tb = t.closest("[data-tab]"); if (tb) { st.tab = tb.dataset.tab; st.openLink = null; return draw(); }
+      const ad = t.closest("[data-addat]"); if (ad && s) { const [tab, key] = ad.dataset.addat.split(":"); st.tab = tab; startEdit(s, key === "owns" ? "owns" : key === "home" ? "home" : key); return draw(); }
+      const ut = t.closest("[data-untrait]"); if (ut && st.draft) { st.draft.traits.splice(Number(ut.dataset.untrait), 1); return draw(); }
+      const ug = t.closest("[data-untag]"); if (ug && st.draft) { const [k, i] = ug.dataset.untag.split(":"); st.draft[k].splice(Number(i), 1); return draw(); }
+      const ta = t.closest("[data-tagadd]"); if (ta && st.draft) { addTag(ta.dataset.tagadd); return; }
+      const pf = t.closest("[data-file]"); if (pf) { if (UI.confirmTap(pf.querySelector("[data-confirm]") || pf, "Tap again to open a file")) createSim(pf.dataset.file); return; }
       const act = t.closest("[data-act]")?.dataset.act;
-      if (act === "public") { st.clear = false; draw(); }
-      if (act === "restricted") { st.clear = true; draw(); }
-      if (act === "new") { st.creating = true; draw(); [...root.querySelectorAll(".r-newform input")].find(i => i.offsetParent)?.focus(); }
-      if (act === "cancel") { st.edit = null; st.rel = null; st.creating = false; draw(); }
-      if (act === "rel-new") { st.rel = "new"; st.edit = null; draw(); }
-      if (act === "rel-del") { const b = t.closest("[data-act=rel-del]"); if (UI.confirmTap(b, "Tap again to delete")) deleteRel(b.closest("form").dataset.rel); }
-      if (act === "reset" && UI.confirmTap(t.closest("[data-act=reset]"), "Tap again to discard everything")) { GFB.resetLocal(); GFB.getAll().then(d => { data = d; if (!simById(curId)) curId = data.sims[0].id; draw(); }); }
+      if (!act) return;
+      if (act === "new") openNew();
+      if (act === "filters") openFilters();
+      if (act === "clearfilters") { st.gender = ""; st.stages = []; st.where = ""; draw(); }
+      if (act === "clearbatch") { st.batch = null; draw(); }
+      if (act === "moveplan") { st.move = {}; draw(); }
+      if (act === "movecancel") { st.move = null; draw(); }
+      if (act === "movedone") { st.move = null; draw(); }
+      if (act === "movego") { st.busy = true; draw(); try { const r = await R().move(); st.move = r.already ? null : { done:r }; data = await GFB.getAll(); } catch (err) { st.move = { err:err.message }; } st.busy = false; draw(); }
+      if (act === "edit" && s) { startEdit(s); draw(); }
+      if (act === "canceledit") { st.editing = false; st.draft = null; draw(); }
+      if (act === "savefile") saveFile();
+      if (act === "fillgaps" && s) { const g = gaps(s); startEdit(s, g[0]); st.tab = "profile"; draw(); }
+      if (act === "hidesecrets") { st.hideSecrets = !st.hideSecrets; st.openLink = null; draw(); }
+      if (act === "needmove") { st.msg = "Connections are read only until your Registry moves to its new tables. Use the banner at the top to check the counts and move."; st.err = true; draw(); root.scrollTop = 0; }
+      if (act === "addlink" && s) openSheet(s, null);
+      if (act === "newnote" && s && typeof Notes !== "undefined") Notes.newAbout(s);
+      if (act === "oldtoggle") { st.oldOpen = !st.oldOpen; draw(); }
+      if (act === "copysummary" && s && st.draft) { const plain = (s.notes || []).join("\n\n").replace(/^#+\s*/gm, "").replace(/\*\*|__/g, ""); st.draft.summary = [st.draft.summary, plain].filter(x => String(x || "").trim()).join("\n\n"); st.tab = "profile"; st.focus = "summary"; draw(); }
+      if (act === "lists") { st.lists = true; draw(); }
+      if (act === "listsclose") { st.lists = false; draw(); }
+      if (act === "portrait" && st.draft) pickPhoto("portrait");
+      if (act === "headshot" && st.draft) pickPhoto("headshot");
+    });
+
+    /* phone: swipe left for the next resident, right for the previous one */
+    let sx = 0, sy = 0, sOk = false;
+    document.addEventListener("touchstart", e => {
+      sOk = false; if (!mine(e.target) || !curId || st.editing || st.sheet || st.lists || e.touches.length !== 1 || root.offsetWidth > 700) return;
+      if (e.target.closest("input,select,textarea,.ui-chips,.rg-sheetwrap")) return;
+      sx = e.touches[0].clientX; sy = e.touches[0].clientY; sOk = sx > 24;
+    }, { passive:true });
+    document.addEventListener("touchend", e => {
+      if (!sOk) return; sOk = false; const c = e.changedTouches[0], dx = c.clientX - sx, dy = c.clientY - sy;
+      if (Math.abs(dx) < 80 || Math.abs(dy) > 40 || Math.abs(dx) < Math.abs(dy) * 2) return;
+      const nb = neighbors(curId), id = dx < 0 ? nb.next : nb.prev; if (id) location.hash = "#/registry/" + id;
+    }, { passive:true });
+    document.addEventListener("input", e => {
+      if (!mine(e.target)) return;
+      if (e.target.id === "rg-q") { st.q = e.target.value; const g = root.querySelector("#rg-results"); if (g) g.innerHTML = resultsHTML(); return; }
+      const k = e.target.dataset.d; if (k && st.draft && e.target.type !== "checkbox" && e.target.tagName !== "SELECT") st.draft[k] = e.target.value;
+    });
+    document.addEventListener("change", e => {
+      if (!mine(e.target)) return;
+      const t = e.target;
+      if (t.id === "rg-sort") { st.sort = t.value; return draw(); }
+      if (t.matches("[data-addtrait]") && st.draft) { if (t.value && !st.draft.traits.includes(t.value)) st.draft.traits.push(t.value); return draw(); }
+      if (t.dataset.own && st.draft) { const set = new Set(st.draft.owns); t.checked ? set.add(t.dataset.own) : set.delete(t.dataset.own); st.draft.owns = [...set]; return; }
+      if (t.dataset.tlf === "what" && st.tl.add) { tlRead(); st.tl.add.what = t.value; return draw(); }
+      const k = t.dataset.d;
+      if (k && st.draft) {
+        if (t.type === "checkbox") st.draft[k] = t.checked;
+        else if (k === "household" && t.value === "__new") { st.draft.newHousehold = true; st.draft.household = ""; draw(); root.querySelector('[data-d="household"]')?.focus(); }
+        else st.draft[k] = t.value;
+      }
+      
     });
     document.addEventListener("keydown", e => {
-      if (!root || !root.contains(e.target)) return;
-      if (e.key === "Enter" && e.target.closest?.(".r-tagadd")) { e.preventDefault(); addTag(e.target.closest(".r-taginput")); return; }
-      if ((e.key === "Enter" || e.key === " ") && e.target.matches?.("g[data-open],g[data-reveal],span[data-reveal]")) { e.preventDefault(); e.target.dispatchEvent(new MouseEvent("click",{bubbles:true})); }
+      if (e.key === "Escape" && st.lists && root && root.querySelector(".site-registry") && !e.target.closest?.("input,textarea,select")) { e.stopImmediatePropagation(); st.lists = false; draw(); return; }
+      if (!mine(e.target)) return;
+      if (e.key === "Enter" && e.target.closest?.(".rg-tagadd")) { e.preventDefault(); addTag(e.target.closest(".rg-tagedit").dataset.tagkey); }
+      if (e.key === "Escape" && st.lists) { e.stopImmediatePropagation(); st.lists = false; draw(); }
+    }, true);
+    document.addEventListener("submit", async e => {
+      if (!mine(e.target)) return;
+      e.preventDefault();
+      const f = new FormData(e.target), key = e.target.dataset.sec;
+      if (key === "lists") {
+        try { for (const [k] of LIST_KEYS) await GFB.saveOptions(k, [...new Set(String(f.get(k) || "").split("\n").map(x => x.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b))); st.msg = "Option lists saved."; }
+        catch (err) { st.msg = err.message; st.err = true; }
+        st.lists = false; data = await GFB.getAll(); draw();
+      }
     });
-    document.addEventListener("input", e => {
-      if (e.target.id === "r-q" && root?.querySelector(".site-registry")) { st.q = e.target.value; const l = document.getElementById("r-list"), gl = document.getElementById("r-gal"); if (l) l.innerHTML = listHTML(); if (gl) gl.innerHTML = galCards(); }
-    });
-    document.addEventListener("change", e => { if (e.target.id === "r-sort" && root?.contains(e.target)) { st.sort = e.target.value; draw(); return; } if (e.target.id === "r-pick") location.hash = "#/registry/" + e.target.value; });
-    document.addEventListener("submit", e => { if (root && root.contains(e.target) && e.target.dataset.sec) { e.preventDefault(); save(e.target); } });
+  }
+  function addTag(key){
+    const box = root.querySelector(`.rg-tagedit[data-tagkey="${key}"]`), input = box && box.querySelector("input");
+    if (!input || !st.draft) return;
+    const have = new Set(st.draft[key].map(x => x.toLowerCase()));
+    input.value.split(",").map(x => x.trim()).filter(Boolean).forEach(v => { if (!have.has(v.toLowerCase())) { st.draft[key].push(v); have.add(v.toLowerCase()); } });
+    draw(); root.querySelector(`.rg-tagedit[data-tagkey="${key}"] input`)?.focus();
   }
 
-  function render(el, d, id){
+  function render(el, d, id, arg){
     root = el; data = d;
-    if (id !== curId) { st.edit = st.nextEdit; st.nextEdit = null; st.rel = null; st.creating = false; }
+    if (id !== curId) { root.scrollTop = 0; st.editing = !!st.nextEdit && !!id; st.draft = null; st.sheet = null; st.openLink = null; st.oldOpen = false; st.lists = false; }
     curId = id;
-    bind(); draw();
+    if (!id && arg && String(arg).startsWith("batch:")) { const b = String(arg).slice(6), ids = GFB.registry.batchSims ? GFB.registry.batchSims(b) : []; st.batch = { id:b, ids:ids.length ? ids : ((window.SimDeskLastImport && window.SimDeskLastImport.batch === b) ? window.SimDeskLastImport.ids : []) }; }
+    if (st.editing && !st.draft && id) { startEdit(simById(id)); }
+    st.nextEdit = false;
+    bind();
+    draw();
   }
   return { render };
 })();

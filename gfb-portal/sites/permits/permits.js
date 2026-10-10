@@ -1,7 +1,7 @@
 /* Office of Planning & Permits: the same to-do engine as Plumb, dressed as a state planning office. */
 const Permits = (() => {
-  const st = { open:null, editingProject:null };
-  let data = null, root = null, view = "today";
+  const st = { open:null, editingProject:null, q:"" };
+  let data = null, root = null, view = "today", lastView = null;
 
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   const clean = n => String(n || "").replace(/\s*[\u201c\u201d"].*?[\u201c\u201d"]\s*/g, " ").trim();
@@ -15,6 +15,20 @@ const Permits = (() => {
   const todos = () => data.todos.filter(t => t.app !== "plumb");
   const projects = () => data.projects.filter(p => p.app !== "plumb");
   const project = id => projects().find(p => p.id === id);
+
+  /* ---------- search ---------- */
+  const terms = () => st.q.toLowerCase().split(/\s+/).filter(Boolean);
+  const searching = () => terms().length > 0;
+  const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const hit = hay => { const h = String(hay || "").toLowerCase(); return terms().every(w => h.includes(w)); };
+  /* highlight on the raw text, then escape each piece, so a term like "amp" never touches an entity */
+  function hl(text){
+    text = String(text ?? "");
+    const ts = terms();
+    if (!ts.length) return esc(text);
+    return text.split(new RegExp("(" + ts.map(reEsc).join("|") + ")", "gi")).map((p, i) => i % 2 ? `<mark>${esc(p)}</mark>` : esc(p)).join("");
+  }
+  const statusOf = t => isDone(t) ? "Closed" : t.when === "today" ? "On the docket" : "Open matter";
 
   const ICON = {
     inbox:`<svg viewBox="0 0 20 20" fill="none" stroke="#3B82C4" stroke-width="1.8"><path d="M3 11l2-7h10l2 7v5H3z"/><path d="M3 11h4l1 2h4l1-2h4"/></svg>`,
@@ -69,13 +83,13 @@ const Permits = (() => {
     const done = isDone(t), p = project(t.project_id);
     if (st.open === t.id) return editHTML(t);
     const meta = [];
-    if (!done && t.when === "today" && view !== "today") meta.push(`<span class="today">On the docket</span>`);
-    if (p && view !== p.id) meta.push(esc(p.name));
+    if (!done && t.when === "today" && view !== "today" && !searching()) meta.push(`<span class="today">On the docket</span>`);
+    if (p && (view !== p.id || searching())) meta.push(hl(p.name));
     if (t.checklist?.length) meta.push(`${t.checklist.filter(c => c.done).length}/${t.checklist.length}`);
-    if (t.notes) meta.push("Findings on file");
+    if (t.notes) meta.push(searching() && hit(t.notes) && !hit(t.title) ? hl(t.notes.length > 90 ? t.notes.slice(0, 90) + "\u2026" : t.notes) : "Findings on file");
     const cn = caseNo(t), kind = cn.split("-")[0];
     return `<div class="pl-row ${done ? "isdone" : ""}" data-open="${t.id}"><button class="pl-check ${done ? "done" : ""}" data-check="${t.id}" aria-label="${done ? "Reopen" : "Mark resolved"}" ${t.source && !t.done && done ? "disabled" : ""}></button>
-      <div class="pl-body"><div class="op-case"><b>${cn}</b><span class="op-type t-${kind}">${TYPE[kind]}</span>${done ? `<img class="op-stampimg" src="sites/permits/img/stamp.png" alt="Resolved">` : ""}</div><div class="pl-t">${esc(t.title)}</div>${meta.length ? `<div class="pl-meta">${meta.map(m => m.startsWith("<span") ? m : `<span>${m}</span>`).join("")}</div>` : ""}</div></div>`;
+      <div class="pl-body"><div class="op-case"><b>${hl(cn)}</b><span class="op-type t-${kind}">${TYPE[kind]}</span>${done ? `<img class="op-stampimg" src="sites/permits/img/stamp.png" alt="Resolved">` : ""}</div><div class="pl-t">${hl(t.title)}</div>${meta.length ? `<div class="pl-meta">${meta.map(m => m.startsWith("<span") ? m : `<span>${m}</span>`).join("")}</div>` : ""}</div>${searching() ? `<span class="op-st ${!done && t.when === "today" ? "docket" : ""}">${statusOf(t)}</span>` : ""}</div>`;
   }
 
   function whenValue(w){ return isDate(w) ? "date" : (w || "inbox"); }
@@ -128,7 +142,40 @@ const Permits = (() => {
   /* ---------- views ---------- */
   function listHTML(list, emptyMsg){ return list.length ? list.map(rowHTML).join("") : `<p class="pl-empty">${emptyMsg}</p>`; }
 
-  function mainHTML(){
+  function resultsHTML(){
+    const ms = todos().filter(t => hit([caseNo(t), t.title, t.notes, (t.checklist || []).map(c => c.t).join(" "), (project(t.project_id) || {}).name, TYPE[caseNo(t).split("-")[0]]].join(" ")));
+    const pulled = new Set(todos().filter(t => t.source && !isDone(t)).map(t => t.source));
+    const per = {}, apps = autoItems().map(a => { per[a.kind] = (per[a.kind] || 0) + 1; return { ...a, code:`${a.kind}-${cal().year}-${pad(per[a.kind])}` }; })
+      .filter(a => hit([a.code, a.title, a.meta, TYPE[a.kind]].join(" ")));
+    if (!ms.length && !apps.length) return `<div class="pl-empty"><b>Nothing on file for "${esc(st.q.trim())}".</b> Try a case number, a matter, or a case file name.</div>`;
+    const n = (c, w) => `${c} ${w}${c === 1 ? "" : "s"}`;
+    const parts = [ms.length ? n(ms.length, "matter") : "", apps.length ? n(apps.length, "application") : ""].filter(Boolean);
+    const sec = (label, list, html) => list.length ? `<section class="pl-group"><h2>${label}<span>${list.length}</span></h2>${html}</section>` : "";
+    return `<p class="op-count" aria-live="polite">${parts.join(" and ")} match "${esc(st.q.trim())}"</p>
+      ${sec("On the docket", ms.filter(t => !isDone(t) && t.when === "today"), ms.filter(t => !isDone(t) && t.when === "today").map(rowHTML).join(""))}
+      ${sec("Open matters", ms.filter(t => !isDone(t) && t.when !== "today"), ms.filter(t => !isDone(t) && t.when !== "today").map(rowHTML).join(""))}
+      ${sec("Pending applications", apps, apps.map(a => `<div class="pl-auto"><div class="pl-body"><div class="op-case"><b>${hl(a.code)}</b><span class="op-type t-${a.kind}">${TYPE[a.kind]}</span></div><div class="pl-t">${hl(a.title)}</div><div class="pl-meta">${hl(a.meta)}</div></div>
+        <div class="acts">${pulled.has(a.key) ? `<span class="pl-meta" style="align-self:center">On the docket</span>` : `<button class="pl-btn" data-pull="${esc(a.key)}">Docket it</button>`}</div></div>`).join(""))}
+      ${sec("Closed", ms.filter(isDone), ms.filter(isDone).map(rowHTML).join(""))}`;
+  }
+
+  const SEARCH_ICON = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="9" r="6"/><path d="M14 14l4 4"/></svg>`;
+  const searchHTML = () => `<div class="op-search">${SEARCH_ICON}<input id="op-q" type="text" value="${esc(st.q)}" placeholder="Search the office" aria-label="Search the office" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search"><button type="button" class="op-qclear" data-qclear aria-label="Clear search" ${st.q ? "" : "hidden"}>\u00d7</button></div>`;
+
+  /* the title stays on top; everything under the search field is swapped as you type */
+  function pageParts(){
+    const html = baseHTML(), i = html.indexOf("</div>") + 6;
+    return { title: html.slice(0, i), rest: html.slice(i) };
+  }
+  const bodyHTML = parts => searching() ? resultsHTML() : parts.rest;
+  function mainHTML(){ const pp = pageParts(); return pp.title + searchHTML() + `<div id="op-page">${bodyHTML(pp)}</div>`; }
+  function refreshPage(){
+    const el = root.querySelector("#op-page"); if (!el) return;
+    el.innerHTML = bodyHTML(pageParts());
+    root.querySelector(".op-qclear").hidden = !st.q;
+  }
+
+  function baseHTML(){
     const p = project(view);
     const addBar = view === "logbook" || view === "save" ? "" : (st.filing ? fileHTML() : `<button class="pl-add op-filebtn" data-file><span class="pl-plus"></span>File a work order</button>`);
     if (view === "save"){
@@ -187,7 +234,11 @@ const Permits = (() => {
       <button class="pl-newproj" data-newproj>+ Open a case file</button></aside>`;
   }
 
-  function draw(){ root.innerHTML = `<div class="site-op">${sideHTML()}<main class="pl-main">${mainHTML()}</main></div>`; }
+  function draw(){
+    const focused = root.querySelector("#op-q") === document.activeElement;
+    root.innerHTML = `<div class="site-op">${sideHTML()}<main class="pl-main">${mainHTML()}</main></div>`;
+    if (focused){ const q = root.querySelector("#op-q"); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
+  }
 
   /* ---------- events ---------- */
   async function saveOpen(){ const form = root.querySelector("#pl-edit"); if (form) await GFB.saveTodo(readEdit(form)); }
@@ -199,6 +250,8 @@ const Permits = (() => {
     document.addEventListener("click", async e => {
       if (!mine(e.target)) return;
       const t = e.target, x = k => t.closest(`[data-${k}]`)?.dataset[k];
+      if (t.closest("#op-q")) return;
+      if (t.closest("[data-qclear]")) { st.q = ""; const q = root.querySelector("#op-q"); q.value = ""; refreshPage(); q.focus(); return; }
       if (x("check") !== undefined && t.closest("[data-check]")) {
         const id = x("check"); await saveOpen(); const td = todos().find(v => v.id === id);
         if (td.source && !td.done && isDone(td)) return;
@@ -218,12 +271,17 @@ const Permits = (() => {
       if (row && !t.closest("button")) { await saveOpen(); st.open = row.dataset.open; draw(); root.querySelector("#pl-edit .pl-et")?.focus(); return; }
       if (st.open && !t.closest("#pl-edit")) { await saveOpen(); st.open = null; draw(); }
     });
+    document.addEventListener("input", e => {
+      if (!mine(e.target) || e.target.id !== "op-q") return;
+      st.q = e.target.value; refreshPage();
+    });
     document.addEventListener("change", e => {
       if (e.target.name === "when" && e.target.closest("#pl-edit")) { const on = e.target.value === "date"; e.target.closest("#pl-edit").querySelectorAll('select[name=season],select[name=day],select[name=year]').forEach(s => s.hidden = !on); }
     });
     document.addEventListener("keydown", async e => {
       if (!mine(e.target)) return;
       if (e.key === "Enter" && e.target.id === "pl-cladd") { e.preventDefault(); const val = e.target.value.trim(); if (!val) return; const td = readEdit(root.querySelector("#pl-edit")); td.checklist = [...td.checklist, { t:val, done:false }]; await GFB.saveTodo(td); draw(); root.querySelector("#pl-cladd")?.focus(); }
+      if (e.key === "Escape" && e.target.id === "op-q" && st.q) { e.stopImmediatePropagation(); st.q = ""; e.target.value = ""; refreshPage(); return; }
       if (e.key === "Escape" && st.open) { e.stopImmediatePropagation(); await saveOpen(); st.open = null; draw(); }
     }, true);
     document.addEventListener("submit", async e => {
@@ -245,6 +303,7 @@ const Permits = (() => {
     root = el; data = d;
     const v = (parts || [])[0];
     view = v && (VIEWS.some(([k]) => k === v) || v === "save" || d.projects.some(p => p.id === v)) ? v : "today";
+    if (view !== lastView){ st.q = ""; lastView = view; }
     if (st.editingProject && st.editingProject !== view) st.editingProject = null;
     bind(); draw();
   }

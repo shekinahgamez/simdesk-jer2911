@@ -1,7 +1,7 @@
 /* Simsta: every Sim's curated self. Accounts (main + alts), feed, posts, comments, mentions.
    Account keys: a Sim's main account uses the Sim id; an alt uses "simId~altId". */
 const Simsta = (() => {
-  const st = { modal:null, err:null, uploading:false, tab:"posts", draft:null, open:{}, q:"", dq:"", sq:"", lb:null, actor:null };
+  const st = { modal:null, err:null, uploading:false, tab:"posts", draft:null, open:{}, q:"", dq:"", sq:"", lb:null, actor:null, sheet:null };
   let data = null, root = null, route = [];
   try { st.actor = localStorage.getItem("simsta-actor"); } catch {}
 
@@ -36,7 +36,7 @@ const Simsta = (() => {
   const setActor = k => { st.actor = k; try { localStorage.setItem("simsta-actor", k); } catch {} const a = acct(k); if (a) GFB.saveSetting("acting_sim", a.sim.id); };
   /* who to look at when there are no posts yet */
   const suggest = n => { const me = actor(), list = accts().filter(a => !a.alt && (!me || a.key !== me.key)).slice(0, n);
-    return list.length ? `<div class="sm-suggest"><h3>Accounts to look at</h3><div class="sm-sgrid">${list.map(a => `<a class="sm-scard" href="#/simsta/u/${encodeURIComponent(a.key)}">${av(a, 56)}<b>${esc(a.handle)}</b><small>${esc(a.name || "")}</small></a>`).join("")}</div></div>` : ""; };
+    return list.length ? `<div class="sm-suggest"><h3>Accounts to look at</h3><div class="sm-group">${list.map(a => `<a class="sm-grow" href="#/simsta/u/${encodeURIComponent(a.key)}">${av(a, 40)}<span class="tx"><b>${esc(a.handle)}</b><small>${esc(a.name || "")}</small></span>${ICON.chev}</a>`).join("")}</div></div>` : ""; };
   const postedRecently = key => posts().some(p => p.author === key && nowOrd() - ord(p.date) <= 3);
   const nameOf = key => { const a = acct(key); return a ? a.handle : clean(sim(key)?.name || "unknown"); };
   const matches = q => { q = q.toLowerCase().replace(/^@/, ""); return accts().filter(a => a.handle.includes(q) || a.name.toLowerCase().includes(q)); };
@@ -59,24 +59,33 @@ const Simsta = (() => {
     explore:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z" stroke-linejoin="round"/></svg>`,
     heart:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 20s-7.5-4.6-9.2-9.3C1.6 7.2 3.8 4 7.2 4c2 0 3.6 1.1 4.8 2.8C13.2 5.1 14.8 4 16.8 4c3.4 0 5.6 3.2 4.4 6.7C19.5 15.4 12 20 12 20z"/></svg>`,
     comment:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M20.5 11.5a8.5 8.5 0 0 1-12.6 7.4L3.5 20l1.2-4.2A8.5 8.5 0 1 1 20.5 11.5z"/></svg>`,
+    plus:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`,
+    chev:`<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>`,
     more:`<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>`,
     camera:`<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="8" y="16" width="48" height="36" rx="8"/><circle cx="32" cy="34" r="10"/><path d="M22 16l4-6h12l4 6"/></svg>`,
     dice:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="9" cy="9" r="1.2" fill="currentColor"/><circle cx="15" cy="15" r="1.2" fill="currentColor"/><circle cx="15" cy="9" r="1.2" fill="currentColor"/><circle cx="9" cy="15" r="1.2" fill="currentColor"/></svg>`
   };
 
+  /* ---------- comments and likes: the post's own (bundle) plus any in the simsta_comments / simsta_likes tables ---------- */
+  const CL = () => GFB.simsta;
+  const commentsOf = p => [...(p.comments || []), ...CL().commentsOf(p.id).map(c => ({ author:c.author, text:c.body, cloud:true }))];
+  const likedBy = p => [...new Set([...(p.liked_by || []), ...CL().likersOf(p.id)])];
+  const likesOf = p => Number(p.likes || 0) + CL().addedOf(p.id);
+  async function loadCloud(){ try { if (await CL().refresh()) draw(); } catch (e) { console.warn("Simsta comments didn't load.", e); } }
+
   /* ---------- post card ---------- */
   function postHTML(p, full){
-    const a = acct(p.author), me = actor(), comments = p.comments || [];
+    const a = acct(p.author), me = actor(), comments = commentsOf(p);
     const showAll = full || st.open[p.id], shown = showAll ? comments : comments.slice(-2);
-    const liked = me && (p.liked_by || []).includes(me.key);
+    const liked = me && likedBy(p).includes(me.key), nLikes = likesOf(p);
     const tags = (p.tags || []).map(k => acct(k) || (sim(k) ? { key:k, handle:clean(sim(k).name) } : null)).filter(Boolean);
     return `<article class="sm-post">
-      <div class="sm-phead"><button class="sm-handle" data-u="${p.author}" aria-label="Open profile">${av(a, 32, postedRecently(p.author))}</button>
-        <div class="who"><button class="sm-handle" data-u="${p.author}">${esc(a ? a.handle : nameOf(p.author))}</button><span class="sm-sub">${[p.lot_id ? esc(lotName(p.lot_id)) : "", `<span title="${esc(fullDate(p.date))}">${ago(p.date)}</span>`].filter(Boolean).join(", ")}</span></div>
-        <span style="flex:1"></span><button class="sm-handle sm-dots" data-edit="${p.id}" aria-label="Edit post">${ICON.more}</button></div>
+      <div class="sm-phead"><button class="sm-who" data-u="${p.author}" aria-label="Open ${esc(a ? a.handle : nameOf(p.author))}">${av(a, 32, postedRecently(p.author))}
+        <span class="who"><b>${esc(a ? a.handle : nameOf(p.author))}</b><span class="sm-sub">${[p.lot_id ? esc(lotName(p.lot_id)) : "", `<span title="${esc(fullDate(p.date))}">${ago(p.date)}</span>`].filter(Boolean).join(", ")}</span></span></button>
+        <button class="sm-dots" data-edit="${p.id}" aria-label="Post menu">${ICON.more}</button></div>
       <img class="sm-photo" src="${esc(p.photo)}" alt="${esc(p.caption || "Photo")}" data-dbl="${p.id}">
       <div class="sm-actions"><button data-like="${p.id}" class="${liked ? "liked" : ""}" aria-label="${liked ? "Unlike" : "Like"}">${ICON.heart}</button><button data-focus="${p.id}" aria-label="Comment">${ICON.comment}</button></div>
-      <div class="sm-likes">${fmt(p.likes)} like${Number(p.likes) === 1 ? "" : "s"}</div>
+      <div class="sm-likes">${fmt(nLikes)} like${nLikes === 1 ? "" : "s"}</div>
       ${p.caption ? `<div class="sm-cap"><b data-u="${p.author}">${esc(a ? a.handle : "")}</b>${rich(p.caption)}</div>` : ""}
       ${tags.length ? `<div class="sm-tags">with ${tags.map(t => `<button data-u="${t.key}">${esc(t.handle)}</button>`).join(", ")}</div>` : ""}
       ${!showAll && comments.length > 2 ? `<button class="sm-more" data-all="${p.id}">View all ${comments.length} comments</button>` : ""}
@@ -88,14 +97,16 @@ const Simsta = (() => {
   /* ---------- views ---------- */
   function feedHTML(){
     const list = posts();
-    const feed = list.length ? list.map(p => postHTML(p)).join("") : `<div class="sm-empty">${ICON.camera}<h2>Nothing posted yet</h2><p>Share the first photo as whoever you're acting as.</p><button class="sm-btn hot" data-new>New post</button></div>${suggest(6)}`;
-    return `<div class="sm-feedwrap"><div class="sm-feed">${feed}</div>${asideHTML()}</div>`;
+    const feed = list.length ? list.map(p => postHTML(p)).join("") : `<div class="sm-empty">${ICON.camera}<h2>Nothing posted yet</h2><p>Share the first photo as whoever you're acting as.</p><button class="sm-btn tint" data-new>New post</button></div>${suggest(6)}`;
+    return `<div class="sm-feedwrap"><div class="sm-feed">${list.length ? storiesHTML() : ""}${feed}</div>${asideHTML()}</div>`;
   }
+  /* phone only: recently active accounts as a row of rings (same data as the rail's Recently active list) */
+  const storiesHTML = () => `<div class="sm-stories" aria-label="Recently active">${recent().map(a => `<button class="sm-story" data-u="${a.key}">${av(a, 56, postedRecently(a.key))}<span>${esc(a.handle.replace(/^@/, ""))}</span></button>`).join("")}</div>`;
   function asideHTML(){
-    const week = posts().filter(p => nowOrd() - ord(p.date) <= 7).sort((a,b) => (b.likes || 0) - (a.likes || 0)).slice(0, 4);
+    const week = posts().filter(p => nowOrd() - ord(p.date) <= 7).sort((a,b) => likesOf(b) - likesOf(a)).slice(0, 4);
     const days = []; for (let k = 0; k <= 3; k++) { const o = nowOrd() + k - 1, season = cal().seasons[Math.floor((((o % 84) + 84) % 84) / 21)].name, day = (((o % 84) + 84) % 84) % 21 + 1; cal().events.filter(e => e.season === season && e.day === day).forEach(e => days.push({ e, k })); }
     return `<aside class="sm-aside">
-      ${week.length ? `<section><h3>Trending this week</h3>${week.map(p => `<button class="sm-trend" data-post="${p.id}"><img loading="lazy" decoding="async" src="${esc(p.photo)}" alt=""><span><b>${esc(nameOf(p.author))}</b><small>${fmt(p.likes)} likes</small></span></button>`).join("")}</section>` : ""}
+      ${week.length ? `<section><h3>Trending this week</h3>${week.map(p => `<button class="sm-trend" data-post="${p.id}"><img loading="lazy" decoding="async" src="${esc(p.photo)}" alt=""><span><b>${esc(nameOf(p.author))}</b><small>${fmt(likesOf(p))} likes</small></span></button>`).join("")}</section>` : ""}
       <section><h3>Coming up in the save</h3>${days.length ? days.slice(0, 5).map(({e, k}) => `<div class="sm-ev"><small>${k === 0 ? "Today" : k === 1 ? "Tomorrow" : "In " + k + " days"}</small>${esc(e.title)}</div>`).join("") : `<p class="sm-none" style="padding:0">Nothing on the calendar.</p>`}</section>
     </aside>`;
   }
@@ -103,7 +114,7 @@ const Simsta = (() => {
   function exploreHTML(){ const list = posts(); return `<div class="sm-prof">${grid(list) || `<div class="sm-empty">${ICON.camera}<h2>Nothing to explore yet</h2><p>Posts from every account show up here.</p></div>${suggest(12)}`}</div>`; }
   function tagHTML(t){
     const re = new RegExp("#" + t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![\\p{L}0-9_])", "iu");
-    const list = posts().filter(p => re.test(p.caption || "") || (p.comments || []).some(c => re.test(c.text)));
+    const list = posts().filter(p => re.test(p.caption || "") || commentsOf(p).some(c => re.test(c.text)));
     return `<div class="sm-prof"><div class="sm-dirhead"><h1>#${esc(t)}</h1><span class="sm-sub">${list.length} post${list.length === 1 ? "" : "s"}</span></div>${grid(list) || `<p class="sm-none">No posts with this tag yet.</p>`}</div>`;
   }
 
@@ -118,7 +129,7 @@ const Simsta = (() => {
     const others = accts().filter(x => x.sim.id === a.sim.id && x.key !== key);
     return `<div class="sm-prof">
       <div class="sm-phero">${av(a, 150, postedRecently(key))}
-        <div class="sm-pinfo"><div class="sm-prow"><h1>${esc(a.handle)}</h1><button class="sm-btn" data-editprof="${key}">Edit profile</button>${actor()?.key === key ? `<span class="sm-pill">Acting as</span>` : `<button class="sm-btn hot" data-actas="${key}">Act as ${esc(a.handle)}</button>`}</div>
+        <div class="sm-pinfo"><div class="sm-prow"><h1>${esc(a.handle)}</h1><button class="sm-btn" data-editprof="${key}">Edit profile</button><button class="sm-btn" data-msg="${key}">Message</button>${actor()?.key === key ? `<span class="sm-pill">Acting as</span>` : `<button class="sm-btn hot" data-actas="${key}">Act as ${esc(a.handle)}</button>`}</div>
           <div class="sm-stats"><span><b>${mine.length}</b> post${mine.length === 1 ? "" : "s"}</span><span><b>${fmt(a.followers)}</b> followers</span><span><b>${fmt(a.following)}</b> following</span></div>
           <div class="sm-name">${esc(a.name)}</div>${a.bio ? `<p class="sm-bio">${rich(a.bio)}</p>` : ""}
           <p class="sm-owner">${a.alt ? "Alt account of" : "Main account of"} <button class="sm-mention" data-reg="${a.sim.id}">${esc(clean(a.sim.name))}</button>${others.length ? `. Also ${others.map(o => `<button class="sm-mention" data-u="${o.key}">${esc(o.handle)}</button>`).join(", ")}` : ""}</p></div></div>
@@ -140,9 +151,16 @@ const Simsta = (() => {
   }
   function accountsHTML(){ return `<div class="sm-prof"><div class="sm-dirhead"><h1>All Sims</h1><input id="sm-dq" type="search" placeholder="Search by name or handle" value="${esc(st.dq)}" aria-label="Search all Sims" autocomplete="off"></div><div class="sm-dir" id="sm-dir">${dirRows()}</div></div>`; }
 
+  const mark = id => `<svg class="sm-mark" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1=".2" x2="1" y2=".8"><stop offset="0" stop-color="#DB1265"/><stop offset="1" stop-color="#F95A54"/></linearGradient></defs><rect width="64" height="64" rx="15" fill="url(#${id})"/><path d="M32 11C33.6 25.2 38.8 30.4 53 32C38.8 33.6 33.6 38.8 32 53C30.4 38.8 25.2 33.6 11 32C25.2 30.4 30.4 25.2 32 11Z" fill="#fff"/></svg>`;
+  /* phone: one slim bar. Logo, Home, Explore, New post, and your account avatar (opens Switch) */
+  function barHTML(view){
+    const me = actor();
+    return `<header class="sm-bar"><button class="sm-wm" data-go="" aria-label="Simsta home">${mark("smg-bar")}<span>sim<i>sta</i></span></button>
+      <nav class="sm-barnav"><button class="ui-tap" data-go="" aria-label="Home" aria-current="${view === "feed"}">${ICON.home}</button><button class="ui-tap" data-go="explore" aria-label="Explore" aria-current="${view === "explore"}">${ICON.explore}</button><button class="ui-tap" data-new aria-label="New post"><span class="sm-plus">${ICON.plus}</span></button>${me ? `<button class="ui-tap" data-switch aria-label="Acting as ${esc(me.handle)}. Switch account">${av(me, 32)}</button>` : ""}</nav></header>`;
+  }
   function railHTML(view){
     const me = actor();
-    return `<aside class="sm-rail"><button class="sm-wm" data-go="" aria-label="Simsta home"><svg class="sm-mark" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="smg2" x1="0" y1=".2" x2="1" y2=".8"><stop offset="0" stop-color="#DB1265"/><stop offset="1" stop-color="#F95A54"/></linearGradient></defs><rect width="64" height="64" rx="15" fill="url(#smg2)"/><path d="M32 11C33.6 25.2 38.8 30.4 53 32C38.8 33.6 33.6 38.8 32 53C30.4 38.8 25.2 33.6 11 32C25.2 30.4 30.4 25.2 32 11Z" fill="#fff"/></svg><span>sim<i>sta</i></span></button>
+    return `<aside class="sm-rail"><button class="sm-wm" data-go="" aria-label="Simsta home">${mark("smg-rail")}<span>sim<i>sta</i></span></button>
       ${me ? `<button class="sm-actor" data-switch>${av(me, 32)}<span><small>Acting as</small><b>${esc(me.handle)}</b></span><em>Switch</em></button>` : ""}
       <button class="sm-nav" data-go="" aria-current="${view === "feed"}">${ICON.home}<span>Home</span></button>
       <button class="sm-nav" data-go="explore" aria-current="${view === "explore"}">${ICON.explore}<span>Explore</span></button>
@@ -175,28 +193,12 @@ const Simsta = (() => {
         <div class="sm-fbody"><input id="sm-sq" type="search" placeholder="Search accounts" value="${esc(st.sq)}" autocomplete="off" style="margin:0 0 8px">
         <div id="sm-swlist">${list.map(a => `<button class="sm-dirrow" style="width:100%" data-pick="${a.key}">${av(a, 40)}<span><b>${esc(a.handle)}</b><small>${esc(a.name)}${a.alt ? ", alt" : ""}</small></span>${actor()?.key === a.key ? `<span class="ct" style="color:var(--hot)">Current</span>` : ""}</button>`).join("") || `<p class="sm-none">No accounts match.</p>`}</div></div></div></div>`;
     }
-    if (st.modal.kind === "post"){
-      const d = st.draft, editing = !!d.id;
-      if (!d.photo) return `<div class="sm-modal" data-closebg><div class="sm-form"><header><button type="button" data-close>Cancel</button><span>New post</span><span></span></header>
-        <div class="sm-fbody"><label class="sm-drop big">${ICON.camera}<b>Add a screenshot</b><small>Step 1 of 2</small><input type="file" accept="image/*" id="sm-file"></label>${up}${err}</div></div></div>`;
-      return `<div class="sm-modal" data-closebg><form class="sm-form wide" id="sm-post"><header><button type="button" data-close>Cancel</button><span>${editing ? "Edit post" : "New post"}</span><button class="go" type="submit">${editing ? "Save" : "Share"}</button></header>
-        <div class="sm-compose"><div class="sm-prev"><img loading="lazy" decoding="async" src="${esc(d.photo)}" alt="Preview"><label>Change photo<input type="file" accept="image/*" id="sm-file"></label></div>
-        <div class="sm-fbody">${up}
-          <label>Posted by</label>${UI.simPicker("author", d.author ? [d.author] : [], acctOpts(), "Search accounts")}
-          <label>Caption<textarea name="caption" placeholder="Write it like they would. Use @handles and #tags.">${esc(d.caption)}</textarea></label>
-          <label>Tag people</label>${UI.simPicker("tags", d.tags, acctOpts(), "Tag accounts in the photo")}
-          <label>Location<select name="lot_id"><option value="">None</option>${data.lots.map(l => `<option value="${l.id}" ${l.id===d.lot_id?"selected":""}>${esc(l.address)}</option>`).join("")}</select></label>
-          <label>Date in the save</label>${UI.gameDate("date", d.date, cal())}
-          <label>Likes</label><div class="sm-likesrow"><input type="number" name="likes" min="0" value="${esc(d.likes ?? 0)}" aria-label="Likes"><button type="button" class="sm-btn" data-suggest>${ICON.dice}Realistic</button></div>
-          ${err}${editing ? `<button type="button" class="sm-del" data-delpost="${d.id}">Delete post</button>` : `<p class="sm-note">Step 2 of 2</p>`}
-        </div></div></form></div>`;
-    }
     if (st.modal.kind === "profile"){
       const m = st.modal, a = m.key ? acct(m.key) : null, s = sim(m.simId);
       const v = a || { handle:"", name: m.alt ? "" : clean(s.name), bio:"", followers:0, following:0 };
       return `<div class="sm-modal" data-closebg><form class="sm-form" id="sm-prof"><header><button type="button" data-close>Cancel</button><span>${a ? "Edit profile" : m.alt ? "New alt account" : "Create account"}</span><button class="go" type="submit">Done</button></header>
         <div class="sm-fbody">
-          <div style="display:flex;align-items:center;gap:14px">${av({ key: m.key || s.id, handle: v.handle || s.name, avatar: st.draft.avatar }, 40)}<label style="margin:0;color:var(--hot);cursor:pointer;font-weight:700">Change profile photo<input type="file" accept="image/*" id="sm-avfile"></label>${st.draft.avatar ? `<button type="button" class="sm-del" style="padding:0" data-rmav>Remove</button>` : ""}</div>${up}
+          <div style="display:flex;align-items:center;gap:14px">${av({ key: m.key || s.id, handle: v.handle || s.name, avatar: st.draft.avatar }, 40)}<label style="margin:0;color:var(--hot);cursor:pointer;font-weight:700">Change profile photo<input type="file" accept="image/*" id="sm-avfile"${PhotoSlot.attr({ title:"Profile pic · " + (v.handle || clean(s.name)), shape:"circle", aspect:1, outW:640, sims:[s.id], current:st.draft.avatar || "", removable:!!st.draft.avatar, removeLabel:"Remove from profile", previews:[{ label:"Profile", size:44 }, { label:"Comments", size:28 }] })}></label>${st.draft.avatar ? `<button type="button" class="sm-del" style="padding:0" data-rmav>Remove</button>` : ""}</div>${up}
           <label>Handle<input type="text" name="handle" value="${esc(v.handle)}" placeholder="@handle" required autocapitalize="none" autocorrect="off" spellcheck="false"></label><p class="sm-note">Handles always start with @ and save in lowercase.</p>
           <label>Display name<input type="text" name="name" value="${esc(v.name)}"></label>
           <label>Bio<textarea name="bio">${esc(v.bio)}</textarea></label>
@@ -209,6 +211,40 @@ const Simsta = (() => {
     return "";
   }
 
+  /* ---------- New post / Edit post: the shared bottom sheet (UI.sheet), kept in step with st.modal and st.draft ---------- */
+  const slotAttr = d => PhotoSlot.attr({ title:"Simsta post", shape:"portrait", aspect:.8, outW:1080, sims:d.author ? [String(d.author).split("~")[0]] : [], current:d.photo || "" });
+  function postSheetView(){
+    const d = st.draft, editing = !!d.id;
+    const err = st.err ? `<p class="sm-err">${esc(st.err)}</p>` : "", up = st.uploading ? `<p class="sm-note">Adding photo...</p>` : "";
+    if (!d.photo) return { title:"New post", right:"", body:`<p class="sm-step">Step 1 of 2</p>
+      <label class="sm-drop big">${ICON.camera}<b>Add a screenshot</b><small>From your photos or a new upload</small><span class="sm-pick">Choose a screenshot</span><input type="file" accept="image/*" id="sm-file"${slotAttr(d)}></label>${up}${err}` };
+    return { title: editing ? "Edit post" : "New post", right: editing ? "Save" : "Share", body:`<form id="sm-post">${editing ? "" : `<p class="sm-step">Step 2 of 2</p>`}
+      <div class="sm-prev"><img loading="lazy" decoding="async" src="${esc(d.photo)}" alt="Preview"><label>Change photo<input type="file" accept="image/*" id="sm-file"${slotAttr(d)}></label></div>
+      <div class="sm-fbody">${up}
+        <label>Posted by</label>${UI.simPicker("author", d.author ? [d.author] : [], acctOpts(), "Search accounts")}
+        <label>Caption<textarea name="caption" placeholder="Write it like they would. Use @handles and #tags.">${esc(d.caption)}</textarea></label>
+        <label>Tag people</label>${UI.simPicker("tags", d.tags, acctOpts(), "Tag accounts in the photo")}
+        <label>Location<select name="lot_id"><option value="">None</option>${data.lots.map(l => `<option value="${l.id}" ${l.id===d.lot_id?"selected":""}>${esc(l.address)}</option>`).join("")}</select></label>
+        <label>Date in the save</label>${UI.gameDate("date", d.date, cal())}
+        <label>Likes</label><div class="sm-likesrow"><input type="number" name="likes" min="0" value="${esc(d.likes ?? 0)}" aria-label="Likes"><button type="button" class="sm-btn" data-suggest>${ICON.dice}Realistic</button></div>
+        ${err}${editing ? `<button type="button" class="sm-del" data-delpost="${d.id}">Delete post</button>` : ""}
+      </div></form>` };
+  }
+  function syncSheet(){
+    if (st.modal?.kind !== "post") { const sh = st.sheet; if (sh) { st.sheet = null; sh.close("sync"); } return; }
+    const v = postSheetView();
+    if (!st.sheet) {
+      const sh = st.sheet = UI.sheet({ title:v.title, body:v.body, left:"Cancel", right:v.right || " ",
+        onRight: () => sh.el.querySelector("#sm-post")?.requestSubmit(),
+        onClose: () => { if (st.sheet === sh) { st.sheet = null; st.modal = null; st.err = null; draw(); } } });
+      sh.el.classList.add("sm-sheet");
+    }
+    const sh = st.sheet, keep = sh.body.scrollTop, r = sh.el.querySelector("[data-sr]");
+    sh.el.querySelector(".ui-sheet-h b").textContent = v.title; r.textContent = v.right; r.style.visibility = v.right ? "" : "hidden";
+    sh.body.innerHTML = v.body; sh.body.scrollTop = keep;
+  }
+  const postForm = () => st.sheet?.el.querySelector("#sm-post");
+
   /* ---------- render ---------- */
   function draw(){
     const [v, a] = route;
@@ -220,7 +256,8 @@ const Simsta = (() => {
     else if (view === "accounts") main = accountsHTML();
     else if (view === "tag") main = tagHTML(decodeURIComponent(a || ""));
     else main = feedHTML();
-    root.innerHTML = `<div class="site-sm">${railHTML(view)}<main class="sm-main">${main}</main>${lightboxHTML()}${modalHTML()}</div>`;
+    root.innerHTML = `<div class="site-sm">${railHTML(view)}${barHTML(view)}<main class="sm-main">${main}</main>${lightboxHTML()}${modalHTML()}</div>`;
+    syncSheet();
   }
 
   async function savePost(id, patch){ const p = data.posts.find(x => x.id === id); await GFB.savePost({ ...p, ...patch }); draw(); }
@@ -229,6 +266,7 @@ const Simsta = (() => {
     const me = actor(); if (!me) return;
     const p = data.posts.find(z => z.id === id), by = p.liked_by || [], has = by.includes(me.key);
     if (has && onlyLike) return;
+    if (!has && CL().likersOf(id).includes(me.key)) return;   /* liked from the likes table: stays liked */
     await savePost(id, { liked_by: has ? by.filter(k => k !== me.key) : [...by, me.key], likes: Math.max(0, Number(p.likes || 0) + (has ? -1 : 1)) });
   }
   async function saveProfile(form){
@@ -248,10 +286,21 @@ const Simsta = (() => {
     return s.id;
   }
 
+  /* Message button: opens the thread between the Sim you're acting as and this profile's Sim, or starts one tagged Simsta.
+     On your own (acting as) profile it opens every thread that Sim is in. */
+  async function messageSim(key, btn){
+    const a = acct(key), me = actor(); if (!a) return;
+    if (!me || me.sim.id === a.sim.id) { location.hash = "#/messages/sim/" + a.sim.id; return; }
+    if (!GFB.messages || !GFB.messages.ready()) { btn.textContent = "Messages needs the cloud"; return; }
+    btn.disabled = true; btn.textContent = "Opening...";
+    try { const r = await GFB.messages.ensure([me.sim.id, a.sim.id], "simsta", { anyOrigin:true }); location.hash = "#/messages/t/" + r.thread.id + "/" + me.sim.id; }
+    catch (e) { btn.disabled = false; btn.textContent = "Couldn't open. Try again"; }
+  }
+
   let bound = false;
   function bind(){
     if (bound) return; bound = true;
-    const mine = t => root && root.contains(t) && root.querySelector(".site-sm");
+    const mine = t => (root && root.contains(t) && root.querySelector(".site-sm")) || (st.sheet && st.sheet.el.contains(t));
     document.addEventListener("click", async e => {
       if (!mine(e.target)) return;
       const t = e.target, x = k => t.closest(`[data-${k}]`)?.dataset[k], has = k => !!t.closest(`[data-${k}]`);
@@ -261,11 +310,12 @@ const Simsta = (() => {
       if (has("switch")) { st.sq = ""; st.modal = { kind:"switch" }; draw(); root.querySelector("#sm-sq")?.focus(); return; }
       if (has("pick")) { setActor(x("pick")); st.modal = null; draw(); return; }
       if (has("actas")) { setActor(x("actas")); draw(); return; }
+      if (has("msg")) { await messageSim(x("msg"), t.closest("[data-msg]")); return; }
       if (has("reg")) { location.hash = "#/registry/" + x("reg"); return; }
       if (has("delpost")) { if (UI.confirmTap(t.closest("[data-delpost]"))) { await GFB.deletePost(x("delpost")); st.modal = null; st.lb = null; if (route[0] === "p") go(""); else draw(); } return; }
       if (has("delalt")) { if (UI.confirmTap(t.closest("[data-delalt]"))) { const [sid, aid] = x("delalt").split("~"); const s = sim(sid); await GFB.saveSim(sid, { simsta_alts:(s.simsta_alts || []).filter(a => a.id !== aid) }); st.modal = null; go("u/" + sid); } return; }
       if (has("rmav")) { st.draft.avatar = null; draw(); return; }
-      if (has("suggest")) { const form = root.querySelector("#sm-post"); const d = readDraft(form); if (!d.author) { st.draft = d; st.err = "Pick who's posting first."; draw(); return; } st.draft = { ...d, likes: suggestLikes(d.author) }; st.err = null; draw(); return; }
+      if (has("suggest")) { const d = readDraft(postForm()); if (!d.author) { st.draft = d; st.err = "Pick who's posting first."; draw(); return; } st.draft = { ...d, likes: suggestLikes(d.author) }; st.err = null; draw(); return; }
       if (has("new")) { st.draft = { author: actor()?.key || null, tags:[], caption:"", likes:0, photo:null }; st.modal = { kind:"post" }; st.err = null; draw(); return; }
       if (has("edit")) { st.draft = JSON.parse(JSON.stringify(data.posts.find(p => p.id === x("edit")))); st.lb = null; st.modal = { kind:"post" }; st.err = null; draw(); return; }
       if (has("editprof")) { const k = x("editprof"), a = acct(k); st.draft = { avatar: a?.avatar || null }; st.modal = { kind:"profile", key: a ? k : null, simId: a ? a.sim.id : k, alt: !!a?.alt }; st.err = null; draw(); return; }
@@ -279,6 +329,9 @@ const Simsta = (() => {
       if (has("u")) { st.tab = "posts"; st.q = ""; st.lb = null; go("u/" + x("u")); return; }
       if (t.closest("[data-go]")) { go(x("go")); return; }
     });
+    /* coming back to Simsta picks up comments Claude added */
+    const back = () => { if (document.visibilityState === "visible" && root?.querySelector(".site-sm") && !st.modal && !(root.contains(document.activeElement) && document.activeElement.value)) loadCloud(); };   /* never while she's mid-typing */
+    document.addEventListener("visibilitychange", back); window.addEventListener("focus", back);
     document.addEventListener("dblclick", e => { if (!mine(e.target)) return; const id = e.target.closest("[data-dbl]")?.dataset.dbl; if (id) toggleLike(id, true); });
     document.addEventListener("input", e => {
       if (!mine(e.target)) return;
@@ -286,10 +339,11 @@ const Simsta = (() => {
       if (e.target.id === "sm-dq") { st.dq = e.target.value; root.querySelector("#sm-dir").innerHTML = dirRows(); }
       if (e.target.id === "sm-sq") { st.sq = e.target.value; const pos = e.target.selectionStart; draw(); const i = root.querySelector("#sm-sq"); i.focus(); i.setSelectionRange(pos, pos); }
     });
+    document.addEventListener("pslot-remove", e => { if (mine(e.target) && e.target.id === "sm-avfile") { st.draft.avatar = null; draw(); } });
     document.addEventListener("change", async e => {
       if (!mine(e.target)) return;
       if (e.target.id === "sm-file" && e.target.files[0]) {
-        const form = root.querySelector("#sm-post"); if (form) st.draft = readDraft(form);
+        const form = postForm(); if (form) st.draft = readDraft(form);
         st.uploading = true; st.err = null; draw();
         try { st.draft.photo = (await GFB.uploadImage(e.target.files[0], 2048)).url; if (!st.draft.id && !st.draft.likes && st.draft.author) st.draft.likes = suggestLikes(st.draft.author); } catch (err) { st.err = err.message; }
         st.uploading = false; draw();
@@ -309,7 +363,9 @@ const Simsta = (() => {
         if (e.target.matches("[data-cpost]")) {
           const text = (f.get("text") || "").trim(), me = actor(); if (!text || !me) return;
           const p = data.posts.find(z => z.id === e.target.dataset.cpost); st.open[p.id] = true;
-          await savePost(p.id, { comments: [...(p.comments || []), { author: me.key, text }] }); root.querySelector(`[data-cpost="${p.id}"] input`)?.focus(); return;
+          if (CL().ready()) { e.target.reset(); await CL().addComment(p.id, me.key, text, { ...cal().today, year: cal().year }); draw(); }
+          else await savePost(p.id, { comments: [...(p.comments || []), { author: me.key, text }] });
+          root.querySelector(`[data-cpost="${p.id}"] input`)?.focus(); return;
         }
         if (e.target.id === "sm-post") {
           const d = readDraft(e.target);
@@ -323,7 +379,7 @@ const Simsta = (() => {
     });
   }
 
-  function render(el, d, parts){ root = el; data = d; data.posts = data.posts || []; route = parts || []; if (route[0] !== "u") st.tab = "posts"; st.lb = null; bind(); draw(); }
+  function render(el, d, parts){ root = el; data = d; data.posts = data.posts || []; route = parts || []; if (route[0] !== "u") st.tab = "posts"; st.lb = null; bind(); draw(); loadCloud(); }
   function address(parts){ const [v, a] = parts || []; if (v === "u") { const ac = data && acct(a); return "/" + (ac ? ac.handle.slice(1) : a); } if (v === "p") return "/p/" + a; if (v === "explore") return "/explore"; if (v === "accounts") return "/directory"; if (v === "tag") return "/explore/tags/" + a; return "/"; }
   return { render, address };
 })();

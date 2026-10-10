@@ -19,7 +19,7 @@ const Notes = (() => {
     mark:'<svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#F2B705"/><rect x="12" y="10" width="40" height="46" rx="5" fill="#FFFDF6"/><path d="M19 23h26M19 31h26M19 39h18" stroke="#C9C1AE" stroke-width="3" stroke-linecap="round"/></svg>',
     all:'<path d="M5 5h14v14H5z"/><path d="M8 9h8M8 12h8M8 15h5"/>', folder:'<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
     story:'<path d="M4 18c3-8 6-8 8-3s5 5 8-3"/><circle cx="4" cy="18" r="1.5"/><circle cx="20" cy="9" r="1.5"/>', tag:'<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8" r="1.5"/>',
-    trash:'<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>', pin:'<path d="M9 3h6l-1 6 4 4H6l4-4z"/><path d="M12 13v8"/>', plus:'<path d="M12 5v14M5 12h14"/>', back:'<path d="M15 5l-7 7 7 7"/>'
+    trash:'<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>', pin:'<path d="M9 3h6l-1 6 4 4H6l4-4z"/><path d="M12 13v8"/>', sticky:'<path d="M5 4h14v10l-6 6H5z"/><path d="M13 20v-6h6"/>', plus:'<path d="M12 5v14M5 12h14"/>', back:'<path d="M15 5l-7 7 7 7"/>'
   };
   const ico = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
 
@@ -119,7 +119,7 @@ const Notes = (() => {
     const tb = `<div class="nt-tb" role="toolbar" aria-label="Formatting"><button type="button" data-fmt="h">Heading</button><button type="button" data-fmt="b"><b>B</b></button><button type="button" data-fmt="i"><i>I</i></button><button type="button" data-fmt="ul">\u2022 List</button><button type="button" data-fmt="ck">\u2610 Checklist</button><button type="button" data-fmt="at">@ Mention</button><button type="button" class="nt-done" data-nt="done">Done</button></div>`;
     return `<section class="nt-note"><div class="nt-nhead"><a class="nt-mback" href="#/notes${st.ctx.length ? "/" + st.ctx.join("/") : ""}" aria-label="Back to list">${ico("back")}</a><span class="nt-when">${n.trashed ? "In Recently deleted" : "Edited " + day(n.updated || n.created)}</span>
         ${n.trashed ? `<button class="nt-text" data-nt="restore">Restore</button><button class="nt-text danger" data-nt="purge">Delete forever</button>`
-          : `<button class="nt-ib ${n.pinned ? "on" : ""}" data-nt="pin" aria-label="${n.pinned ? "Unpin" : "Pin"}" aria-pressed="${!!n.pinned}">${ico("pin")}</button><button class="nt-ib" data-nt="trash" aria-label="Move to Recently deleted">${ico("trash")}</button>`}</div>
+          : `<button class="nt-ib ${n.pinned ? "on" : ""}" data-nt="pin" aria-label="${n.pinned ? "Unpin" : "Pin"}" aria-pressed="${!!n.pinned}">${ico("pin")}</button><button class="nt-ib ${n.sticky ? "on" : ""}" data-nt="sticky" aria-label="${n.sticky ? "Take off the desk" : "Make this the sticky note"}" aria-pressed="${!!n.sticky}" title="${n.sticky ? "Sticky note (tap to take it off)" : "Make sticky"}">${ico("sticky")}</button><button class="nt-ib" data-nt="trash" aria-label="Move to Recently deleted">${ico("trash")}</button>`}</div>
       <div class="nt-paper">
         <input class="nt-title" id="nt-title" value="${esc(n.title)}" placeholder="Title" aria-label="Title" ${n.trashed ? "disabled" : ""}>
         <div class="nt-meta">
@@ -199,7 +199,8 @@ const Notes = (() => {
       if (act === "edit" && n) { st.editing = n.id; st.focusEnd = true; draw(); return; }
       if (act === "done") { st.editing = null; clearTimeout(saveT); if (n) await GFB.saveNote({ id:n.id, title:n.title, body:n.body }); await refresh(); return; }
       if (act === "pin" && n) { await save(n.id, { pinned:!n.pinned }); return; }
-      if (act === "trash" && n) { await save(n.id, { trashed:Date.now(), pinned:false }); st.editing = null; go(st.ctx.join("/")); return; }
+      if (act === "sticky" && n) { await setSticky(n.sticky ? null : n.id); await refresh(); return; }
+      if (act === "trash" && n) { await save(n.id, { trashed:Date.now(), pinned:false, sticky:false }); window.dispatchEvent(new Event("gfb:sticky")); st.editing = null; go(st.ctx.join("/")); return; }
       if (act === "restore" && n) { await save(n.id, { trashed:null }); return; }
       if (act === "purge" && n) { if (!UI.confirmTap(b, "Tap again")) return; await GFB.deleteNote(n.id); await refresh(); go("trash"); return; }
       if (act === "emptytrash") { if (!UI.confirmTap(b, "Tap again")) return; for (const x of (data.notes || []).filter(x => x.trashed)) await GFB.deleteNote(x.id); await refresh(); return; }
@@ -253,11 +254,26 @@ const Notes = (() => {
     box.addEventListener("keydown", e => { if (e.key === "Escape") box.remove(); if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) box.querySelector("[data-q=save]").click(); });
   }
 
+  /* the desk sticky: one note at a time, marked on the note so every device shows the same one */
+  async function setSticky(id) {
+    const d = await GFB.getAll();
+    for (const x of (d.notes || []).filter(x => x.sticky && x.id !== id)) await GFB.saveNote({ id:x.id, sticky:false });
+    if (id) { await GFB.saveNote({ id, sticky:true }); try { localStorage.removeItem("simdesk-sticky-hidden"); } catch {} }
+    window.dispatchEvent(new Event("gfb:sticky"));
+  }
+  /* note body as HTML for the sticky, with the same checklists and @mention links as Notes */
+  function bodyHTML(d, body) { const prev = data; data = d; try { return render(body || "", entities()); } finally { data = prev || d; } }
+  /* a new note that already mentions a Sim, opened in Notes */
+  async function newAbout(sim) {
+    const n = await GFB.saveNote({ title:"", body:"@" + clean(sim.name) + " ", folder:"Inbox", pinned:false, tags:[], story:null, created:Date.now(), trashed:null });
+    st.editing = n.id; location.hash = "#/notes/n/" + n.id;
+  }
+
   /* used by the Registry: notes that mention a Sim or list them in a storyline */
   function mentionsOf(d, sim) {
     const name = clean(sim.name), re = new RegExp("@" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![A-Za-z0-9])", "i");
     return (d.notes || []).filter(n => !n.trashed && (re.test((n.title || "") + "\n" + (n.body || "")) || (n.story && (n.story.sims || []).includes(sim.id))))
-      .sort((a, b) => (b.updated || 0) - (a.updated || 0)).map(n => ({ id:n.id, title:titleOf(n), story:n.story ? n.story.status : null, when:day(n.updated || n.created) }));
+      .sort((a, b) => (b.updated || 0) - (a.updated || 0)).map(n => ({ id:n.id, title:titleOf(n), story:n.story ? n.story.status : null, folder:n.folder || "Inbox", sticky:!!n.sticky, when:day(n.updated || n.created) }));
   }
-  return { render:renderApp, label, openQuick, mentionsOf };
+  return { render:renderApp, label, openQuick, mentionsOf, setSticky, bodyHTML, titleOf, newAbout };
 })();

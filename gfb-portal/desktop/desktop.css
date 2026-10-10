@@ -22,7 +22,7 @@ body{font:14px/1.45 "Inter",system-ui,-apple-system,"Segoe UI",sans-serif;color:
 .menubar .spacer{flex:1}
 
 /* icons fill top to bottom, then the next column, so the colors read as one flow */
-.icons{position:absolute;top:calc(30px + env(safe-area-inset-top,0px) + 28px);left:28px;display:grid;grid-auto-flow:column;grid-template-rows:repeat(4,108px);grid-auto-columns:96px;gap:10px 14px}
+.icons{position:absolute;top:calc(30px + env(safe-area-inset-top,0px) + 28px);left:28px;display:grid;grid-auto-flow:column;grid-template-rows:repeat(var(--g-rows,4),108px);grid-auto-columns:96px;gap:10px 14px}
 .app{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:8px;background:none;border:none;padding:6px 4px;border-radius:10px;cursor:pointer;color:var(--label);text-decoration:none}
 .app:hover,.app:focus-visible{background:rgba(255,255,255,.08)}
 .app .ic{width:64px;height:64px;border-radius:15px;display:grid;place-items:center;box-shadow:0 6px 16px rgba(0,0,0,.35);overflow:hidden}
@@ -105,3 +105,91 @@ body{font:14px/1.45 "Inter",system-ui,-apple-system,"Segoe UI",sans-serif;color:
 
 /* quick note pencil in the menu bar */
 .mb-quick{border:0;background:none;color:inherit;display:grid;place-items:center;width:30px;height:24px;cursor:pointer;opacity:.9;border-radius:6px;padding:0}.mb-quick:hover{background:rgba(255,255,255,.14)}.mb-quick svg{width:17px;height:17px}
+
+/* ---------- Oct 9: iPhone-style dock, wallpaper to the bottom edge, and auto-hide inside apps (phones only) ---------- */
+/* home screen web app: run the desk under the home indicator (100lvh is the whole screen there; in Safari the toolbar would cover it) */
+/* the desk is pinned to all four edges of the real screen (no height math, which iOS gets wrong in the home screen app), and the page behind it wears the same gradient so a short desk can never leave a black band */
+.desk{padding-bottom:0}
+html{background:radial-gradient(1200px 700px at 78% 18%, #3a2d46 0%, transparent 60%),radial-gradient(900px 600px at 10% 90%, #1f2a3a 0%, transparent 60%),linear-gradient(160deg,var(--wall2),var(--wall));background-color:var(--wall)}
+body{background:transparent}
+.dock-handle,.dock-scrim{display:none}
+@media (max-width:720px){
+  /* floats like the iPhone dock: inset from the sides, rounded, a small gap above the bottom edge (into the home indicator area, as on iPhone) */
+  .dock{left:12px;right:12px;bottom:max(10px,calc(env(safe-area-inset-bottom,0px) - 20px));border-radius:30px;padding:10px 12px;
+    transition:transform .32s cubic-bezier(.2,.8,.2,1),opacity .24s ease}
+  /* inside an app the window runs to the bottom edge; the room at the bottom keeps app buttons clear of the handle and home indicator */
+  .desk.in-app .window{bottom:0}
+  .desk.in-app .viewport{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 22px)}
+  .desk.in-app:not(.dock-peek) .dock{transform:translateY(calc(100% + 40px));opacity:0;pointer-events:none}
+  .desk.in-app .dock-handle{display:block;position:absolute;z-index:21;left:50%;transform:translateX(-50%);
+    /* the very bottom of an iPhone swipes to the home screen, so the touch zone starts just above it */
+    bottom:max(0px,calc(env(safe-area-inset-bottom,0px) - 6px));width:140px;height:30px;padding:0;border:0;background:none;cursor:pointer;touch-action:none;transition:opacity .2s ease}
+  .dock-handle::before{content:"";position:absolute;left:50%;bottom:9px;width:70px;height:4px;margin-left:-35px;border-radius:4px;background:rgba(110,104,118,.78);box-shadow:0 0 0 1px rgba(255,255,255,.55)}
+  .desk.dock-peek .dock-handle{opacity:0;pointer-events:none}
+  .desk.in-app .dock-scrim{display:block;position:absolute;inset:0;z-index:15;background:rgba(10,4,8,.32);opacity:0;pointer-events:none;transition:opacity .24s ease}
+  .desk.in-app.dock-peek .dock-scrim{opacity:1;pointer-events:auto}
+  .dock{touch-action:pan-x}
+}
+@media (max-width:720px) and (prefers-reduced-motion:reduce){
+  .dock{transition:opacity .2s ease}
+  .desk.in-app:not(.dock-peek) .dock{transform:none}
+}
+
+/* phones: with Photos there are 8 dock buttons, so they share the width and stay square */
+@media (max-width:720px){
+  .dock{gap:2px;padding:10px}
+  .dk{flex:1 1 0;width:auto;max-width:50px;height:auto;aspect-ratio:1}
+}
+
+/* Home screen grid, Across: fill each row first (iPad and computer only; the phone's 4 across is untouched) */
+@media (min-width:721px){ .icons.across{grid-auto-flow:row;grid-template-rows:none;grid-template-columns:repeat(var(--g-cols,4),96px);grid-auto-rows:108px} }
+
+/* ---------- Oct 9: home screen app bottom edge (iPhone and iPad) ----------
+   The home screen app reports a page shorter than the screen (iPhone 797 of 844, iPad 992 of 1024), and that bottom strip
+   behaves differently from open to open. desktop.js measures the real screen height (--app-h) and the strip (--app-gap);
+   the desk and wallpaper run the full height and the dock sits clear of the strip. */
+html.standalone, html.standalone body{height:var(--app-h,100lvh)}
+html.standalone{background-attachment:scroll !important;background-position:center top !important;min-height:var(--app-h,100lvh)}
+html.standalone .desk{bottom:auto;height:var(--app-h,100lvh)}
+html.standalone .dock{bottom:max(calc(env(safe-area-inset-bottom,0px) + 23px), calc(var(--app-gap,0px) + 10px))}
+html.standalone .window{bottom:max(calc(92px + env(safe-area-inset-bottom,0px)), calc(var(--app-gap,0px) + 82px))}
+@media (max-width:720px){ html.standalone .window{bottom:max(calc(74px + env(safe-area-inset-bottom,0px)), calc(var(--app-gap,0px) + 64px))} html.standalone .desk.in-app .window{bottom:0} }
+
+/* the desk sticky note: one note from Notes that floats over every app */
+.sk-card{position:fixed;z-index:800;width:300px;max-height:min(60vh,520px);display:flex;flex-direction:column;background:#FFF3B0;color:#2A2410;border-radius:12px;box-shadow:0 18px 44px rgba(20,12,0,.32),0 2px 6px rgba(20,12,0,.18);font:15px/1.45 "Public Sans",system-ui,sans-serif;overflow:hidden}
+.sk-card[hidden],.sk-tab[hidden]{display:none}
+.sk-card.dragging{box-shadow:0 26px 60px rgba(20,12,0,.4);opacity:.96}
+.sk-head{display:flex;align-items:center;gap:4px;padding:4px 4px 4px 12px;background:#F7E27A;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+.sk-card.phone .sk-head{cursor:default;touch-action:auto}
+.sk-title{flex:1;min-width:0;font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sk-ib{width:44px;height:44px;flex:none;display:grid;place-items:center;border:0;background:none;color:#5A4A12;border-radius:10px;cursor:pointer;padding:0}
+.sk-ib svg{width:20px;height:20px}
+.sk-ib:hover{background:rgba(90,74,18,.1)}
+.sk-main{overflow:auto;padding:12px 16px 16px;flex:1;min-height:0}
+.sk-body{min-height:44px;cursor:text;outline-offset:4px}
+.sk-body p{margin:0 0 8px}.sk-body h3{margin:4px 0 8px;font-size:16px}.sk-body ul{margin:0 0 8px;padding-left:20px}
+.sk-body .nt-checks{padding-left:0;list-style:none}
+.sk-body .nt-ck{display:flex;align-items:center;gap:4px;min-height:44px}
+.sk-body .nt-ck.done{color:#6E6233;text-decoration:line-through}
+.sk-body a{color:#7A4B00;font-weight:600}
+.sk-body .nt-ph{color:#6E6233}
+.sk-ta{width:100%;min-height:180px;border:1px solid rgba(90,74,18,.3);border-radius:10px;background:#FFFBE3;color:#2A2410;font:16px/1.5 "Public Sans",system-ui,sans-serif;padding:8px 12px;resize:vertical;box-sizing:border-box}
+.sk-foot{display:flex;justify-content:flex-end;padding:0 12px 12px}
+.sk-done{min-height:44px;padding:0 20px;border:0;border-radius:10px;background:#2A2410;color:#FFF3B0;font:600 15px "Public Sans",system-ui,sans-serif;cursor:pointer}
+.sk-hint{margin:0 0 12px;font-size:13px;color:#6E6233}
+.sk-list{display:grid;background:#FFFBE3;border-radius:10px;overflow:hidden}
+.sk-row{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;min-height:52px;padding:6px 12px;border:0;border-top:1px solid rgba(90,74,18,.14);background:none;color:#2A2410;text-align:left;cursor:pointer;font:inherit}
+.sk-row:first-child{border-top:0}
+.sk-row b{font-weight:600;font-size:15px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sk-row small{font-size:13px;color:#6E6233}
+.sk-row.on{background:#F7E27A}
+.sk-off{margin-top:12px;min-height:44px;width:100%;border:0;border-radius:10px;background:none;color:#8A2A12;font:600 15px "Public Sans",system-ui,sans-serif;cursor:pointer}
+.sk-card :focus-visible,.sk-tab:focus-visible{outline:3px solid #2A2410;outline-offset:2px}
+.sk-tab{position:fixed;z-index:800;right:max(12px,env(safe-area-inset-right));bottom:calc(84px + env(safe-area-inset-bottom,0px));width:48px;height:48px;border-radius:14px;border:0;background:#F7E27A;color:#2A2410;box-shadow:0 10px 26px rgba(20,12,0,.3);display:grid;place-items:center;cursor:pointer;padding:0}
+.sk-tab svg{width:24px;height:24px}
+.desk.in-app ~ .sk-tab{bottom:calc(24px + env(safe-area-inset-bottom,0px))}
+.sk-card.phone{left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));width:auto;top:auto;bottom:calc(84px + env(safe-area-inset-bottom,0px));max-height:62vh}
+@media (prefers-reduced-motion:no-preference){.sk-card{animation:sk-in .22s ease-out}}
+@keyframes sk-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.sk-body .nt-box{box-sizing:border-box;width:44px;height:44px;margin:-11px -7px -11px -11px;border:11px solid transparent;border-radius:50%;background:#FFFBE3;background-clip:content-box;box-shadow:inset 0 0 0 2px #8A7A3A;cursor:pointer;padding:0;flex:none}
+.sk-body .nt-ck.done .nt-box{background:#C99A00 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23FFFBE3' stroke-width='3'%3E%3Cpath d='M6 12l4 4 8-8'/%3E%3C/svg%3E") center/14px no-repeat;background-clip:content-box;border-color:transparent;box-shadow:none}
