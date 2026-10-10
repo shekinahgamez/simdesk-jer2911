@@ -182,11 +182,10 @@ const Registry = (() => {
     st.msg = ""; st.err = false;
   }
   /* ---------- census ----------
-     Whole save or one town. A checking balance is the open Checking accounts a Sim holds in Harbor Trust, else the balance on the Sim's own file. No balance means "not on file", never $0. */
+     Whole save or one town. A checking balance is the open checking accounts a Sim holds (alone or joint) in Harbor Trust and Porchlight. No balance means "not on file", never $0. */
   const checkingOf = s => {
-    const acc = (data.accounts || []).filter(a => !a.card && a.status !== "Closed" && /checking/i.test(a.type || "") && a.holder_sim === s.id);
-    if (acc.length) return acc.reduce((t, a) => t + Number(a.balance || 0), 0);
-    return s.balance != null && s.balance !== "" && !isNaN(Number(s.balance)) ? Number(s.balance) : null;
+    const acc = (data.accounts || []).filter(a => !a.card && a.status !== "Closed" && /checking/i.test(a.type || "") && (a.holder_sim === s.id || a.co_holder === s.id));
+    return acc.length ? acc.reduce((t, a) => t + Number(a.balance || 0), 0) : null;
   };
   const BANDS = [["Under $1,000", 0, 1000], ["$1,000 to $9,999", 1000, 10000], ["$10,000 to $99,999", 10000, 100000], ["$100,000 to $999,999", 100000, 1000000], ["$1 million and up", 1000000, Infinity]];
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -231,7 +230,7 @@ const Registry = (() => {
                 ${c.noGender ? `<p class="rg-note">${plural(c.noGender, "resident has", "residents have")} no gender set.</p>` : ""}</div></section>
               <section><p class="rg-shd">Life stage</p>${c.stageRows.length ? bars(c.stageRows, maxStage) : `<div class="rg-group rg-pad rg-empty">No life stages on file yet.</div>`}${c.noStage ? `<p class="rg-foot">${plural(c.noStage, "resident has", "residents have")} no life stage set.</p>` : ""}</section>
               <section><p class="rg-shd">Checking balance</p>${c.bal.length ? `<div class="rg-group rg-pad rg-medrow"><span>Median</span><b>${money0(c.median)}</b><small>of ${c.bal.length} with a balance</small></div>${bars(c.bands, maxBand)}` : `<div class="rg-group rg-pad rg-empty">No balances on file yet.</div>`}
-                <p class="rg-foot">${c.noBal} of ${c.n} not on file. Balances are made up, from the game.</p></section>
+                <p class="rg-foot">${c.noBal} of ${c.n} not on file. Balances come from Harbor Trust and Porchlight, and are made up.</p></section>
             </div>
           </div>
           <aside class="rg-side"><section class="rg-csec"><p class="rg-shd">Where</p><div class="rg-group">${rows.map(([k, n, ct]) => `<button type="button" class="rg-li" data-cscope="${esc(k)}" aria-pressed="${scope === k}"><span class="t">${esc(n)}</span><span class="v">${ct}</span><span class="rg-tick" aria-hidden="true">${scope === k ? "✓" : ""}</span></button>`).join("")}</div></section></aside>
