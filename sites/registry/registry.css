@@ -251,21 +251,26 @@ p.rg-resth{color:var(--stamp);margin:16px 0 8px}
 .rg-listbox{min-height:150px;font-size:13px;line-height:1.5}
 
 /* Residents: a Contacts-style list on phone, the photo grid on iPad. Layout follows the site width, not the screen. */
-.rg-bar{display:flex;align-items:center;gap:16px;margin-bottom:16px}
+.rg-bar{display:grid;grid-template-columns:280px minmax(0,1fr) 320px;align-items:center;column-gap:24px;margin-bottom:24px}
+.rg-bar>.rg-newbtn{grid-column:3;width:100%;margin-left:0}
+.rg-bar>.rg-searchrow{margin-left:-8px}
+.rg-chiprow{display:flex;align-items:center;gap:16px;min-width:0}
+.rg-chiprow>.ui-chips{flex:1;min-width:0}
+.rg-chiprow>.rg-sortlab{flex:none}
 .rg-seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;background:var(--panel2);border-radius:var(--r-ctl)}
 .rg-seg button{min-height:44px;padding:4px;border:0;background:none;color:var(--ink);font:600 13px var(--sans)}
 .rg-seg button>span{display:flex;align-items:center;justify-content:center;gap:4px;min-height:36px;border-radius:8px;white-space:nowrap}
 .rg-seg button[aria-pressed="true"]>span{background:var(--panel);box-shadow:0 1px 3px rgba(10,20,40,.16)}
 .rg-seg em{font-style:normal;color:var(--muted);font-weight:500}
 .rg-viewseg{width:280px;flex:none}
-.rg-searchrow{flex:1 1 220px;max-width:420px;display:flex;gap:8px;min-width:0}
+.rg-searchrow{display:flex;gap:8px;min-width:0}
 .rg-searchbox{flex:1;min-width:0;min-height:44px;display:flex;align-items:center;gap:8px;padding:0 12px;border-radius:var(--r-ctl);background:var(--panel2);color:var(--muted)}
 .rg-searchbox:focus-within{outline:3px solid #F2B84B;outline-offset:2px}
 .rg-searchbox svg{width:18px;height:18px;flex:none}
 .rg-searchbox .rg-search{flex:1;min-width:0;border:0;background:none;padding:0;min-height:44px;font-size:16px;color:var(--ink);border-radius:0}
 .rg-searchbox .rg-search:focus-visible{outline:none}
 .rg-searchbox .rg-search::placeholder{color:var(--muted);opacity:1}
-.rg-filterbtn{display:none;width:44px;min-height:44px;padding:0;flex:none}
+.rg-filterbtn{display:inline-flex;min-width:44px;min-height:44px;padding:0 12px;flex:none;gap:8px}
 .rg-filterbtn[aria-pressed="true"]{background:var(--accent);color:var(--onAccent)}
 .rg-newbtn{margin-left:auto;flex:none}
 .rg-newbtn svg{width:18px;height:18px}
@@ -303,7 +308,7 @@ p.rg-resth{color:var(--stamp);margin:16px 0 8px}
 .rg-listview{display:none}
 .rg-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
 .rg-card{background:var(--panel);border-radius:var(--r-box);overflow:hidden;display:flex;flex-direction:column;min-width:0;color:var(--ink);text-decoration:none}
-.rg-cph{aspect-ratio:4/5;background:linear-gradient(160deg,var(--panel2),var(--rule2));display:grid;place-items:center;position:relative;overflow:hidden;font:800 34px var(--sans);color:var(--muted)}
+.rg-cph{aspect-ratio:4/5;background:linear-gradient(160deg,var(--panel2),var(--rule2));display:grid;place-items:center;position:relative;overflow:hidden;font:800 28px var(--sans);color:var(--muted)}
 .rg-cph img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .rg-cph .rg-st{position:absolute;left:8px;bottom:8px}
 .rg-fno{position:absolute;right:8px;top:8px;font:600 11px var(--mono);letter-spacing:.06em;color:var(--muted);background:var(--panel);padding:0 4px;border-radius:4px}
@@ -314,6 +319,9 @@ p.rg-resth{color:var(--stamp);margin:16px 0 8px}
 /* narrower than a full iPad: one column, towns become chips */
 @container site (max-width:1000px){
   .rg-cols{grid-template-columns:minmax(0,1fr)}
+  .rg-bar{grid-template-columns:auto minmax(0,1fr) auto;column-gap:16px}
+  .rg-bar>.rg-searchrow{margin-left:0}
+  .rg-bar>.rg-newbtn{grid-column:3;width:auto}
   .rg-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
   .rg-wheresec,.rg-csec{display:none}
   .rg-wherechips,.rg-main .rg-cchips{display:flex}
@@ -351,10 +359,13 @@ p.rg-resth{color:var(--stamp);margin:16px 0 8px}
 
 /* phone: Contacts-style list, one column */
 @container site (max-width:700px){
-  .rg-bar{display:grid;gap:8px;margin-bottom:8px}
+  .rg-bar{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin-bottom:8px}
+  .rg-bar>.rg-searchrow{margin-left:0}
+  .rg-chiprow>.rg-sortlab{display:none}
   .rg-viewseg{width:100%}
   .rg-searchrow{max-width:none}
-  .rg-filterbtn{display:inline-flex}
+  .rg-filterbtn{padding:0 10px}
+  .rg-filterbtn .lab{display:none}
   .rg-newbtn,.rg-titlerow,.rg-grid{display:none}
   .rg-listview{display:block}
   .rg-main{gap:8px}
@@ -453,3 +464,13 @@ button.rg-evmain:active{background:var(--panel2)}
 .rg-medrow b{font:700 22px var(--sans);font-variant-numeric:tabular-nums}
 .rg-medrow small{font-size:13px;color:var(--muted)}
 .rg-cgrid section>.rg-group+.rg-group{margin-top:12px}
+
+/* filters */
+.rg-filterbtn[aria-pressed="true"] .rg-fcount{background:var(--onAccent);color:var(--accent)}
+.rg-fcount{min-width:20px;height:20px;border-radius:10px;padding:0 6px;display:inline-grid;place-items:center;font:700 12px var(--sans);background:var(--accent);color:var(--onAccent)}
+.rg-active{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:-8px 0 0;font-size:15px;color:var(--muted)}
+.rg-active span{min-width:0}
+.rg-gseg button>span{font-size:15px}
+.rg-fmatch{margin:4px 16px 0;font-size:15px;color:var(--muted)}
+.rg-sheetui .ui-chips.wrap{flex-wrap:wrap;overflow:visible}
+

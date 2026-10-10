@@ -3,7 +3,7 @@
    Connections are one record per link in their own tables (GFB.registry); each Sim keeps their own label.
    Until the one-time move runs, connections show from the old list, read only, with a banner to check the counts and move. */
 const Registry = (() => {
-  const st = { view:"residents", cscope:"", q:"", filter:"All", where:"", sort:"name", tab:"profile", editing:false, draft:null, focus:null, openLink:null, sheet:null, hideSecrets:false,
+  const st = { view:"residents", cscope:"", gender:"", stages:[], q:"", filter:"All", where:"", sort:"name", tab:"profile", editing:false, draft:null, focus:null, openLink:null, sheet:null, hideSecrets:false,
     msg:"", err:false, move:null, batch:null, oldOpen:false, lists:false, busy:false, tl:{ filter:"all", add:null, edit:null } };
   let data = null, curId = null, root = null;
 
@@ -77,6 +77,8 @@ const Registry = (() => {
       if (st.filter === "Incomplete" && !gaps(s).length) return false;
       if (["Housed","Homeless","Townie"].includes(st.filter) && statusOf(s) !== st.filter) return false;
       if (st.where === NONE ? !!s.residence : (st.where && s.residence !== st.where)) return false;
+      if (st.gender && !genderIs(s, st.gender)) return false;
+      if (st.stages.length && !st.stages.includes(s.life_stage || NONE)) return false;
       if (!q) return true;
       return [s.name, s.career, s.residence, s.household, ...(s.traits||[]), s.attachment, s.love_language].join(" ").toLowerCase().includes(q);
     });
@@ -94,7 +96,7 @@ const Registry = (() => {
   const photoOf = s => s.portrait ? `<img loading="lazy" decoding="async" src="${esc(s.portrait)}" alt="">` : esc(initials(s.name));
   const meta = (s, town) => [ageOf(s), dash(s.career), town ? s.residence : ""].filter(Boolean).join(" · ");
   const personRow = s => `<a class="rg-li rg-person" href="#/registry/${s.id}"><span class="rg-idp">${photoOf(s)}</span><span class="t"><b>${esc(s.name)}</b><small>${esc(meta(s, true))}</small></span>${pill(s)}</a>`;
-  const personCard = s => `<a class="rg-card" href="#/registry/${s.id}"><span class="rg-cph">${photoOf(s)}<span class="rg-fno">GFB-${esc(s.file_no)}</span>${pill(s)}</span><span class="rg-cb"><b>${esc(s.name)}</b><small>${esc(meta(s, false))}</small></span></a>`;
+  const personCard = s => `<a class="rg-card" href="#/registry/${s.id}"><span class="rg-cph">${photoOf(s)}<span class="rg-fno">GFB-${esc(s.file_no)}</span>${pill(s)}</span><span class="rg-cb"><b>${esc(s.name)}</b><small>${esc([ageOf(s), s.residence].filter(Boolean).join(" · "))}</small></span></a>`;
   /* phone list (letter sections when sorted by name) and iPad grid; CSS shows the one that fits the width */
   function resultsHTML(){
     const v = sortedVisible();
@@ -132,13 +134,42 @@ const Registry = (() => {
     return { ...t, "--ui-sheet-bg":t["--paper"], "--ui-sheet-fg":t["--ink"], "--ui-sheet-accent":t["--accent"], "--ui-accent":t["--accent"], "--ui-on-accent":t["--onAccent"], "--link":t["--accent"], "--navy":t["--accent"], "--secret":t["--stamp"], "--ui-edge":"16px" };
   }
   /* Phone: Where and Sort live behind the Filters button. */
+  /* gender and age (life stage) filters live in the Filters sheet on every size. Where joins them only when the side list is hidden (phone and narrow iPad). */
+  const GENDERS = [["", "Any"], ["f", "Women"], ["m", "Men"], [NONE, "Not set"]];
+  const genderIs = (s, g) => g === "f" ? /^f/i.test(s.gender || "") : g === "m" ? /^m/i.test(s.gender || "") : g === NONE ? !s.gender : true;
+  const stageName = k => k === NONE ? "Not set" : sentence(k);
+  const filterCount = () => (st.gender ? 1 : 0) + (st.stages.length ? 1 : 0) + (st.where ? 1 : 0);
+  function activeLine(){
+    const bits = [];
+    if (st.gender) bits.push((GENDERS.find(g => g[0] === st.gender) || ["", ""])[1] + (st.gender === NONE ? " (gender)" : ""));
+    if (st.stages.length) bits.push(st.stages.map(stageName).join(", "));
+    if (st.where) bits.push(townName(st.where));
+    return bits.length ? `<div class="rg-active"><span>${esc(bits.join(" · "))}</span><button type="button" class="rg-link" data-act="clearfilters">Clear</button></div>` : "";
+  }
+  function filterBody(){
+    const stages = [...LIFE_STAGES.filter(k => data.sims.some(x => x.life_stage === k)), ...(data.sims.some(x => !x.life_stage) ? [NONE] : [])];
+    const n = visible().length;
+    return `<div class="rg-sheetui">
+      <p class="rg-shd">Gender</p><div class="rg-seg rg-gseg" role="group" aria-label="Gender">${GENDERS.map(([k, l]) => `<button type="button" data-fg="${k}" aria-pressed="${st.gender === k}"><span>${l}</span></button>`).join("")}</div>
+      <p class="rg-shd">Age</p><div class="rg-group rg-pad"><div class="ui-chips wrap" role="group" aria-label="Life stage">${stages.map(k => { const on = st.stages.includes(k); return `<button type="button" class="ui-chip ${on ? "on" : ""}" data-fs="${esc(k)}" aria-pressed="${on}"><span>${esc(stageName(k))} <small>${data.sims.filter(x => (x.life_stage || NONE) === k).length}</small></span></button>`; }).join("")}</div><p class="rg-help">Pick one or more. None picked shows every age.</p></div>
+      ${root.offsetWidth > 1000 ? "" : `<p class="rg-shd">Where</p><div class="rg-group rg-pad"><select class="rg-input" id="rg-fwhere" aria-label="Where">${whereOptions()}</select></div>`}
+      <p class="rg-shd">Sort</p><div class="rg-group rg-pad"><select class="rg-input" id="rg-fsort" aria-label="Sort">${sortOptions()}</select></div>
+      <p class="rg-fmatch" role="status">${n} ${n === 1 ? "resident matches" : "residents match"}</p></div>`;
+  }
   function openFilters(){
-    const sh = UI.sheet({ title:"Filters", left:"", right:"Done", theme:sheetTheme(),
-      body:`<div class="rg-sheetui"><label class="rg-flab" for="rg-fwhere">Where</label><select class="rg-input" id="rg-fwhere">${whereOptions()}</select>
-        <label class="rg-flab" for="rg-fsort">Sort</label><select class="rg-input" id="rg-fsort">${sortOptions()}</select></div>` });
-    const apply = () => { st.where = sh.el.querySelector("#rg-fwhere").value; st.sort = sh.el.querySelector("#rg-fsort").value; if (!curId) draw(); };
-    sh.el.querySelector("#rg-fwhere").addEventListener("change", apply);
-    sh.el.querySelector("#rg-fsort").addEventListener("change", apply);
+    let sh;
+    const refresh = () => { if (!curId) draw(); sh.body.innerHTML = filterBody(); const l = sh.el.querySelector("[data-sl]"); l.style.visibility = filterCount() ? "" : "hidden"; };
+    sh = UI.sheet({ title:"Filters", left:"Clear", right:"Done", theme:sheetTheme(), body:filterBody(),
+      onLeft: () => { st.gender = ""; st.stages = []; st.where = ""; refresh(); } });
+    sh.el.querySelector("[data-sl]").style.visibility = filterCount() ? "" : "hidden";
+    sh.el.addEventListener("click", e => {
+      const g = e.target.closest("[data-fg]"); if (g) { st.gender = g.dataset.fg; return refresh(); }
+      const f = e.target.closest("[data-fs]"); if (f) { const k = f.dataset.fs; st.stages = st.stages.includes(k) ? st.stages.filter(x => x !== k) : [...st.stages, k]; return refresh(); }
+    });
+    sh.el.addEventListener("change", e => {
+      if (e.target.id === "rg-fwhere") { st.where = e.target.value; refresh(); }
+      if (e.target.id === "rg-fsort") { st.sort = e.target.value; refresh(); }
+    });
   }
   /* New resident: the shared sheet, one full-width field and one filled button. */
   function openNew(){
@@ -162,15 +193,16 @@ const Registry = (() => {
       <div class="rg-page">${moveBanner()}
         <div class="rg-bar">${viewSwitch()}
           <div class="rg-searchrow"><label class="rg-searchbox">${ICON_SEARCH}<input class="rg-search" id="rg-q" type="search" placeholder="Search a name" aria-label="Search residents" value="${esc(st.q)}" autocomplete="off"></label>
-            <button type="button" class="rg-b rg-filterbtn" data-act="filters" aria-label="Filters" aria-pressed="${filtered}"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 7h16M7 12h10M10 17h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></div>
+            <button type="button" class="rg-b rg-filterbtn" data-act="filters" aria-label="Filters${filterCount() ? ", " + filterCount() + " on" : ""}" aria-pressed="${!!filterCount()}"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 7h16M7 12h10M10 17h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span class="lab">Filters</span>${filterCount() ? `<span class="rg-fcount">${filterCount()}</span>` : ""}</button></div>
           <button type="button" class="rg-b pri rg-newbtn" data-act="new">${ICON_PLUS}New resident</button>
         </div>
         ${st.batch ? `<div class="rg-batch">Showing the ${st.batch.ids.length} Sims from your last import. <button class="rg-link" data-act="clearbatch">Show everyone</button></div>` : ""}
         ${st.msg ? `<p class="rg-msg ${st.err ? "err" : ""}" role="status">${esc(st.msg)}</p>` : ""}
         <div class="rg-cols">
           <div class="rg-main">
-            <div class="rg-titlerow"><h2 class="rg-title">Residents</h2><label class="rg-sortlab">Sorted by <b>${esc(sortName().toLowerCase())}</b>${chev}<select id="rg-sort" aria-label="Sort">${sortOptions()}</select></label></div>
-            <div class="ui-chips" role="group" aria-label="Show">${chip("All", "All", data.sims.length)}${chip("Housed", "Housed")}${chip("Homeless", "Homeless")}${chip("Townie", "Townies")}${chip("Incomplete", "Incomplete")}</div>
+            <div class="rg-titlerow"><h2 class="rg-title">Residents</h2></div>
+            <div class="rg-chiprow"><div class="ui-chips rg-statchips" role="group" aria-label="Show">${chip("All", "All")}${chip("Housed", "Housed")}${chip("Homeless", "Homeless")}${chip("Townie", "Townies")}${chip("Incomplete", "Incomplete")}</div><label class="rg-sortlab">Sorted by <b>${esc(sortName().toLowerCase())}</b>${chev}<select id="rg-sort" aria-label="Sort">${sortOptions()}</select></label></div>
+            ${activeLine()}
             <div class="ui-chips rg-wherechips" role="group" aria-label="Where">${whereRows.map(([k, n, c]) => `<button type="button" class="ui-chip ${st.where === k ? "on" : ""}" data-where="${esc(k)}" aria-pressed="${st.where === k}"><span>${esc(n)} <small>${c}</small></span></button>`).join("")}</div>
             <div id="rg-results">${resultsHTML()}</div>
           </div>
@@ -920,6 +952,7 @@ const Registry = (() => {
       if (!act) return;
       if (act === "new") openNew();
       if (act === "filters") openFilters();
+      if (act === "clearfilters") { st.gender = ""; st.stages = []; st.where = ""; draw(); }
       if (act === "clearbatch") { st.batch = null; draw(); }
       if (act === "moveplan") { st.move = {}; draw(); }
       if (act === "movecancel") { st.move = null; draw(); }
