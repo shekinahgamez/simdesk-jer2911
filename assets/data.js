@@ -42,11 +42,59 @@ const GFB = (() => {
     /* two banks share accounts and loans; anything older belongs to Harbor Trust */
     seed.accounts.forEach(a => { a.bank = a.bank || "harbor"; });
     seed.loans.forEach(l => { l.bank = l.bank || "harbor"; });
+    renameDistricts(seed, edits);
     normIds(seed, edits);
     db = seed;
     mirrorRels();
     return db;
   }
+  /* Neighborhood renames (Oct 17, 2026). Lennox Park's districts got new names, in every lot, address and story line,
+     and Fenmore's neighborhoods join the District list. Runs once per browser; the flag rides along with the saved edits. */
+  const DISTRICT_RENAMES = [
+    [/\b(?:Sixth|6th) (?:&|and) Main\b/g, "Edgemont Avenue"],
+    [/\bPier (?:&|and) Vine\b/g, "Lakeshore Commons"],
+    [/\bVantage Park\b/g, "Skyline Terrace"]];
+  const NEW_DISTRICTS = ["Skyline Terrace", "Lakeshore Commons", "Edgemont Avenue", "Riverbend", "Southbridge", "Fairlawn", "Hawthorne", "Carrington Hills"];
+  const DISTRICTS_DONE = "districts_2026_10_17";
+  const fixDistrictText = s => DISTRICT_RENAMES.reduce((o, [re, to]) => o.replace(re, to), s);
+  const hasOldDistrict = s => typeof s === "string" && DISTRICT_RENAMES.some(([re]) => { re.lastIndex = 0; return re.test(s); });
+  function fixDeep(v) {
+    if (typeof v === "string") return fixDistrictText(v);
+    if (Array.isArray(v)) return v.map(fixDeep);
+    if (v && typeof v === "object") { const o = {}; for (const k of Object.keys(v)) o[k] = fixDeep(v[k]); return o; }
+    return v;
+  }
+  function renameDistricts(seed, edits) {
+    if ((edits.migrations || {})[DISTRICTS_DONE]) return;
+    for (const t of ["sims","lots","lots_pending","organizations","households","stories","posts","huddl_posts","notes","todos","projects"]) {
+      if (!Array.isArray(seed[t])) continue;
+      const before = JSON.stringify(seed[t]);
+      if (!DISTRICT_RENAMES.some(([re]) => { re.lastIndex = 0; return re.test(before); })) continue;
+      seed[t] = fixDeep(seed[t]);
+      if (t === "sims") { edits.all_sims = seed.sims; delete edits.sims; delete edits.added_sims; }
+      else edits[t] = seed[t];
+    }
+    if (seed.calendar && hasOldDistrict(JSON.stringify(seed.calendar))) { seed.calendar = fixDeep(seed.calendar); edits.calendar = seed.calendar; }
+    const list = (seed.lot_options.district || []).map(fixDistrictText);
+    seed.lot_options.district = [...new Set([...list, ...NEW_DISTRICTS])];
+    edits.lot_options = { ...(edits.lot_options || {}), district:seed.lot_options.district };
+    edits.migrations = { ...(edits.migrations || {}), [DISTRICTS_DONE]:true };
+    writeEdits(edits);
+  }
+  /* the Registry's own tables (summaries and history lines) get the same renames once they load, if the cloud is on */
+  async function renameRegistryDistricts() {
+    const e = readEdits();
+    if ((e.migrations || {})[DISTRICTS_DONE + "_registry"] || !registry.isLoaded()) return;
+    try {
+      for (const s of db.sims) { const info = registry.simInfo(s.id); if (hasOldDistrict(info.summary)) await registry.saveSimInfo(s.id, { summary:fixDistrictText(info.summary) }); }
+      if (registry.isMoved()) for (const l of registry.all()) {
+        if (!(l.history || []).some(h => hasOldDistrict(h.label) || hasOldDistrict(h.note))) continue;
+        await registry.saveLink(l, l.history.map(h => ({ ...h, label:fixDeep(h.label), note:fixDeep(h.note) })));
+      }
+      const now = readEdits(); now.migrations = { ...(now.migrations || {}), [DISTRICTS_DONE + "_registry"]:true }; writeEdits(now);
+    } catch {}   /* tries again next time the Registry loads */
+  }
+
   /* after the Registry move, the apps that read data.relationships (Slide, Cliq, Huddl) get one row per direction made from the links */
   function mirrorRels() { try { if (db && registry.isMoved()) db.relationships = registry.asRels(); } catch {} }
 
@@ -114,6 +162,7 @@ const GFB = (() => {
     if (!db) load();
     if (!side || (!registry.isLoaded() && registry.ready() && !registry.problem())) side = Promise.all([registry.refresh(), photos.refresh()]);
     await side;
+    await renameRegistryDistricts();
     mirrorRels();
     return db;
   }

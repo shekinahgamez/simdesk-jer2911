@@ -693,7 +693,7 @@ window.GFB_SEED = {
    "address": "600 Main #201",
    "parent_id": "600-main",
    "world": "Lennox Park",
-   "district": "Sixth & Main",
+   "district": "Edgemont Avenue",
    "lot_type": "Apartment",
    "lot_size": null,
    "price": null,
@@ -713,7 +713,7 @@ window.GFB_SEED = {
    "address": "600 Main #202",
    "parent_id": "600-main",
    "world": "Lennox Park",
-   "district": "Sixth & Main",
+   "district": "Edgemont Avenue",
    "lot_type": "Apartment",
    "lot_size": null,
    "price": null,
@@ -733,7 +733,7 @@ window.GFB_SEED = {
    "address": "600 Main #301",
    "parent_id": "600-main",
    "world": "Lennox Park",
-   "district": "Sixth & Main",
+   "district": "Edgemont Avenue",
    "lot_type": "Apartment",
    "lot_size": null,
    "price": null,
@@ -753,7 +753,7 @@ window.GFB_SEED = {
    "address": "600 Main #302",
    "parent_id": "600-main",
    "world": "Lennox Park",
-   "district": "Sixth & Main",
+   "district": "Edgemont Avenue",
    "lot_type": "Apartment",
    "lot_size": null,
    "price": null,
@@ -773,7 +773,7 @@ window.GFB_SEED = {
    "address": "600 Main #401",
    "parent_id": "600-main",
    "world": "Lennox Park",
-   "district": "Sixth & Main",
+   "district": "Edgemont Avenue",
    "lot_type": "Apartment",
    "lot_size": null,
    "price": null,
@@ -793,7 +793,7 @@ window.GFB_SEED = {
    "address": "600 Main #402",
    "parent_id": "600-main",
    "world": "Lennox Park",
-   "district": "Sixth & Main",
+   "district": "Edgemont Avenue",
    "lot_type": "Apartment",
    "lot_size": null,
    "price": null,
@@ -813,7 +813,7 @@ window.GFB_SEED = {
    "address": "The Maker’s Loft",
    "parent_id": null,
    "world": "Lennox Park",
-   "district": "Pier & Vine",
+   "district": "Lakeshore Commons",
    "lot_type": "Maker's Space",
    "lot_size": "50x40",
    "price": null,
@@ -833,7 +833,7 @@ window.GFB_SEED = {
    "address": "Club Tropics",
    "parent_id": null,
    "world": "Lennox Park",
-   "district": "Sixth & Main",
+   "district": "Edgemont Avenue",
    "lot_type": "Nightclub",
    "lot_size": "40x30",
    "price": null,
@@ -851,9 +851,9 @@ window.GFB_SEED = {
  ],
  "lot_options": {
   "district": [
-   "Pier & Vine",
-   "Sixth & Main",
-   "Vantage Park"
+   "Lakeshore Commons",
+   "Edgemont Avenue",
+   "Skyline Terrace"
   ],
   "lot_type": [
    "Apartment",
@@ -892,12 +892,12 @@ window.GFB_SEED = {
   ]
  },
  "lots_pending": [
-  "11 Vantage Park",
-  "12 Vantage Park",
-  "13 Vantage Park",
-  "14 Vantage Park",
-  "15 Vantage Park",
-  "16 Vantage Park",
+  "11 Skyline Terrace",
+  "12 Skyline Terrace",
+  "13 Skyline Terrace",
+  "14 Skyline Terrace",
+  "15 Skyline Terrace",
+  "16 Skyline Terrace",
   "Brutalist Design Agency",
   "Celebrity Reality Mansion",
   "Del Sol Drive Compound",
@@ -1226,7 +1226,7 @@ window.GFB_SEED = {
     "day": 7,
     "title": "New Year's Eve",
     "cat": "holiday",
-    "story": "Sixth & Main is packed. Midnight kisses are a public record.",
+    "story": "Edgemont Avenue is packed. Midnight kisses are a public record.",
     "game": "Built-in New Year's Eve.",
     "sims": []
    },
@@ -1393,7 +1393,7 @@ window.GFB_SEED = {
  "projects": [
   {
    "id": "p-nightclub",
-   "name": "Sixth & Main nightclub",
+   "name": "Edgemont Avenue nightclub",
    "area": "The world"
   },
   {
@@ -1405,7 +1405,7 @@ window.GFB_SEED = {
  "todos": [
   {
    "id": "t-1",
-   "title": "Find a nightclub for the last Sixth & Main slot",
+   "title": "Find a nightclub for the last Edgemont Avenue slot",
    "notes": "Skate & Sound and Ransom Records are reserved for other uses.",
    "when": "anytime",
    "project_id": "p-nightclub",
@@ -1561,10 +1561,10 @@ window.GFB_SEED = {
   {
    "type": "Institution",
    "tagline": "",
-   "about": "Top-tier PR and talent agency on Sixth & Main.",
+   "about": "Top-tier PR and talent agency on Edgemont Avenue.",
    "founded_text": "",
    "lot": null,
-   "district": "Sixth & Main",
+   "district": "Edgemont Avenue",
    "leader": "Simone Adeyemi",
    "status": "Active",
    "category": "PR & Talent",
@@ -1588,10 +1588,10 @@ window.GFB_SEED = {
   {
    "type": "Institution",
    "tagline": "",
-   "about": "Entertainment and sports law firm on Sixth & Main.",
+   "about": "Entertainment and sports law firm on Edgemont Avenue.",
    "founded_text": "",
    "lot": null,
-   "district": "Sixth & Main",
+   "district": "Edgemont Avenue",
    "leader": "Ngozi “Nova” Nova",
    "status": "Active",
    "category": "Law",
