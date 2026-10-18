@@ -1,11 +1,11 @@
-/* Roam: ground travel and ferries, today or on a planned game date. Modeled on Apple Maps plus Citymapper.
+/* Roam: ground travel and ferries, today or on a planned game date. Modeled on Apple Maps plus Citymapper. Hop Line look (plum, mint, pink pin; Bricolage and Inter).
    Routes: #/roam (explore), /search, /from (pick a start), /to/<place>, /to/<place>/<mode> (trip details), /booked, /passes.
    A place is w-<world id>, lot-<lot id> or st-<station>. Only the ways SimNation allows for that pair of worlds are offered
    (GFB.travel). Roam saves passes and tickets only (GFB.roam, table roam_passes); trips are kept only if Add to Calendar is on. */
 const Roam = (() => {
   const T = () => GFB.travel, M = () => RoamMap;
   let data = null, root = null, path = [];
-  const st = { q:"", sort:"best", travelers:[], cls:"economy", leave:null, addCal:true, booked:null, err:null, passOpen:null, view:null, viewKey:null };
+  const st = { q:"", sort:"best", travelers:[], cls:"economy", leave:null, addCal:true, booked:null, err:null, passOpen:null, view:null, viewKey:null, driven:null };
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" })[c]);
   const H = p => "#/roam" + (p ? "/" + p : "");
   const money = n => "§" + (Math.round(n * 100) % 100 ? Number(n).toFixed(2) : Math.round(n).toLocaleString());
@@ -15,7 +15,7 @@ const Roam = (() => {
   const sim = id => data.sims.find(s => s.id === id);
   const cal = () => data.calendar;
   const LS = { get(k, d) { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
-  const SHEET_THEME = { "--ui-sheet-bg":"#f6f7f6", "--ui-sheet-fg":"#141a19", "--ui-sheet-accent":"#0e7a6c" };
+  const SHEET_THEME = { "--ui-sheet-bg":"#fff", "--ui-sheet-fg":"#2a1745", "--ui-sheet-accent":"#2a1745" };
 
   /* ---------- game dates ---------- */
   const DAYS = () => cal().seasons.length * 21;
@@ -51,10 +51,12 @@ const Roam = (() => {
     long_distance:{ walking:5000, bike:2400, car:2400, rental_car:2400, taxi:2400, rideshare:2400, car_service_private:2400, car_service_limousine:2400, airport_hotel_shuttle:2400, transit:2880, subway:1800, train:2160, ferry_boat:1440 } };
   const REF = { local:40, regional:95, long_distance:230 };
   const MODE = {
-    train:{ t:"Train", c:"#1e40af", i:"train" }, subway:{ t:"Subway", c:"#c2185b", i:"train" }, transit:{ t:"Bus", c:"#7c3aed", i:"bus" }, ferry_boat:{ t:"Ferry", c:"#00a3d9", i:"ferry" },
-    car:{ t:"Drive", c:"#6d4c41", i:"car" }, rental_car:{ t:"Rental car", c:"#8d6e63", i:"car" }, taxi:{ t:"Taxi", c:"#c8a200", i:"car" }, rideshare:{ t:"Rideshare", c:"#111", i:"car" },
-    car_service_private:{ t:"Private car", c:"#37474f", i:"car" }, car_service_limousine:{ t:"Limo", c:"#212121", i:"car" }, airport_hotel_shuttle:{ t:"Airport shuttle", c:"#455a64", i:"bus" },
+    train:{ t:"Train", c:"#1e40af", i:"train" }, subway:{ t:"Subway", c:"#c2185b", i:"subway" }, transit:{ t:"Bus", c:"#c2185b", i:"bus" }, ferry_boat:{ t:"Ferry", c:"#2d8fd0", i:"ferry" },
+    car:{ t:"Drive", c:"#6d4c41", i:"car" }, rental_car:{ t:"Rental car", c:"#8d6e63", i:"car" }, taxi:{ t:"Taxi", c:"#c8a200", i:"ride" }, rideshare:{ t:"Rideshare", c:"#111", i:"ride" },
+    car_service_private:{ t:"Private car", c:"#37474f", i:"ride" }, car_service_limousine:{ t:"Limo", c:"#212121", i:"ride" }, airport_hotel_shuttle:{ t:"Airport shuttle", c:"#455a64", i:"bus" },
     walking:{ t:"Walk", c:"#607d8b", i:"walk" }, bike:{ t:"Bike", c:"#2e7d32", i:"bike" } };
+  /* one icon per kind of line, used everywhere: BayLink and other commuter rail, Metro subway, intercity trains */
+  const LINE_KIND = { baylink:["commuter", "Commuter train"], euro:["commuter", "Rail"], metro:["subway", "Subway"], bullet:["train", "Bullet train"], llama:["train", "Train"], rail:["train", "Train"], ferry:["ferry", "Ferry"] };
   const ORDER = ["subway","train","transit","ferry_boat","car","rental_car","rideshare","taxi","car_service_private","car_service_limousine","airport_hotel_shuttle","bike","walking"];
   const activeOn = (p, d) => { const o = d ? ordOf(d) : ordOf(today()); if (p.valid_until && ordOf(p.valid_until) < o) return false; if (p.kind === "rides") return (p.rides_left || 0) > 0; return p.kind !== "ticket"; };
   /* SimNation charges one subway or bus fare per ride, so a pass for any line on the route covers it */
@@ -71,7 +73,7 @@ const Roam = (() => {
     const d = same ? 12 : M().dist(a, b), f = Math.min(1.6, Math.max(.6, d / (REF[band] || 100)));
     const F = k => T().fare(k);
     const opts = modes.map(m => {
-      let minutes = Math.round((BASE[band] || BASE.regional)[m] * (same ? .6 : f)), legs = [], sub = "", tags = [], hi = [], extra = [], price;
+      let minutes = Math.round((BASE[band] || BASE.regional)[m] * (same ? .6 : f)), legs = [], sub = "", tags = [], hi = [], extra = [], price, kindLabel = null, kindIcon = null;
       const fromName = fromP.kind === "world" ? (M().linesAt(a).length && ["train","subway","ferry_boat"].includes(m) ? null : fromP.name) : fromP.name;
       /* rail and ferry follow the lore lines when they can */
       let route = null;
@@ -87,6 +89,7 @@ const Roam = (() => {
         legs.push({ name:M().stationName(route[route.length - 1].line, b), sub:"Arrive", at:minutes, color:M().LINES[route[route.length - 1].line].color });
         if (toP.kind !== "world" && toP.kind !== "station") legs[legs.length - 1].sub = `Arrive, then ${toP.name} is a short walk`;
         sub = changes ? `Via ${M().stationName(route[0].line, route[0].to)}` : M().LINES[route[0].line].name;
+        const lk = LINE_KIND[M().LINES[route[0].line].brand]; if (lk) { kindIcon = lk[0]; kindLabel = lk[1]; }
       } else {
         const label = { train:"Train", subway:"Subway", ferry_boat:"Ferry", transit:band === "local" ? "City bus" : "Coach line", car:"Drive", rental_car:"Pick up the rental car", taxi:"Taxi pickup", rideshare:"Rideshare pickup", car_service_private:"Private car pickup", car_service_limousine:"Limo pickup", airport_hotel_shuttle:"Shuttle pickup", walking:"Walk", bike:"Bike" }[m];
         legs = [{ name:fromName || fromP.name, sub:label, at:0, color:MODE[m].c }, { name:toP.name, sub:"Arrive", at:minutes, color:MODE[m].c }];
@@ -115,10 +118,10 @@ const Roam = (() => {
         if (covered.length) {
           const left = n - covered.length, one = covered.length === 1 ? sim(covered[0]) : null, p = passFor(covered[0], brands, m, leaveDate);
           price = { ...price, total:price.each * left, text:left ? `${money(price.each)} each · ${covered.length} on a pass` : "Pass", est:left ? price.est : false, covered, pass:p };
-          sub = one ? `${first(one.name)}'s ${p.kind === "rides" ? "ride pass" : "monthly pass"}` : `${covered.length} on passes`;
+          sub = one ? `${first(one.name)}'s ${p.kind === "rides" ? "ride pass" : p.trip && p.trip.days ? p.trip.days + " day pass" : "pass"}` : `${covered.length} on passes`;
         }
       }
-      return { mode:m, ...MODE[m], minutes, legs, sub, tags, hi, extra, price, classes:m === "train" || m === "ferry_boat", ticket:m === "train" || m === "ferry_boat" };
+      return { mode:m, ...MODE[m], ...(kindLabel ? { t:kindLabel, i:kindIcon } : {}), minutes, legs, sub, tags, hi, extra, price, classes:m === "train" || m === "ferry_boat", ticket:m === "train" || m === "ferry_boat" };
     });
     return { opts, band, passport:pr ? pr.passport : false, same, a, b };
   }
@@ -133,9 +136,12 @@ const Roam = (() => {
 
   /* ---------- icons and brand marks ---------- */
   const I = {
+    commuter:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2h8M12 2v2"/><rect x="5" y="4" width="14" height="13" rx="3"/><path d="M5 11h14"/><circle cx="9" cy="14" r=".6" fill="#fff"/><circle cx="15" cy="14" r=".6" fill="#fff"/><path d="M8 20l-2 2M16 20l2 2"/></svg>',
+    subway:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21V11a9 9 0 0 1 18 0v10"/><rect x="7" y="8" width="10" height="9" rx="2"/><path d="M7 13h10M9 20l-1 1M15 20l1 1"/></svg>',
+    ride:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19v-3l2-4h12l2 4v3z"/><circle cx="8" cy="19" r="1.2"/><circle cx="16" cy="19" r="1.2"/><path d="M12 2a3 3 0 0 0-3 3c0 2 3 5 3 5s3-3 3-5a3 3 0 0 0-3-3z"/></svg>',
     train:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="6" y="3" width="12" height="13" rx="3"/><path d="M6 10h12M9 20l-2 2M15 20l2 2"/><circle cx="9" cy="13" r=".8" fill="#fff"/><circle cx="15" cy="13" r=".8" fill="#fff"/></svg>',
     car:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 16v-3l2-5h12l2 5v3z"/><circle cx="8" cy="16.5" r="1.5"/><circle cx="16" cy="16.5" r="1.5"/></svg>',
-    bus:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="5" y="3" width="14" height="15" rx="2"/><path d="M5 11h14M8 21v-3M16 21v-3"/></svg>',
+    bus:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="15" rx="2"/><path d="M5 11h14M8 21v-3M16 21v-3"/><circle cx="8.5" cy="14.5" r=".6" fill="#fff"/><circle cx="15.5" cy="14.5" r=".6" fill="#fff"/></svg>',
     ferry:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 15l2 4h14l2-4zM7 15V9h10v6M12 9V5"/></svg>',
     pin:'<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>',
     walk:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13" cy="4" r="2"/><path d="M10 21l2-6-2-3 1-4 4 3 3 1M12 15l3 6M10 8l-3 3"/></svg>',
@@ -156,7 +162,7 @@ const Roam = (() => {
     rail:{ name:"Train", c:"#b26a00", gate:"Show this when you board" }, euro:{ name:"Eurosimia rail", c:"#2e7d32", gate:"Show this when you board" }, bullet:{ name:"Bullet train", c:"#c62828", gate:"Show this when you board" }, ferry:{ name:"Ferry", c:"#0277bd", gate:"Show this at the pier" } };
   const mark = b => BR[b] || BR.other((BRANDS[b] || {}).c || "#1e40af");
   const ic = (bg, k) => `<span class="ro-ic" style="background:${bg}">${I[k]}</span>`;
-  const logo = `<span class="ro-logo"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="18" r="3" fill="none" stroke="#0e7a6c" stroke-width="2.5"/><circle cx="19" cy="6" r="3" fill="#0e7a6c"/><path d="M7.5 16 C12 14 10 9 16.5 7.5" fill="none" stroke="#0e7a6c" stroke-width="2.5" stroke-linecap="round"/></svg>Roam</span>`;
+  const logo = `<span class="ro-logo"><svg width="28" height="28" viewBox="0 0 56 56" aria-hidden="true"><rect x="2" y="2" width="52" height="52" rx="16" fill="#1fd1a5"/><path d="M28 12a11 11 0 0 0-11 11c0 8 11 21 11 21s11-13 11-21a11 11 0 0 0-11-11z" fill="#2a1745"/><circle cx="28" cy="23" r="4.5" fill="#ff5c8a"/></svg>roam</span>`;
   const avatar = (s, cls = "") => s ? (s.portrait ? `<img class="${cls}" src="${esc(s.portrait)}" alt="">` : `<span class="ro-ini ${cls}" aria-hidden="true">${esc(stripNick(s.name).split(" ").map(w => w[0]).slice(0, 2).join(""))}</span>`) : "";
   const names = ids => { const n = ids.map(id => first((sim(id) || {}).name || "")); return n.length <= 2 ? n.join(" and ") : n.slice(0, -1).join(", ") + " and " + n[n.length - 1]; };
 
@@ -191,14 +197,22 @@ const Roam = (() => {
   }
   const val = (t, p, e) => `<span class="ro-v"><b>${t}</b><span>${p}${e ? " " + EST : ""}</span></span>`;
 
+  /* lines that serve the start: icon, name, kind and where they go, so you can tell a commuter train from a subway at a glance */
+  function lineRows(fp) {
+    if (!fp.world) return [];
+    return M().linesAt(fp.world).slice(0, 3).map(k => { const L = M().LINES[k], lk = LINE_KIND[L.brand] || ["train", "Train"], ends = L.stations.map(s => s[0]).filter(w => w !== fp.world), far = ends[ends.length - 1], w = far && T().world(far), route = L.name.replace(L.short, "").trim();
+      return w ? row({ icon:ic(L.color, lk[0]), t:esc(L.short), s:esc(`${lk[1]}${route ? " · " + route : ""} · to ${w.name}`), href:H("to/" + worldTok(far)) }) : ""; }).filter(Boolean);
+  }
   function explore() {
     const fp = place(fromTok()), recent = LS.get("roam-recent-v1", []).map(r => ({ ...r, p:place(r.tok) })).filter(r => r.p && r.tok !== fp.tok).slice(0, 5);
     const rec = recent.map(r => { const pl = plan(fp, r.p, [], "economy"); const o = pl.opts && (pl.opts.find(x => x.mode === r.mode) || pl.opts[0]);
-      return row({ icon:ic(o ? (o.hi[0] ? M().LINES[o.hi[0]].color : o.c) : "#0e7a6c", o ? o.i : "pin"), t:esc(r.p.name), s:esc(o ? `${r.p.kind === "world" ? "" : r.p.sub + " · "}${o.t}, about ${durRound(o.minutes)}` : r.p.sub), href:H("to/" + r.tok) }); });
+      return row({ icon:ic(o ? (o.hi[0] ? M().LINES[o.hi[0]].color : o.c) : "#2a1745", o ? o.i : "pin"), t:esc(r.p.name), s:esc(o ? `${r.p.kind === "world" ? "" : r.p.sub + " · "}${o.t}, about ${durRound(o.minutes)}` : r.p.sub), href:H("to/" + r.tok) }); });
+    const lines = rec.length ? [] : lineRows(fp);
     return `<div class="ro-hd">${logo}<a class="ro-wbtn" href="${H("passes")}">${I.wallet}<span>Passes</span></a></div>
-      <a class="ro-search" href="${H("search")}">${I.mag}<span>Where to? A city, place or lot</span></a>
+      <h1 class="ro-q">Where to?</h1>
+      <a class="ro-search" href="${H("search")}">${I.mag}<span>A city, place or lot</span></a>
       <div class="ro-from"><span>Starting from <b>${esc(fp.name)}</b></span><a href="${H("from")}">Change</a></div>
-      ${rec.length ? `<h3 class="ro-sec">Recent</h3><div class="ro-group">${rec.join("")}</div>` : `<p class="ro-foot">Search a city, a station or a lot from Lotline to see every way your SimNation rules allow.</p>`}`;
+      ${rec.length ? `<h3 class="ro-sec">Recent</h3><div class="ro-group">${rec.join("")}</div>` : lines.length ? `<h3 class="ro-sec">Lines from ${esc(fp.name)}</h3><div class="ro-group">${lines.join("")}</div>` : `<p class="ro-foot">Search a city, a station or a lot from Lotline to see every way your SimNation rules allow.</p>`}`;
   }
   function searchHits(q) {
     const n = q.trim().toLowerCase(); if (!n) return null;
@@ -214,7 +228,7 @@ const Roam = (() => {
     let list = "";
     if (r) {
       const { cities, nbs, sts, lots, mk } = r;
-      if (cities.length) list += `<h3 class="ro-sec">Cities</h3><div class="ro-group">${cities.map(h => row({ icon:ic("#0e7a6c", "pin"), t:mk(h.world.name), s:`${mk(h.world.ea_name)} in EA · ${esc(h.world.region)}${h.match !== h.world.name && h.match !== h.world.ea_name ? ` · also ${mk(h.match)}` : ""}`, act:target + worldTok(h.world.id) })).join("")}</div>`;
+      if (cities.length) list += `<h3 class="ro-sec">Cities</h3><div class="ro-group">${cities.map(h => row({ icon:ic("#2a1745", "pin"), t:mk(h.world.name), s:`${mk(h.world.ea_name)} in EA · ${esc(h.world.region)}${h.match !== h.world.name && h.match !== h.world.ea_name ? ` · also ${mk(h.match)}` : ""}`, act:target + worldTok(h.world.id) })).join("")}</div>`;
       if (sts.length || lots.length || nbs.length) list += `<h3 class="ro-sec">Places and lots</h3><div class="ro-group">${[
         ...sts.map(s => row({ icon:ic(M().LINES[s.line].color, M().LINES[s.line].ferry ? "ferry" : "train"), t:mk(s.name), s:esc(M().lineName(s.line)), act:target + s.id })),
         ...nbs.map(h => row({ icon:ic("#5d6764", "pin"), t:mk(h.nb.name), s:`Neighborhood · ${esc(h.world.name)}${h.nb.ea_name ? ` · ${mk(h.nb.ea_name)} in EA` : ""}`, act:target + worldTok(h.world.id) })),
@@ -247,21 +261,21 @@ const Roam = (() => {
     const leave = st.leave, start = leave ? leave.time : null;
     const tm = at => start == null ? (at === 0 ? "Now" : "+" + dur(at)) : clock(start + at);
     const legs = o.legs.map((l, i) => `<div class="ro-leg" style="color:${l.color}"><div class="ro-rail"><i></i>${i < o.legs.length - 1 ? "<u></u>" : ""}</div><div><div class="ro-st">${esc(l.name)}</div><div class="ro-sb">${esc(l.sub)}</div></div><div class="ro-tm">${tm(l.at)}</div></div>`).join("");
-    /* suggestions: Sims who traveled with Roam lately, then Sims who live where the trip starts */
-    const fw = fp.world && T().world(fp.world), locals = fw ? data.sims.filter(x => x.residence === fw.name).map(x => x.id) : [];
-    const recentT = [...new Set([...LS.get("roam-travelers-v1", []), ...locals])].filter(id => sim(id) && !st.travelers.includes(id)).slice(0, Math.max(2, 5 - st.travelers.length));
+    const drive = mode === "car", dkey = [tok, mode, ...st.travelers, leave ? ordOf(leave) + ":" + leave.time : "now"].join("|");
     const av = (id, on) => { const s = sim(id); return `<button type="button" class="ro-av ${on ? "on" : ""}" data-ro="who:${esc(id)}" aria-pressed="${on}" aria-label="${esc(first(s.name))}${on ? ", going" : ""}"><span class="ro-c">${avatar(s)}</span>${esc(first(s.name))}</button>`; };
     const n = st.travelers.length, p = o.price;
     const totalTxt = p.unknown ? "In game" : money(p.total);
     const leaveTxt = leave ? `${dayLabel(leave)} · ${clockShort(leave.time)}` : "Now";
     return { title:`${o.t} to ${tp.name}`, back:[H("to/" + tok), "Routes"], map:{ a:fp.world, b:tp.world, hi:o.hi, extra:o.extra, key:fp.tok + ">" + tok + ">" + mode }, body:`<div class="ro-legs">${legs}</div>
       <h3 class="ro-sec">Who's going</h3>
-      <div class="ro-who">${st.travelers.map(id => av(id, true)).join("")}${recentT.map(id => av(id, false)).join("")}<button type="button" class="ro-av add" data-ro="addwho" aria-label="Add Sims"><span class="ro-c">+</span>Add</button></div>
+      <div class="ro-whow"><button type="button" class="ro-arrow ro-prev" data-scroll="-1" aria-label="Scroll left" hidden>‹</button><div class="ro-who">${st.travelers.map(id => av(id, true)).join("")}<button type="button" class="ro-av add" data-ro="addwho" aria-label="Add Sims"><span class="ro-c">+</span>Add</button></div><button type="button" class="ro-arrow ro-next" data-scroll="1" aria-label="Scroll right" hidden>›</button></div>
       ${o.classes ? `<div class="ro-seg" role="group" aria-label="Class"><button type="button" class="${st.cls === "economy" ? "on" : ""}" data-ro="cls:economy" aria-pressed="${st.cls === "economy"}">Economy</button><button type="button" class="${st.cls === "first" ? "on" : ""}" data-ro="cls:first" aria-pressed="${st.cls === "first"}">First class</button></div>` : ""}
-      <div class="ro-group">${row({ t:"Leave", v:`<span class="ro-v1">${esc(leaveTxt)}</span>`, act:"leave" })}<div class="ro-row"><span class="ro-tx"><span class="ro-t">Add to Calendar</span></span><button type="button" class="ro-tog ${st.addCal ? "on" : ""}" role="switch" aria-checked="${st.addCal}" aria-label="Add to Calendar" data-ro="cal"><i></i></button></div></div>
+      <div class="ro-group">${row({ t:"Leave", v:`<span class="ro-v1">${esc(leaveTxt)}</span>`, act:"leave" })}${drive ? "" : `<div class="ro-row"><span class="ro-tx"><span class="ro-t">Add to Calendar</span></span><button type="button" class="ro-tog ${st.addCal ? "on" : ""}" role="switch" aria-checked="${st.addCal}" aria-label="Add to Calendar" data-ro="cal"><i></i></button></div>`}</div>
       ${st.err ? `<p class="ro-foot ro-err" role="alert">${esc(st.err)}</p>` : ""}
-      <p class="ro-foot">${p.unknown ? "SimNation sets this price in game. " : ""}Leaving later? In game, set it up with Plan Travel Somewhere.</p>`,
-      bar:`<div class="ro-bar"><div><div class="ro-a">${totalTxt}${p.est && !p.unknown ? " " + EST : ""}</div><div class="ro-bs">${n ? `${n} traveler${n === 1 ? "" : "s"}` : "Pick who's going"}${o.classes ? " · " + (st.cls === "first" ? "First class" : "Economy") : ""}</div></div><button type="button" class="ro-btn" data-ro="book:${esc(tok)}:${mode}" ${n ? "" : "disabled"}>Book trip</button></div>` };
+      ${p.unknown ? `<p class="ro-foot">SimNation sets this price in game.</p>` : drive ? `<p class="ro-foot">Roam compares what it costs. You drive in game, so there is nothing to book.</p>` : ""}`,
+      bar:`<div class="ro-bar"><div><div class="ro-a">${totalTxt}${p.est && !p.unknown ? " " + EST : ""}</div><div class="ro-bs">${n ? `${n} traveler${n === 1 ? "" : "s"}` : "Pick who's going"}${o.classes ? " · " + (st.cls === "first" ? "First class" : "Economy") : ""}${drive ? " · Gas" : ""}</div></div>${drive
+        ? `<button type="button" class="ro-btn" data-ro="drive:${esc(tok)}" ${n && st.driven !== dkey ? "" : "disabled"}>${st.driven === dkey ? "Added" : "Add to Calendar"}</button>`
+        : `<button type="button" class="ro-btn" data-ro="book:${esc(tok)}:${mode}" ${n ? "" : "disabled"}>Book trip</button>`}</div>` };
   }
   function booked() {
     const b = st.booked; if (!b) return { body:`<p class="ro-empty">Nothing booked right now.</p><div class="ro-group">${row({ t:"Plan a trip", href:H("search"), cls:"accent" })}</div>` };
@@ -272,7 +286,7 @@ const Roam = (() => {
         <div class="ro-tgrid"><div>Leaves<b>${esc(b.leaveTime)}</b></div><div>Arrives<b>${esc(b.arriveTime)}</b></div><div>Travelers<b>${esc(names(b.travelers))}</b></div><div>Total<b>${b.total}${b.est ? " " + EST : ""}</b></div></div>
         <div class="ro-perf"></div><div class="ro-code"><span>Confirmation</span><b>${esc(b.code)}</b></div></div>
       ${b.calendar ? `<p class="ro-incal">${I.cal}<span>Added to Calendar for ${esc(dayLabel(b.leave || today()))}</span></p>` : ""}
-      <p class="ro-foot" style="text-align:center">${b.ticket ? "The ticket is in Passes until the trip. " : ""}Roam doesn't keep trips.</p>
+      ${b.ticket ? `<p class="ro-foot" style="text-align:center">The ticket is in Passes until the trip.</p>` : ""}
       <div class="ro-endbtns"><a class="ro-btn" href="${H("")}">Done</a><a class="ro-btn plain" href="${H("search")}">Plan another trip</a></div>` };
   }
   /* fake but steady QR pattern for a pass (decoration only) */
@@ -287,21 +301,22 @@ const Roam = (() => {
     const list = GFB.roam.all().filter(p => (p.kind === "ticket" ? p.valid_until && ordOf(p.valid_until) >= ordOf(today()) : activeOn(p)));
     list.sort((a, b) => (a.kind === "ticket" ? 0 : 1) - (b.kind === "ticket" ? 0 : 1) || String(a.created_at).localeCompare(String(b.created_at)));
     const open = list.find(p => p.id === st.passOpen) || list[list.length - 1];
-    const hf = p => p.kind === "ticket" ? `<small>${esc(dayLabel(p.valid_until).toUpperCase())}</small>To ${esc(p.trip && p.trip.toName || "")}` : p.kind === "rides" ? `<small>RIDES LEFT</small>${p.rides_left}` : `<small>RIDES</small>Unlimited`;
+    const days = p => p.trip && p.trip.days, short = d => `${d.season} ${d.day}`;
+    const hf = p => p.kind === "ticket" ? `<small>${esc(dayLabel(p.valid_until).toUpperCase())}</small>To ${esc(p.trip && p.trip.toName || "")}` : p.kind === "rides" ? `<small>RIDES LEFT</small>${p.rides_left}` : days(p) && p.valid_until ? `<small>RUNS OUT</small>${esc(short(p.valid_until))}` : `<small>RIDES</small>Unlimited`;
     const sub = p => p.kind === "ticket" ? (p.trip && p.trip.mode === "ferry_boat" ? "Ferry ticket" : "Train ticket") : BRANDS[p.brand] && BRANDS[p.brand].sub || "";
     const card = p => { const B = BRANDS[p.brand] || BRANDS.llama, s = sim(p.sim_id), isOpen = p === open;
       const head = `<div class="ro-wh">${mark(p.brand)}<span class="ro-wn">${esc(B.name)}${sub(p) ? `<small class="ro-ag">${esc(sub(p))}</small>` : ""}</span><span class="ro-hf">${hf(p)}</span></div>`;
       if (!isOpen) return `<button type="button" class="ro-wp strip" style="--c:${B.c}" data-ro="pass:${esc(p.id)}" aria-label="${esc(B.name)} ${esc(p.title || "")}">${head}</button>`;
       const riders = p.kind === "ticket" ? (p.trip.travelers || []).map(id => sim(id)).filter(Boolean) : [s].filter(Boolean);
       return `<div class="ro-wp full" style="--c:${B.c}">${head}
-        <div class="ro-pf1"><small>${esc(p.kind === "ticket" ? (p.trip.cls === "first" ? "FIRST CLASS" : "ECONOMY") : p.kind === "rides" ? "RIDE PASS" : "MONTHLY PASS")}</small>${esc(p.title || "")}</div>
+        <div class="ro-pf1"><small>${esc(p.kind === "ticket" ? (p.trip.cls === "first" ? "FIRST CLASS" : "ECONOMY") : p.kind === "rides" ? "RIDE PASS" : days(p) ? p.trip.days + " DAY PASS · " + String(p.trip.age || "adult").toUpperCase() : "MONTHLY PASS")}</small>${esc(p.title || "")}</div>
         <div class="ro-sf"><div><small>${riders.length > 1 ? "RIDERS" : "RIDER"}</small>${riders.map(r => `<span class="ro-rid">${avatar(r)}${esc(stripNick(r.name))}</span>`).join("")}</div><div style="text-align:right"><small>${p.kind === "ticket" ? "LEAVES" : "VALID UNTIL"}</small>${p.kind === "ticket" ? esc(p.trip.leaveTime || "") : p.valid_until ? esc(dayLabel(p.valid_until)) : "No end date"}</div></div>
         <div class="ro-qr">${qr(p.id)}<span>${p.kind === "ticket" ? "Confirmation " + esc(p.trip.code || "") : esc(B.gate)}</span></div></div>`; };
     return { title:"", back:[H(""), "Roam"], right:`<button type="button" class="ro-navbtn" data-ro="buy">Buy a pass</button>`, body:`<h1 class="ro-wlt">Passes</h1>
       ${list.length ? `<div class="ro-stack">${list.map(card).join("")}</div>
         <div class="ro-group" style="margin-top:20px">${open && open.kind === "rides" ? row({ t:"Use a ride", act:"ride:" + open.id, cls:"accent" }) : ""}${open ? row({ t:open.kind === "ticket" ? "Remove ticket" : "Remove pass", act:"rmpass:" + open.id, cls:"danger" }) : ""}</div>
         <p class="ro-foot">Passes stay until they run out. Tickets stay until the trip.</p>`
-        : `<p class="ro-empty">No passes yet. When a Sim buys a transit pass in game, add it here with Buy a pass. Train and ferry tickets show up here when you book them.</p>`}` };
+        : `<p class="ro-empty">No passes yet. Add one when a Sim buys it in game.</p><button type="button" class="ro-btn" data-ro="buy">Buy a pass</button>`}` };
   }
 
   /* ---------- draw ---------- */
@@ -326,20 +341,39 @@ const Roam = (() => {
     if (!full || wide) mapFor(screen === "explore" || screen === "search" || screen === "from" || screen === "passes" ? "explore" : "route", mapO);
     else if (mapO) { const el = root.querySelector(".ro-strip"); if (el) { const w = el.clientWidth || 340, h = el.clientHeight || 150, vb = M().fit([mapO.a, mapO.b], w, h, 28, 60); el.innerHTML = M().svg(vb, w / vb[2], { hi:mapO.hi, extra:mapO.extra, pins:[mapO.a], dests:[mapO.b], labels:[mapO.a, mapO.b], smallAt:99 }); } }
     if (screen === "search" || screen === "from") { const q = root.querySelector("#ro-q"); if (q && matchMedia("(pointer:fine)").matches) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }
+    wireArrows();
     st.err = null;
+  }
+  /* wide screens with a mouse get arrows on horizontal rows (SOP: no row that can't be scrolled with a mouse) */
+  function wireArrows() {
+    root.querySelectorAll(".ro-whow").forEach(w => { const row = w.querySelector(".ro-who"), p = w.querySelector(".ro-prev"), n = w.querySelector(".ro-next");
+      const upd = () => { p.hidden = row.scrollLeft < 4; n.hidden = row.scrollLeft + row.clientWidth >= row.scrollWidth - 4; };
+      row.addEventListener("scroll", upd, { passive:true }); upd(); setTimeout(upd, 120);
+      w.querySelectorAll("[data-scroll]").forEach(b => b.addEventListener("click", () => row.scrollBy({ left:+b.dataset.scroll * 220, behavior:"smooth" }))); });
   }
 
   /* ---------- actions ---------- */
-  function whoSheet() {
-    const sel = new Set(st.travelers);
-    const list = q => data.sims.filter(s => !q || stripNick(s.name).toLowerCase().includes(q.toLowerCase())).sort((x, y) => stripNick(x.name).localeCompare(stripNick(y.name))).slice(0, 80)
-      .map(s => `<button type="button" class="ro-row" data-pick="${esc(s.id)}" aria-pressed="${sel.has(s.id)}"><span class="ro-pav">${avatar(s)}</span><span class="ro-tx"><span class="ro-t">${esc(stripNick(s.name))}</span>${s.residence ? `<span class="ro-s">${esc(s.residence)}</span>` : ""}</span>${sel.has(s.id) ? `<span class="ro-check" aria-hidden="true">✓</span>` : ""}</button>`).join("");
-    const s = UI.sheet({ title:"Who's going", left:"Cancel", right:"Done", theme:SHEET_THEME,
-      body:`<label class="ro-search on" style="margin-bottom:12px">${I.mag}<input type="search" id="ro-whoq" placeholder="Search a name" autocomplete="off" aria-label="Search Sims"></label><div class="ro-group" id="ro-wholist">${list("")}</div>`,
-      onRight:close => { st.travelers = [...sel]; LS.set("roam-travelers-v1", [...new Set([...st.travelers, ...LS.get("roam-travelers-v1", [])])].slice(0, 12)); close("done"); draw(); } });
+  /* type to search the Sims; before typing it shows Sims you picked lately. multi: tick several and press Done; single: one tap picks. */
+  function pickSims({ title, multi, sel = [], done }) {
+    const picked = new Set(sel), byName = (x, y) => stripNick(x.name).localeCompare(stripNick(y.name));
+    const line = s => `<button type="button" class="ro-row" data-pick="${esc(s.id)}" aria-pressed="${picked.has(s.id)}"><span class="ro-pav">${avatar(s)}</span><span class="ro-tx"><span class="ro-t">${esc(stripNick(s.name))}</span>${s.residence ? `<span class="ro-s">${esc(s.residence)}</span>` : ""}</span>${picked.has(s.id) ? `<span class="ro-check" aria-hidden="true">✓</span>` : ""}</button>`;
+    const list = q => { q = q.trim().toLowerCase();
+      if (!q) { const rc = LS.get("roam-travelers-v1", []).map(sim).filter(Boolean); return rc.length ? `<h3 class="ro-sec">Recent</h3><div class="ro-group">${rc.map(line).join("")}</div>` : `<p class="ro-empty">Type a name to find a Sim.</p>`; }
+      const hits = data.sims.filter(s => stripNick(s.name).toLowerCase().includes(q)).sort(byName).slice(0, 30);
+      return hits.length ? `<div class="ro-group">${hits.map(line).join("")}</div>` : `<p class="ro-empty">No Sims match “${esc(q)}”.</p>`; };
+    const s = UI.sheet({ title, left:"Cancel", right:multi ? "Done" : "", theme:SHEET_THEME,
+      body:`<label class="ro-search on" style="margin-bottom:12px">${I.mag}<input type="search" id="ro-whoq" placeholder="Type a name" autocomplete="off" aria-label="Search Sims"></label><div id="ro-wholist">${list("")}</div>`,
+      onRight:close => { close("done"); done([...picked]); } });
     s.el.classList.add("ro-sheet");
-    s.body.addEventListener("input", e => { if (e.target.id === "ro-whoq") s.body.querySelector("#ro-wholist").innerHTML = list(e.target.value); });
-    s.body.addEventListener("click", e => { const b = e.target.closest("[data-pick]"); if (!b) return; const id = b.dataset.pick; sel.has(id) ? sel.delete(id) : sel.add(id); s.body.querySelector("#ro-wholist").innerHTML = list(s.body.querySelector("#ro-whoq").value); });
+    const q = s.body.querySelector("#ro-whoq"), box = s.body.querySelector("#ro-wholist");
+    s.body.addEventListener("input", e => { if (e.target === q) box.innerHTML = list(q.value); });
+    s.body.addEventListener("click", e => { const b = e.target.closest("[data-pick]"); if (!b) return; const id = b.dataset.pick;
+      if (!multi) { s.close("pick"); return done([id]); }
+      picked.has(id) ? picked.delete(id) : picked.add(id); box.innerHTML = list(q.value); });
+    if (!matchMedia("(pointer:fine)").matches) setTimeout(() => q.focus(), 60);
+  }
+  function whoSheet() {
+    pickSims({ title:"Who's going", multi:true, sel:st.travelers, done:ids => { st.travelers = ids; LS.set("roam-travelers-v1", [...new Set([...ids, ...LS.get("roam-travelers-v1", [])])].slice(0, 12)); draw(); } });
   }
   function leaveSheet() {
     const cur = st.leave || { ...today(), time:9 * 60 }, seasons = cal().seasons.map(x => x.name);
@@ -347,41 +381,46 @@ const Roam = (() => {
     const s = UI.sheet({ title:"Leave", left:"Cancel", right:"Done", theme:SHEET_THEME, body:`
       <div class="ro-seg" role="group" aria-label="When"><button type="button" data-when="now" class="${st.leave ? "" : "on"}">Now</button><button type="button" data-when="later" class="${st.leave ? "on" : ""}">A game date</button></div>
       <div class="ro-when" ${st.leave ? "" : "hidden"}><div class="ro-group">
-        <label class="ro-row"><span class="ro-tx"><span class="ro-t">Season</span></span><select name="season">${seasons.map(x => `<option ${x === cur.season ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></label>
-        <label class="ro-row"><span class="ro-tx"><span class="ro-t">Day</span></span><input name="day" type="number" min="1" max="21" inputmode="numeric" value="${cur.day}"></label>
-        <label class="ro-row"><span class="ro-tx"><span class="ro-t">Year</span></span><input name="year" type="number" min="1" inputmode="numeric" value="${cur.year}"></label>
+        <label class="ro-row"><span class="ro-tx"><span class="ro-t">Date</span></span><select name="season" aria-label="Season">${seasons.map(x => `<option ${x === cur.season ? "selected" : ""}>${esc(x)}</option>`).join("")}</select><input name="day" type="number" min="1" max="21" inputmode="numeric" value="${cur.day}" aria-label="Day" style="width:64px"></label>
         <label class="ro-row"><span class="ro-tx"><span class="ro-t">Time</span></span><select name="time">${times.map(m => `<option value="${m}" ${m === cur.time ? "selected" : ""}>${clock(m)}</option>`).join("")}</select></label></div>
-        <p class="ro-foot">Today is ${esc(dayLabel(today()))}, Year ${cal().year}.</p></div>`,
+        <p class="ro-foot">Today is ${esc(dayLabel(today()))}.</p></div>`,
       onRight:close => { const later = s.body.querySelector("[data-when=later]").classList.contains("on"), g = n => s.body.querySelector(`[name=${n}]`).value;
-        st.leave = later ? { season:g("season"), day:Math.min(21, Math.max(1, +g("day") || 1)), year:Math.max(1, +g("year") || cal().year), time:+g("time") } : null; close("done"); draw(); } });
+        let lv = null; if (later) { lv = { season:g("season"), day:Math.min(21, Math.max(1, +g("day") || 1)), year:today().year, time:+g("time") }; if (ordOf(lv) < ordOf(today())) lv.year++; } st.leave = lv; close("done"); draw(); } });
     s.el.classList.add("ro-sheet");
     s.body.addEventListener("click", e => { const b = e.target.closest("[data-when]"); if (!b) return; s.body.querySelectorAll("[data-when]").forEach(x => x.classList.toggle("on", x === b)); s.body.querySelector(".ro-when").hidden = b.dataset.when === "now"; });
   }
+  /* SimNation sells 7, 14 and 28 day passes by age group, and they start the day you buy. Prices are paid in game. */
   function buySheet() {
-    let brand = "metro", kind = "monthly", rider = st.travelers[0] || null;
-    const t = today(), until = fromOrd(ordOf(t) + 20);
-    const body = () => `<div class="ro-seg" role="group" aria-label="Line"><button type="button" data-b="metro" class="${brand === "metro" ? "on" : ""}">Baymore Metro</button><button type="button" data-b="baylink" class="${brand === "baylink" ? "on" : ""}">BayLink</button></div>
-      <div class="ro-seg" role="group" aria-label="Kind" style="margin-top:12px"><button type="button" data-k="monthly" class="${kind === "monthly" ? "on" : ""}">Monthly</button><button type="button" data-k="rides" class="${kind === "rides" ? "on" : ""}">Ride pass</button></div>
+    let brand = "metro", days = 7, age = "adult", rider = st.travelers[0] || null;
+    const t = today(), end = n => fromOrd(ordOf(t) + n);
+    const seg = (k, items, cur, label, top) => `<div class="ro-seg" role="group" aria-label="${label}"${top ? ' style="margin-top:12px"' : ""}>${items.map(([v, l]) => `<button type="button" data-${k}="${v}" class="${String(cur) === String(v) ? "on" : ""}" aria-pressed="${String(cur) === String(v)}">${l}</button>`).join("")}</div>`;
+    const body = () => `${seg("b", [["metro", "Baymore Metro"], ["baylink", "BayLink"]], brand, "Line")}${seg("d", [[7, "7 days"], [14, "14 days"], [28, "28 days"]], days, "Length", 1)}${seg("a", [["youth", "Youth"], ["adult", "Adult"]], age, "Age group", 1)}
       <div class="ro-group" style="margin-top:12px">
         <button type="button" class="ro-row" data-rider="1"><span class="ro-tx"><span class="ro-t">Rider</span></span><span class="ro-v1">${rider && sim(rider) ? esc(stripNick(sim(rider).name)) : "Choose"}</span><span class="ro-chev" aria-hidden="true">›</span></button>
-        ${kind === "rides" ? `<label class="ro-row"><span class="ro-tx"><span class="ro-t">Rides</span></span><input name="rides" type="number" min="1" inputmode="numeric" value="10"></label>` : ""}
-        <label class="ro-row"><span class="ro-tx"><span class="ro-t">Valid until</span></span><select name="season">${cal().seasons.map(x => `<option ${x.name === until.season ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select><input name="day" type="number" min="1" max="21" inputmode="numeric" value="${until.day}" aria-label="Day" style="width:64px"></label></div>
-      <p class="ro-foot">${brand === "metro" && kind === "monthly" ? "Covers the subway and buses." : brand === "metro" ? "Each subway or bus ride uses one." : kind === "monthly" ? "Covers BayLink trains." : "Each BayLink ride uses one."} Prices are paid in game.</p><p class="ro-foot ro-err" hidden></p>`;
+        ${row({ t:"Starts", s:"Today in your game", v:`<span class="ro-v1">${esc(dayLabel(t))}</span>` })}
+        ${row({ t:"Runs out", v:`<span class="ro-v1">${esc(dayLabel(end(days)))}</span>` })}</div>
+      <p class="ro-foot">${brand === "metro" ? "Covers the subway and buses." : "Covers BayLink trains."} Prices are paid in game.</p><p class="ro-foot ro-err" hidden></p>`;
     const s = UI.sheet({ title:"Buy a pass", left:"Cancel", right:"Add", theme:SHEET_THEME, body:body(),
       onRight:async close => { const err = s.body.querySelector(".ro-err"); if (!rider) { err.hidden = false; err.textContent = "Choose who the pass is for."; return; }
-        const g = n => s.body.querySelector(`[name=${n}]`), season = g("season").value, day = Math.min(21, Math.max(1, +g("day").value || 1));
-        let vu = { season, day, year:t.year }; if (ordOf(vu) < ordOf(t)) vu.year++;
-        await GFB.roam.save({ sim_id:rider, brand, kind, title:brand === "metro" && kind === "monthly" ? "Subway and bus" : brand === "metro" ? "Subway and bus rides" : kind === "monthly" ? "BayLink trains" : "BayLink rides",
-          covers:brand === "metro" ? ["subway","transit"] : ["subway","train"], valid_until:vu, rides_left:kind === "rides" ? Math.max(1, +(g("rides") || {}).value || 10) : null, trip:null });
+        await GFB.roam.save({ sim_id:rider, brand, kind:"monthly", title:`${days} day pass`, covers:brand === "metro" ? ["subway", "transit"] : ["subway", "train"], valid_until:end(days), rides_left:null, trip:{ days, age } });
         close("add"); draw(); } });
     s.el.classList.add("ro-sheet");
     s.body.addEventListener("click", e => {
-      const b = e.target.closest("[data-b],[data-k],[data-rider]"); if (!b) return;
-      if (b.dataset.b) brand = b.dataset.b; else if (b.dataset.k) kind = b.dataset.k;
-      else { const keep = st.travelers; const pick = UI.sheet({ title:"Rider", left:"Cancel", theme:SHEET_THEME, body:`<div class="ro-group">${data.sims.slice().sort((x, y) => stripNick(x.name).localeCompare(stripNick(y.name))).map(x => `<button type="button" class="ro-row" data-p="${esc(x.id)}"><span class="ro-pav">${avatar(x)}</span><span class="ro-tx"><span class="ro-t">${esc(stripNick(x.name))}</span></span></button>`).join("")}</div>` });
-        pick.el.classList.add("ro-sheet"); pick.body.addEventListener("click", ev => { const p = ev.target.closest("[data-p]"); if (!p) return; rider = p.dataset.p; pick.close("pick"); s.body.innerHTML = body(); }); st.travelers = keep; return; }
+      const b = e.target.closest("[data-b],[data-d],[data-a],[data-rider]"); if (!b) return;
+      if (b.dataset.b) brand = b.dataset.b; else if (b.dataset.d) days = +b.dataset.d; else if (b.dataset.a) age = b.dataset.a;
+      else { pickSims({ title:"Rider", multi:false, sel:rider ? [rider] : [], done:ids => { rider = ids[0]; s.body.innerHTML = body(); } }); return; }
       s.body.innerHTML = body();
     });
+  }
+  /* driving your own car has nothing to book: it only goes on the Calendar */
+  async function driveAdd(tok, btn) {
+    const fp = place(fromTok()), tp = place(tok), pl = plan(fp, tp, st.travelers, st.cls, st.leave), o = pl.opts && pl.opts.find(x => x.mode === "car");
+    if (!o || !st.travelers.length) return; btn.disabled = true;
+    const lv = st.leave, d = lv || today(), leaveTime = lv ? clock(lv.time) : "Now", arrive = lv ? clock(lv.time + o.minutes) : "in " + dur(o.minutes);
+    try { await GFB.saveEvent({ season:d.season, day:d.day, year:d.year, title:`${names(st.travelers)} drive to ${tp.name}`, cat:"gameplay", sims:st.travelers,
+        details:`Roam: Drive, ${fp.name} ${leaveTime} to ${tp.name} ${arrive}. Gas ${o.price.unknown ? "in game" : money(o.price.total)}${o.price.est ? " est." : ""}.` });
+      st.driven = [tok, "car", ...st.travelers, lv ? ordOf(lv) + ":" + lv.time : "now"].join("|"); draw();
+    } catch (err) { st.err = "Couldn't add that: " + err.message; draw(); }
   }
   const CODE = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   async function book(tok, mode, btn) {
@@ -393,7 +432,7 @@ const Roam = (() => {
     const leaveTime = lv ? clock(lv.time) : "Now", arriveTime = lv ? (lv.time + o.minutes >= 1440 ? dayLabel(fromOrd(ordOf(lv) + Math.floor((lv.time + o.minutes) / 1440))) + " · " : "") + clock(lv.time + o.minutes) : "In " + dur(o.minutes);
     const total = o.price.unknown ? "In game" : money(o.price.total);
     const b = { travelers:[...st.travelers], a:pl.a, b:pl.b, fromName:o.legs[0].name, toName:tp.name, leave:lv, leaveTime, arriveTime, total, est:o.price.est && !o.price.unknown, code,
-      line:line ? line.name : o.t, color:line ? line.color : "#0e7a6c", classes:o.classes, cls:st.cls, mode, ticket:false, calendar:false };
+      line:line ? line.name : o.t, color:line ? line.color : "#2a1745", classes:o.classes, cls:st.cls, mode, ticket:false, calendar:false };
     try {
       /* train and ferry tickets wait in Passes until the trip */
       if (o.ticket) { await GFB.roam.save({ sim_id:b.travelers[0], brand:line ? line.brand : (mode === "ferry_boat" ? "ferry" : "rail"), kind:"ticket", title:`${o.t} to ${tp.name}`, valid_until:lv ? { season:lv.season, day:lv.day, year:lv.year } : today(), rides_left:null, covers:[],
@@ -459,6 +498,7 @@ const Roam = (() => {
       if (k === "addwho") return whoSheet();
       if (k === "leave") return leaveSheet();
       if (k === "book") return book(x, y, b);
+      if (k === "drive") return driveAdd(x, b);
       if (k === "pass") { st.passOpen = x; return draw(); }
       if (k === "buy") return buySheet();
       if (k === "ride") { const p = GFB.roam.get(x); if (p) await GFB.roam.save({ id:p.id, rides_left:Math.max(0, (p.rides_left || 0) - 1) }); return draw(); }

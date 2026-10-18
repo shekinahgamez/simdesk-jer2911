@@ -92,13 +92,20 @@ const RoamMap = (() => {
     drawLine(true);
     const shown = opt.labels || Object.keys(AT).map(Number);
     Object.keys(AT).map(Number).forEach(id => { const [x, y, t] = AT[id]; s += `<circle cx="${x}" cy="${y}" r="${u(t === 0 ? 4 : 3.2)}" fill="#fff" stroke="#5d6663" stroke-width="${u(1.4)}"/>`; });
-    shown.forEach(id => { if (!AT[id]) return; const [x, y, t, side0] = AT[id], side = (opt.side || {})[id] || side0, f = u(t === 0 ? 13.5 : 12), g = u(t === 0 ? 7.5 : 6.5);
+    const tagged = new Set([...(opt.pins || []), ...(opt.dests || [])]);
+    shown.forEach(id => { if (!AT[id] || tagged.has(id)) return; const [x, y, t, side0] = AT[id], f = u(t === 0 ? 13.5 : 12), g = u(t === 0 ? 7.5 : 6.5);
+      let side = (opt.side || {})[id] || side0; const wEst = name(id).length * f * .58;
+      if (side === "r" && x + g + wEst > vb[0] + vb[2]) side = "l"; else if (side === "l" && x - g - wEst < vb[0]) side = "r";
       if (t === 2 && k < (opt.smallAt || 1.2) && !(opt.labels || []).includes(id)) return;
       let tx = x, ty = y + f * .35, anc = "start";
       if (side === "r") tx = x + g; else if (side === "l") { tx = x - g; anc = "end"; } else if (side === "a") { anc = "middle"; ty = y - g; } else { anc = "middle"; ty = y + g + f * .8; }
       s += `<text x="${tx}" y="${ty}" text-anchor="${anc}" font-size="${f}" font-weight="${t === 0 ? 800 : 650}" fill="#2a302e" stroke="#fff" stroke-width="${u(3.2)}" stroke-linejoin="round" paint-order="stroke">${esc(name(id))}</text>`; });
-    (opt.pins || []).forEach(id => { const p = XY(id); if (!p) return; s += `<circle cx="${p[0]}" cy="${p[1]}" r="${u(16)}" fill="#1a73e8" opacity=".16"/><circle cx="${p[0]}" cy="${p[1]}" r="${u(7.5)}" fill="#1a73e8" stroke="#fff" stroke-width="${u(3)}"/>`; });
-    (opt.dests || []).forEach(id => { const p = XY(id); if (!p) return; s += `<circle cx="${p[0]}" cy="${p[1]}" r="${u(7)}" fill="#0e7a6c" stroke="#fff" stroke-width="${u(2.5)}"/>`; });
+    (opt.pins || []).forEach(id => { const p = XY(id); if (!p) return; s += `<circle cx="${p[0]}" cy="${p[1]}" r="${u(16)}" fill="#1fd1a5" opacity=".3"/><circle cx="${p[0]}" cy="${p[1]}" r="${u(7.5)}" fill="#fff" stroke="#2a1745" stroke-width="${u(3.5)}"/>`; });
+    (opt.dests || []).forEach(id => { const p = XY(id); if (!p) return; s += `<circle cx="${p[0]}" cy="${p[1]}" r="${u(8)}" fill="#ff5c8a" stroke="#fff" stroke-width="${u(2.5)}"/><circle cx="${p[0]}" cy="${p[1]}" r="${u(2.6)}" fill="#fff"/>`; });
+    /* plum name tags for where you start and where you are going; kept inside the map edge */
+    [...(opt.pins || []), ...(opt.dests || [])].forEach(id => { const p = XY(id); if (!p) return; const nm = name(id), f = u(12), w = nm.length * f * .6 + u(18), h = f * 1.9, g = u(13);
+      let ty = p[1] - g - h; if (ty < vb[1] + u(4)) ty = p[1] + g; const tx = Math.min(vb[0] + vb[2] - w - u(4), Math.max(vb[0] + u(4), p[0] - w / 2));
+      s += `<rect x="${tx.toFixed(2)}" y="${ty.toFixed(2)}" width="${w.toFixed(2)}" height="${h.toFixed(2)}" rx="${(h / 2).toFixed(2)}" fill="#2a1745"/><text x="${(tx + w / 2).toFixed(2)}" y="${(ty + h / 2 + f * .36).toFixed(2)}" text-anchor="middle" font-size="${f.toFixed(2)}" font-weight="700" fill="#fff">${esc(nm)}</text>`; });
     return s + "</svg>";
   }
   return { AT, LINES, ROADS, XY, dist, fit, svg, railPath, roadPath, curve, stations, stationName, lineName, linesAt, has:id => !!AT[id] };
