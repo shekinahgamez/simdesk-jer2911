@@ -160,7 +160,7 @@ const GFB = (() => {
   async function getAll() {
     if (typeof Cloud !== "undefined") await Cloud.ready;
     if (!db) load();
-    if (!side || (!registry.isLoaded() && registry.ready() && !registry.problem())) side = Promise.all([registry.refresh(), photos.refresh()]);
+    if (!side || (!registry.isLoaded() && registry.ready() && !registry.problem())) side = Promise.all([registry.refresh(), photos.refresh(), travel.refresh(), roam.refresh(), trippa.refresh()]);
     await side;
     await renameRegistryDistricts();
     mirrorRels();
@@ -285,6 +285,16 @@ const GFB = (() => {
     edits.options = { ...(edits.options || {}), [key]: list };
     if (!writeEdits(edits)) throw new Error("This browser's storage is full.");
     return list;
+  }
+
+  /* adds one value to a Lotline list (a new neighborhood added in Settings joins the District list) */
+  async function addLotOption(key, value) {
+    if (!db) load();
+    const L = db.lot_options[key] || []; if (!value || L.includes(value)) return L;
+    db.lot_options[key] = [...L, value];
+    const e = readEdits(); e.lot_options = { ...(e.lot_options || {}), [key]:db.lot_options[key] };
+    if (!writeEdits(e)) throw new Error("This browser's storage is full.");
+    return db.lot_options[key];
   }
 
   /* Row tables: stories (Black Tea), lots (Lotline). Each maps to a Supabase table later. */
@@ -1056,8 +1066,285 @@ const GFB = (() => {
     return { ready, refresh, all:() => list, byId, byUrl, framesOf, add, update, addTags, remove, frame, crop, usesOf, places, pending, moveIn, ensure, swapUrl, cropRect, loadImg, isLoaded:() => loaded, problem:() => problem };
   })();
 
+  /* ================= Travel: worlds, regions, routes and prices =================
+     Seeded from data/simnation.js (her SimNation Travel setup). Settings is the source of truth after that: each change she makes
+     is one row in its own Supabase table, travel_settings (kind + key + value), never in the edits bundle. Rows hold only what she
+     changed; everything else comes from the seed. A copy is kept on this device under its own key so it opens instantly and works
+     before sign-in; changes made offline are pushed the next time the cloud is on. Roam and Trippa read it through GFB.travel.
+     Field guide: TRAVEL-SETTINGS-SCHEMA.md in the SimDesk folder. */
+  const travel = (() => {
+    const LKEY = "simdesk-travel-v1", SEED = () => window.GFB_SIMNATION || { regions:[], worlds:[], pairs:{}, fares:{}, settings:{}, mode_names:{}, estimates:[] };
+    const MODE_ORDER = ["train","car","rental_car","transit","car_service_private","car_service_limousine","taxi","rideshare","subway","walking","bike","ferry_boat","plane","airport_hotel_shuttle"];
+    const BANDS = { local:"Local", regional:"Regional", long_distance:"Long distance", overseas:"Overseas" };
+    let over = {}, dirty = {}, loaded = false, busy = null, problem = null, model = null;
+    const id36 = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    try { const c = JSON.parse(localStorage.getItem(LKEY) || "{}"); over = c.over || {}; dirty = c.dirty || {}; } catch {}
+    const keep = () => { try { localStorage.setItem(LKEY, JSON.stringify({ over, dirty })); } catch {} };
+    const sb = () => cloudClient();
+    const ready = () => !!sb();
+    const k = (kind, key) => kind + "|" + key;
+    async function push() {
+      const c = sb(); if (!c) return;
+      for (const kk of Object.keys(dirty)) {
+        const [kind, key] = kk.split("|"), gone = !(kk in over);
+        const r = gone ? await c.from("travel_settings").delete().eq("kind", kind).eq("key", key)
+                       : await c.from("travel_settings").upsert({ user_id:Cloud.userId(), kind, key, value:over[kk], updated_at:new Date().toISOString() }, { onConflict:"user_id,kind,key" });
+        if (r.error) throw new Error(r.error.message);
+        delete dirty[kk];
+      }
+      keep();
+    }
+    async function refresh() {
+      if (!ready()) return false;
+      if (busy) return busy;
+      busy = (async () => {
+        try {
+          await push();
+          const { data, error } = await sb().from("travel_settings").select("kind,key,value");
+          if (error) throw new Error(error.message);
+          const next = {}; (data || []).forEach(r => { next[k(r.kind, r.key)] = r.value; });
+          Object.keys(dirty).forEach(kk => { if (kk in over) next[kk] = over[kk]; else delete next[kk]; });
+          over = next; keep(); model = null; loaded = true; problem = null; return true;
+        } catch (e) { problem = e.message; return false; }
+      })();
+      try { return await busy; } finally { busy = null; }
+    }
+    async function put(kind, key, value) {
+      const kk = k(kind, key);
+      if (value === undefined || value === null) delete over[kk]; else over[kk] = JSON.parse(JSON.stringify(value));
+      dirty[kk] = 1; keep(); model = null;
+      if (ready()) { try { await push(); problem = null; } catch (e) { problem = e.message; } }
+    }
+    /* the merged picture: seed plus her changes */
+    function build() {
+      if (model) return model;
+      const S = SEED();
+      const worlds = S.worlds.map(w => ({ ...JSON.parse(JSON.stringify(w)), ...(over[k("world", w.id)] || {}), id:w.id, ea_name:w.ea_name }));
+      const byId = new Map(worlds.map(w => [String(w.id), w]));
+      const pairs = new Map();
+      Object.entries(S.pairs).forEach(([key, [band, passport, modes]]) => { const o = over[k("pair", key)]; pairs.set(key, { key, a:+key.split(":")[0], b:+key.split(":")[1], band, passport:!!passport, modes:o && Array.isArray(o.modes) ? o.modes : modes, changed:!!o }); });
+      const regions = S.regions.map(r => ({ ...r, ...(over[k("region", r.id)] || {}), id:r.id }));
+      const fares = {}; Object.entries(S.fares).forEach(([key, v]) => { const o = over[k("fare", key)]; fares[key] = { value:o != null ? Number(o) : v, set:o != null, est:o == null && (S.estimates || []).includes(key), seed:v }; });
+      const settings = { ...S.settings }; Object.keys(S.settings).forEach(key => { const o = over[k("setting", key)]; if (o !== undefined) settings[key] = o; });
+      return (model = { worlds, byId, pairs, regions, fares, settings });
+    }
+    const pairKey = (a, b) => { a = +a; b = +b; return a < b ? a + ":" + b : b + ":" + a; };
+    const norm = s => String(s || "").toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[’']/g, "").replace(/\s+/g, " ").trim();
+    const api = {
+      ready, refresh, isLoaded:() => loaded, problem:() => problem, pending:() => Object.keys(dirty).length,
+      MODE_ORDER, BANDS, newId:() => "nb-" + id36(),
+      modeName:m => (SEED().mode_names || {})[m] || m,
+      regions:() => build().regions,
+      region:id => build().regions.find(r => String(r.id) === String(id) || r.name === id) || null,
+      worlds:() => build().worlds,
+      world:id => build().byId.get(String(id)) || null,
+      worldsIn:region => build().worlds.filter(w => w.region === region),
+      /* every route: { key, a, b, band, passport, modes, changed } */
+      pairs:() => [...build().pairs.values()],
+      pair:(a, b) => build().pairs.get(pairKey(a, b)) || null,
+      routesFrom:id => [...build().pairs.values()].filter(p => p.a === +id || p.b === +id),
+      between:(rA, rB) => { const m = build(); return [...m.pairs.values()].filter(p => { const x = m.byId.get(String(p.a)).region, y = m.byId.get(String(p.b)).region; return (x === rA && y === rB) || (x === rB && y === rA); }); },
+      relationship:(rA, rB) => { const R = SEED().region_relationships || {}; return R[rA + "|" + rB] || R[rB + "|" + rA] || (rA === rB ? ["domestic", "local"] : null); },
+      fares:() => build().fares,
+      fare:key => build().fares[key] || null,
+      settings:() => build().settings,
+      /* nightly room price: the hotel's level (from its Lotline lot, never the world) + per bedroom + per bathroom after the first (always an estimate) */
+      nightly:(tier, beds = 1, baths = 1) => { const f = build().fares; return (f["lodging_" + tier + "_night"] || f.lodging_standard_night).value + f.lodging_bedroom_add.value * beds + f.lodging_bathroom_add.value * Math.max(0, baths - 1); },
+      /* a world or neighborhood by any name it goes by: SimDesk name, EA name, or another name */
+      find(q) {
+        const n = norm(q); if (!n) return [];
+        const out = [], hit = (names) => names.some(x => norm(x).includes(n));
+        build().worlds.forEach(w => {
+          if (hit([w.name, w.ea_name, ...(w.aliases || [])])) out.push({ type:"world", world:w, match:[w.name, w.ea_name, ...(w.aliases || [])].find(x => norm(x).includes(n)) });
+          (w.neighborhoods || []).forEach(nb => { if (hit([nb.name, nb.ea_name, ...(nb.aliases || [])])) out.push({ type:"neighborhood", world:w, nb, match:[nb.name, nb.ea_name, ...(nb.aliases || [])].find(x => norm(x).includes(n)) }); });
+        });
+        return out;
+      },
+      worldByName:name => { const n = norm(name); return build().worlds.find(w => [w.name, w.ea_name, ...(w.aliases || [])].some(x => norm(x) === n)) || null; },
+      /* saves: each one is a row of its own */
+      saveWorld(id, patch) { const w = api.world(id); if (!w) throw new Error("No world " + id); const S = SEED().worlds.find(x => String(x.id) === String(id)); const cur = { ...(over[k("world", w.id)] || {}), ...patch };
+        Object.keys(cur).forEach(f => { if (JSON.stringify(cur[f]) === JSON.stringify(S[f])) delete cur[f]; });
+        return put("world", String(w.id), Object.keys(cur).length ? cur : null); },
+      setModes(a, b, modes) { const key = pairKey(a, b), S = SEED().pairs[key]; if (!S) throw new Error("No route " + key); const list = MODE_ORDER.filter(m => modes.includes(m)).concat(modes.filter(m => !MODE_ORDER.includes(m)));
+        const same = [...S[2]].sort().join() === [...list].sort().join(); return put("pair", key, same ? null : { modes:list }); },
+      setFare:(key, v) => put("fare", key, v == null || v === "" ? null : Number(v)),
+      setSetting:(key, v) => put("setting", key, JSON.stringify(v) === JSON.stringify((SEED().settings || {})[key]) ? null : v),
+      exportRows:() => JSON.parse(JSON.stringify(over)),
+      async importRows(rows) { const all = new Set([...Object.keys(over), ...Object.keys(rows || {})]); over = JSON.parse(JSON.stringify(rows || {})); all.forEach(kk => { dirty[kk] = 1; }); keep(); model = null; if (ready()) { try { await push(); } catch (e) { problem = e.message; } } }
+    };
+    return api;
+  })();
+
+  /* ================= Own tables for Roam and Trippa =================
+     A small table of rows keyed by id, in its own Supabase table (never the edits bundle), with a copy on this device so it
+     shows instantly and works before sign-in; changes made offline are sent the next time the cloud is on. */
+  function ownTable(table, lkey) {
+    let rows = [], dirty = {}, loaded = false, busy = null, problem = null;
+    try { const c = JSON.parse(localStorage.getItem(lkey) || "{}"); rows = c.rows || []; dirty = c.dirty || {}; } catch {}
+    const keep = () => { try { localStorage.setItem(lkey, JSON.stringify({ rows, dirty })); } catch {} };
+    const strip = r => { const { user_id, updated_at, ...rest } = r; return rest; };
+    async function push() {
+      const c = cloudClient(); if (!c) return;
+      for (const id of Object.keys(dirty)) {
+        const r = rows.find(x => x.id === id);
+        const res = r ? await c.from(table).upsert({ ...r, user_id:Cloud.userId(), updated_at:new Date().toISOString() }) : await c.from(table).delete().eq("id", id);
+        if (res.error) throw new Error(res.error.message);
+        delete dirty[id];
+      }
+      keep();
+    }
+    async function refresh() {
+      if (!cloudClient()) return false;
+      if (busy) return busy;
+      busy = (async () => {
+        try {
+          await push();
+          const { data, error } = await cloudClient().from(table).select("*").order("created_at", { ascending:true });
+          if (error) throw new Error(error.message);
+          const local = rows.filter(r => dirty[r.id]);
+          rows = [...(data || []).filter(r => !dirty[r.id]).map(strip), ...local];
+          keep(); loaded = true; problem = null; return true;
+        } catch (e) { problem = e.message; return false; }
+      })();
+      try { return await busy; } finally { busy = null; }
+    }
+    async function save(row) {
+      row = { ...row }; if (!row.id) row.id = uuid(); if (!row.created_at) row.created_at = new Date().toISOString();
+      const i = rows.findIndex(x => x.id === row.id); if (i >= 0) rows[i] = { ...rows[i], ...row }; else rows.push(row);
+      dirty[row.id] = 1; keep();
+      if (cloudClient()) { try { await push(); problem = null; } catch (e) { problem = e.message; } }
+      return rows.find(x => x.id === row.id);
+    }
+    async function remove(id) {
+      rows = rows.filter(x => x.id !== id); dirty[id] = 1; keep();
+      if (cloudClient()) { try { await push(); } catch (e) { problem = e.message; } }
+    }
+    return { all:() => rows, get:id => rows.find(r => r.id === id) || null, save, remove, refresh, isLoaded:() => loaded, problem:() => problem, ready:() => !!cloudClient(), pending:() => Object.keys(dirty).length };
+  }
+  /* Roam passes and tickets: { id, sim_id, brand "metro"|"baylink"|"llama"|..., kind "monthly"|"rides"|"ticket", title,
+     valid_until {season,day,year}, rides_left, trip (tickets only: from, to, leave, class, confirmation, travelers) }. Table roam_passes. */
+  const roam = ownTable("roam_passes", "simdesk-roam-passes-v1");
+  /* Trippa trips: { id, title, world_id, start_date, end_date, travelers[], legs, stay, car, total, est, calendar_event }. Table trippa_trips. */
+  const trippa = ownTable("trippa_trips", "simdesk-trippa-trips-v1");
+
+  /* ================= Renames from Settings =================
+     A world or neighborhood rename: structured places (Sim residence, lot world and district, club district, Lotline's district list)
+     always follow. Written text is offered by group, with counts, and names that only contain it ("Fairlawn Elementary") start off.
+     Messages are never touched. The old name stays as another name, so search still finds it. Replaces one-off migrations. */
+  const reEsc = s => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const nameRe = n => new RegExp(`(?<![\\p{L}\\p{N}])${reEsc(n)}(?![\\p{L}\\p{N}])`, "gu");
+  const COMPOUND_AFTER = /^(?:\s+(?:[A-Z][\p{L}\p{N}'’&.-]*))+/u;
+  /* the longer name a match sits in ("Fairlawn Elementary"), or null */
+  function compoundAt(str, i, len) { const m = str.slice(i + len).match(COMPOUND_AFTER); if (!m) return null; const words = m[0].trim().split(/\s+/).slice(0, 3); return str.substr(i, len) + " " + words.join(" "); }
+  const TEXT_GROUPS = [
+    { key:"stories", label:"Black Tea stories", tables:["stories"] },
+    { key:"sims", label:"Sim backstories and notes", tables:["sims"], skip:["id","name","notion_id","residence","household_id","household","simsta","portrait","headshot","simsta_avatar","file_no"] },
+    { key:"notes", label:"Notes and Calendar", tables:["notes","calendar","todos","projects"] },
+    { key:"orgs", label:"Clubs, institutions and Huddl", tables:["organizations","huddl_posts"], skip:["district","id","lot","logo","banner","emblem_img"] },
+    { key:"posts", label:"Simsta posts", tables:["posts"], skip:["id","photo","author"] },
+    { key:"lots", label:"Lot addresses and notes", tables:["lots","lots_pending"], skip:["id","world","district","parent_id","photo","notion_id","owner_sim","household_id","household","owner"] }];
+  function textWalk(v, fn, skip, key) {
+    if (typeof v === "string") return skip && skip.includes(key) ? v : fn(v);
+    if (Array.isArray(v)) return v.map(x => textWalk(x, fn, skip, key));
+    if (v && typeof v === "object") { const o = {}; for (const kk of Object.keys(v)) o[kk] = skip && skip.includes(kk) ? v[kk] : textWalk(v[kk], fn, skip, kk); return o; }
+    return v;
+  }
+  const rowsOf = t => t === "calendar" ? [db.calendar] : (db[t] || []);
+  /* what a rename would change: { structured:[{label,count}], groups:[{key,label,count}], compounds:[{name,to,count}], registry:{count} } */
+  function renameScan(kind, from, to, worldName) {
+    if (!db) load();
+    const re = nameRe(from), comps = new Map(), has = s => { re.lastIndex = 0; return re.test(s); };
+    const noteComps = s => { re.lastIndex = 0; let m; while ((m = re.exec(s))) { const c = compoundAt(s, m.index, m[0].length); if (c) comps.set(c, (comps.get(c) || 0) + 1); } };
+    const structured = [];
+    if (kind === "world") {
+      const sims = db.sims.filter(s => s.residence === from).length, lots = (db.lots || []).filter(l => l.world === from).length + (db.lots_pending || []).filter(l => l.world === from).length;
+      if (sims) structured.push({ label:"Sims who live there", count:sims });
+      if (lots) structured.push({ label:"Lots and homes in Lotline", count:lots });
+    } else {
+      const lots = (db.lots || []).filter(l => l.district === from).length, orgs = (db.organizations || []).filter(o => o.district === from).length;
+      if (lots) structured.push({ label:"Lots and homes in Lotline", count:lots });
+      if (orgs) structured.push({ label:"Clubs and institutions", count:orgs });
+      if ((db.lot_options.district || []).includes(from)) structured.push({ label:"Lotline's neighborhood list", count:1 });
+    }
+    structured.push({ label:"Roam and Trippa", count:0 });
+    const groups = TEXT_GROUPS.map(g => {
+      let count = 0;
+      g.tables.forEach(t => rowsOf(t).forEach(row => { let hit = false; textWalk(row, s => { if (has(s)) { hit = true; noteComps(s); } return s; }, g.skip); if (hit) count += t === "calendar" ? countCal(row, has) : 1; }));
+      return { key:g.key, label:g.label, count };
+    }).filter(g => g.count);
+    let reg = 0;
+    try { if (registry.isLoaded()) { db.sims.forEach(s => { const i = registry.simInfo(s.id); if (i.summary && has(i.summary)) { reg++; noteComps(i.summary); } });
+      if (registry.isMoved()) registry.all().forEach(l => { if ((l.history || []).some(h => has(h.label || "") || has(h.note || ""))) reg++; }); } } catch {}
+    const compounds = [...comps.entries()].filter(([c]) => !(kind === "world" && c === from)).map(([name, count]) => ({ name, to:name.replace(from, to), count }));
+    return { kind, from, to, world:worldName || null, structured, groups, compounds, registry:reg };
+  }
+  function countCal(cal, has) { let n = 0; [...(cal.events || []), ...(cal.logs || [])].forEach(e => { let hit = false; textWalk(e, s => { if (has(s)) hit = true; return s; }); if (hit) n++; }); return n || 1; }
+  /* choices: { groups:{key:true|false}, compounds:{name:true|false}, registry:true|false } */
+  async function renameApply(plan, choices = {}) {
+    if (!db) load();
+    const { kind, from, to } = plan, re = nameRe(from), comps = choices.compounds || {};
+    const fix = s => { re.lastIndex = 0; return s.replace(re, (m, i) => { const c = compoundAt(s, i, m.length); return c && !comps[c] ? m : to; }); };
+    const edits = readEdits(); let changed = 0;
+    /* structured: always */
+    if (kind === "world") {
+      db.sims.forEach(s => { if (s.residence === from) { s.residence = to; edits.sims = edits.sims || {}; edits.sims[s.id] = { ...(edits.sims[s.id] || {}), residence:to }; changed++; } });
+      ["lots", "lots_pending"].forEach(t => { let hit = false; (db[t] || []).forEach(l => { if (l.world === from) { l.world = to; hit = true; changed++; } }); if (hit) edits[t] = db[t]; });
+    } else {
+      ["lots", "lots_pending"].forEach(t => { let hit = false; (db[t] || []).forEach(l => { if (l.district === from) { l.district = to; hit = true; changed++; } }); if (hit) edits[t] = db[t]; });
+      let oh = false; (db.organizations || []).forEach(o => { if (o.district === from) { o.district = to; oh = true; changed++; } }); if (oh) edits.organizations = db.organizations;
+      const L = db.lot_options.district || [];
+      if (L.includes(from)) { db.lot_options.district = [...new Set(L.map(x => x === from ? to : x))]; edits.lot_options = { ...(edits.lot_options || {}), district:db.lot_options.district }; }
+    }
+    /* written text: only the groups left on */
+    for (const g of TEXT_GROUPS) {
+      if (choices.groups && choices.groups[g.key] === false) continue;
+      for (const t of g.tables) {
+        if (t === "calendar") { const before = JSON.stringify(db.calendar); const next = textWalk(db.calendar, fix, g.skip); if (JSON.stringify(next) !== before) { db.calendar = next; edits.calendar = { events:next.events, logs:next.logs, today:next.today, year:next.year }; changed++; } continue; }
+        if (t === "sims") { db.sims.forEach(s => { const next = textWalk(s, fix, g.skip), patch = {}; Object.keys(next).forEach(f => { if (JSON.stringify(next[f]) !== JSON.stringify(s[f])) patch[f] = next[f]; }); if (Object.keys(patch).length) { Object.assign(s, patch); edits.sims = edits.sims || {}; edits.sims[s.id] = { ...(edits.sims[s.id] || {}), ...patch }; changed++; } }); continue; }
+        if (!Array.isArray(db[t])) continue;
+        const before = JSON.stringify(db[t]), next = textWalk(db[t], fix, g.skip);
+        if (JSON.stringify(next) !== before) { db[t] = next; edits[t] = next; changed++; }
+      }
+    }
+    if (!writeEdits(edits)) throw new Error("This browser's storage is full, so the rename didn't save.");
+    /* the Registry's own tables, when the cloud is on */
+    let regWarn = null;
+    if (choices.registry !== false && plan.registry) {
+      try {
+        for (const s of db.sims) { const i = registry.simInfo(s.id); if (i.summary) { const n = fix(i.summary); if (n !== i.summary) await registry.saveSimInfo(s.id, { summary:n }); } }
+        if (registry.isMoved()) for (const l of registry.all()) { const h = l.history || []; if (!h.some(x => (x.label && fix(x.label) !== x.label) || (x.note && fix(x.note) !== x.note))) continue; await registry.saveLink(l, h.map(x => ({ ...x, label:x.label ? fix(x.label) : x.label, note:x.note ? fix(x.note) : x.note }))); }
+      } catch (e) { regWarn = "Registry summaries didn't all update: " + e.message; }
+    }
+    mirrorRels();
+    return { changed, regWarn };
+  }
+
+  /* Backup and restore: the backup file holds your saved edits plus your travel settings. Older backups (edits only) restore too. */
+  const RESTORE_UNDO = "gfb-restore-undo";
+  function backupFile() { return { simdesk_backup:2, saved_at:new Date().toISOString(), build:window.SIMDESK_BUILD || null, edits:readEdits(), travel:travel.exportRows() }; }
+  function readBackup(obj) {
+    if (!obj || typeof obj !== "object") throw new Error("That file isn't a SimDesk backup.");
+    const edits = obj.simdesk_backup ? obj.edits : obj, travelRows = obj.simdesk_backup ? obj.travel : null;
+    if (!edits || typeof edits !== "object" || Array.isArray(edits)) throw new Error("That file isn't a SimDesk backup.");
+    const sims = Array.isArray(edits.all_sims) ? edits.all_sims.length : null;
+    return { edits, travel:travelRows, saved_at:obj.saved_at || null, build:obj.build || null,
+      counts:{ sims, addedSims:(edits.added_sims || []).length, lots:Array.isArray(edits.lots) ? edits.lots.length : null, stories:Array.isArray(edits.stories) ? edits.stories.length : null, notes:Array.isArray(edits.notes) ? edits.notes.length : null, events:edits.calendar && Array.isArray(edits.calendar.events) ? edits.calendar.events.length : null } };
+  }
+  async function restoreBackup(b) {
+    const before = backupFile();
+    try { localStorage.setItem(RESTORE_UNDO, JSON.stringify(before)); } catch {}
+    if (!writeEdits(b.edits)) throw new Error("That backup is too big for this browser's storage. Nothing was changed.");
+    if (b.travel) await travel.importRows(b.travel);
+    db = null; load(); side = null;
+  }
+  const canUndoRestore = () => { try { return !!localStorage.getItem(RESTORE_UNDO); } catch { return false; } };
+  async function undoRestore() {
+    const raw = localStorage.getItem(RESTORE_UNDO); if (!raw) throw new Error("There's no restore to undo.");
+    await restoreBackup(readBackup(JSON.parse(raw))); localStorage.removeItem(RESTORE_UNDO);
+  }
+
   function resetLocal() { try { localStorage.removeItem(KEY); } catch {} if (typeof Cloud !== "undefined") Cloud.queuePush(); db = null; load(); }
   function hasLocalEdits() { const e = readEdits(); return Object.keys(e.sims || {}).length > 0 || ["stories","lots","accounts","transactions","loans","todos","projects","posts"].some(t => Array.isArray(e[t])) || !!e.calendar; }
 
-  return { messages, simsta, registry, photos, statusOf, homeOf, importAdd, saveTossUp, saveSlide, saveNote, deleteNote, cloudPhotos, photoStats, movePhotosToCloud, normHandle, saveOrg, deleteOrg, saveHuddlPost, deleteHuddlPost, importReplace, undoImport, canUndoImport, exportEdits, getAll, saveSim, addSim, saveOptions, saveSetting, saveRel, deleteRel, saveStory, deleteStory, saveLot, deleteLot, saveAccount, saveLoan, savePost, deletePost, saveTodo, deleteTodo, saveProject, deleteProject, deleteLoan, postTransaction, saveEvent, deleteEvent, saveLog, deleteLog, setToday, uploadImage, resetLocal, hasLocalEdits };
+  return { messages, simsta, registry, photos, travel, roam, trippa, renameScan, renameApply, backupFile, readBackup, restoreBackup, canUndoRestore, undoRestore, addLotOption, statusOf, homeOf, importAdd, saveTossUp, saveSlide, saveNote, deleteNote, cloudPhotos, photoStats, movePhotosToCloud, normHandle, saveOrg, deleteOrg, saveHuddlPost, deleteHuddlPost, importReplace, undoImport, canUndoImport, exportEdits, getAll, saveSim, addSim, saveOptions, saveSetting, saveRel, deleteRel, saveStory, deleteStory, saveLot, deleteLot, saveAccount, saveLoan, savePost, deletePost, saveTodo, deleteTodo, saveProject, deleteProject, deleteLoan, postTransaction, saveEvent, deleteEvent, saveLog, deleteLog, setToday, uploadImage, resetLocal, hasLocalEdits };
 })();

@@ -9,7 +9,7 @@ const Calendar = (() => {
   const cal = () => data.calendar;
   const names = () => cal().seasons.map(s => s.name);
   const sIdx = n => names().indexOf(n);
-  const evOn = (s, d) => cal().events.filter(e => e.season === s && e.day === d).sort((a,b) => a.title.localeCompare(b.title));
+  const evOn = (s, d) => cal().events.filter(e => e.season === s && e.day === d && (!e.year || e.year === cal().year)).sort((a,b) => a.title.localeCompare(b.title));
   const shown = e => st.active[e.cat];
   const realDate = (s, d) => "About " + cal().seasons[sIdx(s)].months[Math.ceil(d/7)-1] + " " + RANGES[(d-1)%7];
   const ord = (s, d) => sIdx(s) * 21 + d;           // 1..84

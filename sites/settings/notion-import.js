@@ -307,7 +307,7 @@ const NotionImport = (() => {
       ${rep.renames.length ? `<p class="st-note">Locked renames applied: ${esc(rep.renames.join("; "))}</p>` : ""}
       ${Object.keys(rep.skipped).length ? `<p class="st-note">Not imported (no place for them yet): ${Object.entries(rep.skipped).map(([k, v]) => `${k} (${v})`).join(", ")}</p>` : ""}
       ${Object.keys(st.files).some(k => k !== "sims") ? `<p class="st-note">Add mode only reads the Sims file. Lots, households and clubs files are left alone. Pick Replace everything to use them.</p>` : ""}
-      <div class="ni-actions"><button class="st-btn" data-ni="backup">Download a backup first</button><button class="st-btn ni-add" data-ni="go" ${total ? "" : "disabled"}>${total ? `Add ${n} ${plural(n, "Sim")}${upN ? ` and update ${upN}` : ""}` : "Nothing to add"}</button></div></div>`;
+      <div class="ni-actions"><a class="st-btn" href="#/settings/backup">Back up first</a><button class="st-btn ni-add" data-ni="go" ${total ? "" : "disabled"}>${total ? `Add ${n} ${plural(n, "Sim")}${upN ? ` and update ${upN}` : ""}` : "Nothing to add"}</button></div></div>`;
   }
 
   function replacePreview(r) {
@@ -329,7 +329,7 @@ const NotionImport = (() => {
         ${rep.renames.length ? `<p class="st-note">Locked renames applied: ${esc(rep.renames.join("; "))}</p>` : ""}
         ${Object.keys(rep.skipped).length ? `<p class="st-note">Not imported (no place for them yet): ${Object.entries(rep.skipped).map(([k, v]) => `${k} (${v})`).join(", ")}</p>` : ""}
         <p class="st-note"><b>This replaces</b> ${[st.files.sims && "the Sims and connections", st.files.clubs && "the clubs and institutions", st.files.lots && "the lots", st.files.households && "the households"].filter(Boolean).join(", ")} in SimDesk with what's above. Everything else stays as it is. A backup you can undo from is kept automatically.</p>
-        <div class="ni-actions"><button class="st-btn" data-ni="backup">Download a backup first</button><button class="st-btn ni-go" data-ni="go">Replace my data</button></div></div>`;
+        <div class="ni-actions"><a class="st-btn" href="#/settings/backup">Back up first</a><button class="st-btn ni-go" data-ni="go">Replace my data</button></div></div>`;
   }
 
   function draw() {
@@ -416,10 +416,6 @@ const NotionImport = (() => {
       const b = e.target.closest("[data-ni]"); if (!b) return;
       if (b.dataset.ni === "go") go(b);
       if (b.dataset.ni === "open") { location.hash = "#/registry/batch:" + st.done.batch; }
-      if (b.dataset.ni === "backup") {
-        const blob = new Blob([JSON.stringify(GFB.exportEdits())], { type:"application/json" }), a = document.createElement("a");
-        a.href = URL.createObjectURL(blob); a.download = "simdesk-backup.json"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-      }
       if (b.dataset.ni === "undo") { try { await GFB.undoImport(); data = await GFB.getAll(); st.done = null; st.notes = ["The import was undone."]; } catch (err) { st.err = err.message; } draw(); }
     });
   }

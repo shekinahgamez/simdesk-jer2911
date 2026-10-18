@@ -34,6 +34,10 @@ const APPS = [
     icon:`<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#17131A"/><path d="M32 11C25 22 17 30 17 39a15 15 0 0 0 30 0c0-9-8-17-15-28z" fill="#E8743B"/><circle cx="48.5" cy="50" r="4" fill="#E8743B"/></svg>` },
   { key:"heirloom", name:"Heirloom", host:"heirloom.family", built:true,
     icon:`<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#2F6B47"/><path d="M14 50c0-18 10-30 36-32 0 22-12 32-28 32" fill="#F5F0E6"/><path d="M14 50c6-12 14-18 24-22" stroke="#2F6B47" stroke-width="3" fill="none" stroke-linecap="round"/></svg>` },
+  { key:"roam", name:"Roam", host:"roam.maps", built:true,
+    icon:`<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#0E7A6C"/><circle cx="19" cy="44" r="6" fill="none" stroke="#fff" stroke-width="4.5"/><circle cx="45" cy="20" r="6" fill="#fff"/><path d="M24 40c10-4 6-15 17-17" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round"/></svg>` },
+  { key:"trippa", name:"Trippa", host:"trippa.com", built:true,
+    icon:`<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#F25C3B"/><clipPath id="tpi"><rect x="12" y="14" width="40" height="22"/></clipPath><circle cx="32" cy="36" r="13" fill="#FFD27A" clip-path="url(#tpi)"/><path d="M12 38h40M17 44h30M23 50h18" stroke="#FFF6EC" stroke-width="3.5" stroke-linecap="round"/></svg>` },
   { key:"photos", name:"Photos", host:"Photos", built:true, system:true,
     icon:`<svg viewBox="0 0 64 64"><defs><linearGradient id="phg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#B4527A"/><stop offset="1" stop-color="#5B2138"/></linearGradient></defs><rect width="64" height="64" fill="url(#phg)"/><g fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><rect x="13" y="16" width="38" height="32" rx="7"/><circle cx="25" cy="27" r="4"/><path d="M51 40 41 30 22 48"/></g></svg>` },
   { key:"settings", name:"Settings", host:"Settings", built:true, system:true,
@@ -166,10 +170,18 @@ async function route(){
     const data = await GFB.getAll();
     Harbor.render(site, data, parts.slice(1));
     setAddress(a.host, Harbor.address(parts.slice(1)));
+  } else if (a.key === "roam"){
+    const data = await GFB.getAll();
+    Roam.render(site, data, parts.slice(1));
+    setAddress(a.host, Roam.address(parts.slice(1)));
+  } else if (a.key === "trippa"){
+    const data = await GFB.getAll();
+    Trippa.render(site, data, parts.slice(1));
+    setAddress(a.host, Trippa.address(parts.slice(1)));
   } else if (a.key === "settings"){
     const data = await GFB.getAll();
-    Settings.render(site, data);
-    setAddress("Settings", ", Desktop", true);
+    Settings.render(site, data, parts.slice(1));
+    setAddress("Settings", Settings.label() ? ", " + Settings.label() : "", true);
   } else if (a.key === "huddl"){
     const data = await GFB.getAll();
     Huddl.render(site, data, parts.slice(1));

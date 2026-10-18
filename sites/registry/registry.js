@@ -606,6 +606,8 @@ const Registry = (() => {
     const evs = R().homeEventsOf(s.id);
     evs.forEach(e => out.push({ key:"e:" + e.id, type:"home", ev:e, date:e.game_date || null, tone:"home", kind:"home", title:{ housed:"Housed", homeless:"Homeless", townie:"Townie" }[e.kind],
       sub:"Home · " + (e.address || (e.kind === "housed" ? "address on file" : "no home address yet")), lot:e.address ? lots().find(x => lotLabel(x) === e.address) : null }));
+    /* trips booked in Trippa (read from its own table; the date is the trip's, so it isn't edited here) */
+    if (typeof Trippa !== "undefined") Trippa.timelineFor(s.id).forEach(t => out.push({ key:"t:" + t.id, type:"trip", date:t.date, tone:"home", kind:"trip", title:t.title, sub:t.sub, href:t.href }));
     if (!evs.length) { const k = statusOf(s).toLowerCase(), a = homeAddress(s);
       out.push({ key:"v:" + k, type:"home", virtual:true, ev:{ sim_id:s.id, kind:k, address:a }, date:null, tone:"home", kind:"home", title:statusOf(s), sub:"Home · " + (a || "no home address yet"), lot:homeOf(s) }); }
     return { out, hidden };
@@ -614,7 +616,7 @@ const Registry = (() => {
   function tlRow(it, s){
     if (st.tl.edit && st.tl.edit.key === it.key) return tlEditRow(it);
     const d = it.date, dated = !!d, tone = it.tone === "sec" ? "secret" : it.tone === "home" ? "bar" : it.kind, go = !(it.type === "home" && !it.lot);
-    const dayBtn = dated ? `<button type="button" class="rg-evday" data-tl="date:${esc(it.key)}" aria-label="Change this date">${d.before ? "Before" : esc(dayWord(d))}</button>` : `<button type="button" class="rg-evday add" data-tl="date:${esc(it.key)}">Add date</button>`;
+    const dayBtn = it.type === "trip" ? `<span class="rg-evday">${esc(dayWord(d))}</span>` : dated ? `<button type="button" class="rg-evday" data-tl="date:${esc(it.key)}" aria-label="Change this date">${d.before ? "Before" : esc(dayWord(d))}</button>` : `<button type="button" class="rg-evday add" data-tl="date:${esc(it.key)}">Add date</button>`;
     const inner = `<i class="rg-dot ${it.tone}" style="--c:var(--${tone})"></i><span class="t"><b>${esc(it.title)}${it.secret ? `<span class="rg-st sec">Secret</span>` : ""}</b><small>${esc(it.sub)}</small></span>${go ? CHEV : ""}`;
     return `<div class="rg-ev ${it.secret ? "secret" : ""}">${dayBtn}${go ? `<button type="button" class="rg-evmain" data-tlopen="${esc(it.key)}">${inner}</button>` : `<div class="rg-evmain">${inner}</div>`}</div>`;
   }
@@ -714,6 +716,7 @@ const Registry = (() => {
   function tlOpen(key, s){
     const it = tlFind(key, s); if (!it) return;
     if (it.type === "home") { if (it.lot) location.hash = "#/lotline/" + it.lot.id; return; }
+    if (it.type === "trip") { location.hash = it.href; return; }
     openSheet(s, it.link);
   }
   /* a home change adds an entry on its own: compare each household member's status before and after a file save */
